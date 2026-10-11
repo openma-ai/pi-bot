@@ -48,11 +48,13 @@ CLI 的 outbox sink 仅输出本地 stdout；`delivered` 只表示该 sink 成�
 ### 2. 前台绝不等待摘要，包括 overflow
 
 - Settings 与 session API 双重关闭原生 auto compaction，禁用 threshold 和 overflow compact/retry。
-- 默认不启用 summarizer，也能保留原始磁盘历史并投影有界上下文；容量由磁盘决定。
-- 可注入独立后台 summarizer；前台从不 await 它。只在模型边界采用已完成、session/epoch/prefix 匹配的摘要。
-- 摘要未就绪/失败/超时：立即用确定性的权威状态 + 当前输入 + 最近完整消息/工具配对 + 历史检索投影。
-- system/tool schema、输出预算与待处理状态计入预算；无法容纳的最新用户输入明确失败，不悄悄删掉指令。
-- `context_history` 分页读取完整 Pi transcript；大工具结果另存 SQLite，`job_result` 分页读取。摘要检查点不删除原始会话。
+- 到达软阈值后，默认用同一 ModelRuntime/model 发起独立、无工具的后台摘要请求。前台从不 await 它，也不因新输入 abort。
+- 摘要未就绪、失败或超时期间，继续使用完整的当前 Pi 原生上下文；不按请求裁剪历史，不替换大工具结果、不建立第二份投影会话。
+- 摘要只覆盖不可变的稳定旧前缀；保留最近完整消息和工具配对。只有到 turn_end/agent_before_settle 边界，且 session、epoch、entry ID 和前缀指纹仍匹配时，才返回 Pi 原生 compaction entry。等待期间追加的所有 tail 消息原样保留。
+- 原生 compaction 写入 Pi JSONL 并重建上下文；重启直接恢复，原始历史仍能通过 context_history 分页读取。大工具结果仍由 job_result 分页读取。
+- 每次请求仅追加小型权威 jobs/questions/inbox ledger；system/tool schema、ledger 和输出保留量计入硬预算。若摘要应用前完整上下文已经超限，该 wake 明确失败并保留历史，绝不等待摘要或偷偷裁剪。
+- 默认输入预算为 model.contextWindow - 4096（无 model 时回退 32000 - 4096），可用 maxContextTokens 设置更小上限；软阈值为这个保守估算预算的 60%，并非 provider 实际 token 占用率。context 可配置 maxContextTokens/outputReserveTokens/thresholdTokens/recentMessages，或注入 summarize。计数为保守 UTF-8/JSON 估算，不是 provider tokenizer；图片需专用预算支持。
+- 每个 bot 仅一个后台摘要任务；默认 30 秒超时、失败后至少 30 秒冷却，同一前缀最多 3 次尝试。忽略 abort 的适配器未结束前不会启动更多摘要。晚于 idle 才完成的摘要在下一个原生边界采用，不另开前台模型请求。
 
 手动 compact 不对外暴露；extension 的 `session_before_compact` 防止默认摘要，但原生 `session.compact()` 在该 hook 前已经会 abort。因此第三方代码直接调用该 API 的行为不在本 runtime 的保证内。
 
@@ -76,7 +78,7 @@ job receipt、执行完成、inbox processing、外部投递是不同状态。�
 - `src/store.ts`：SQLite WAL + FULL sync；bot、inbox、job、question、outbox
 - `src/runtime.ts`：调度、关联 ID、幂等键、预算、恢复、sink
 - `src/pi.ts`：Pi 会话、native tools、extension permission chain
-- `src/context.ts`：非阻塞摘要与确定性 context projection
+- `src/context.ts`：阈值触发的后台摘要与 Pi 原生 compaction
 - `src/cli.ts`：持久交互 host
 - `src/demo.ts`、`test/`：无需 key 的真实 SDK 验证
 
@@ -92,11 +94,11 @@ job receipt、执行完成、inbox processing、外部投递是不同状态。�
 - 启动恢复 queued inbox；processing inbox、running job、sending outbox 改为 uncertain，不盲目重放副作用
 - SQLite 和 Pi JSONL 没有跨文件原子事务；断电时 transcript 与收据可能只提交了一边，uncertain 表示需人工核对
 - 每个数据库只允许一个本机 host：PID 文件锁拒绝活进程，清理明确死亡 PID；不是跨机器/NFS 锁
-- 历史/结果保留在磁盘；没有自动删除或压缩归档策略，生产使用应添加保留策略与磁盘配额。投影仅限制模型输入；Pi 原生 session 仍会加载完整 transcript，因此不承诺无限长运行的总内存恒定
+- 历史/结果保留在磁盘；没有自动删除或压缩归档策略，生产使用应添加保留策略与磁盘配额。原生 compaction 缩小活跃模型上下文，不逐请求裁剪；Pi session 仍保留并加载完整会话归档，因此不承诺无限长运行的总内存恒定
 
 默认限制：16 bots、8 并发 jobs、每个任务最多 32 jobs/32 bot 消息计数门槛、8 跳、64 outbox 消息、每 bot 100 queued 消息、16 pending questions、每个 wake 16 次模型请求。请求预算或 context 超限会明确终止该 wake 并标记 uncertain；它们不是由新输入触发的 preempt。长期挂起的可信工具不会堵住用户模型 lane，但优雅 shutdown 会等待它；强制结束后其结果不确定，重启不会重跑。
 
-上下文预算是保守 UTF-8 字节估算，不是 provider 精确 tokenizer。真实 provider 仍可能拒绝请求；此时记录错误并停止，绝不同步摘要重试。近期大结果通过引用和分页压缩可见内容；这是有意的即时历史细节/响应速度取舍。
+上下文预算是保守 UTF-8 字节估算，不是 provider 精确 tokenizer。真实 provider 仍可能拒绝请求；此时记录错误并停止，绝不同步摘要重试。已存储的异步 job 大结果仍通过 job_result 分页读取；不会逐请求替换已有原生历史，也不保证任意大的历史都能在后台摘要就绪前装入模型窗口。
 
 ## 尚未声称完成
 

@@ -7,7 +7,7 @@ import { Type } from 'typebox';
 import { ModelRuntime, type ExtensionFactory, type ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore, type FauxResponseStep } from '@earendil-works/pi-ai';
 import { BotRuntime } from '../src/runtime.ts';
-import { piSessionFactory } from '../src/pi.ts';
+import { piSessionFactory, type PiOptions } from '../src/pi.ts';
 import type { Envelope, Job, Outbound, Question } from '../src/store.ts';
 const deferred = () => {
     let resolve!: () => void;
@@ -24,7 +24,7 @@ const until = async (f: () => boolean) => {
         await new Promise(r => setTimeout(r, 5));
     }
 };
-async function setup(steps: FauxResponseStep[], tools: ToolDefinition[] = [], extensions: ExtensionFactory[] = [], maxRequestsPerWake = 16) {
+async function setup(steps: FauxResponseStep[], tools: ToolDefinition[] = [], extensions: ExtensionFactory[] = [], maxRequestsPerWake = 16, context?: PiOptions['context']) {
     const dir = await mkdtemp(join(tmpdir(), 'pi-real-audit-'));
     const faux = fauxProvider({
         provider: `audit-${Math.random().toString(36).slice(2)}`, models: [{
@@ -36,7 +36,7 @@ async function setup(steps: FauxResponseStep[], tools: ToolDefinition[] = [], ex
         credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(dir, 'models.json'), refreshOnCreate: false
     });
     const runtime = new BotRuntime(join(dir, 'bot.db'), piSessionFactory({
-        dir: join(dir, 'sessions'), modelRuntime, model: faux.getModel(), tools, extensions: [pi => pi.registerProvider(faux.provider), ...extensions], allowTools: tools.map(t => t.name), maxRequestsPerWake
+        dir: join(dir, 'sessions'), modelRuntime, model: faux.getModel(), tools, extensions: [pi => pi.registerProvider(faux.provider), ...extensions], allowTools: tools.map(t => t.name), maxRequestsPerWake, context
     }));
     return {
         runtime, faux, dir, modelRuntime, async close() {
@@ -209,7 +209,7 @@ test('audit Pi: per-wake model request cap actually fails closed', async () => {
     }
 });
 test('audit Pi: oversized context never reaches provider and receipt is not processed', async () => {
-    const h = await setup([fauxAssistantMessage('must not run')]);
+    const h = await setup([fauxAssistantMessage('must not run')], [], [], 16, { maxContextTokens: 32000 });
     try {
         const b = h.runtime.createBot('bot');
         const e = h.runtime.accept({
