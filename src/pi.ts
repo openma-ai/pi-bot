@@ -30,6 +30,9 @@ export interface PiOptions {
     /** Host budget/deadline applies to foreground inference only. */
     inferenceSignal?: AbortSignal;
     maxOutputTokens?: number;
+    thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high';
+    inferenceRequestTimeoutMs?: number;
+    onInferenceTimeout?: () => void;
     beforeProviderRequest?: (context: unknown, maxTokens: number) => void;
     /** Trusted host broker; submitted values never enter Pi messages. */
     credentials?: CredentialBroker;
@@ -65,6 +68,8 @@ export function createModelSummarizer(modelRuntime: ModelRuntime, model: Model<A
 }
 export function piSessionFactory(options: PiOptions): SessionFactory {
     return async (bot, runtime) => {
+        if (options.inferenceRequestTimeoutMs !== undefined && (!Number.isSafeInteger(options.inferenceRequestTimeoutMs) || options.inferenceRequestTimeoutMs <= 0 || options.inferenceRequestTimeoutMs > 2147483647))
+            throw Error('Invalid inference request timeout');
         const dir = join(options.dir, bot.id);
         mkdirSync(dir, {
             recursive: true
@@ -261,6 +266,8 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
             cwd: dir, agentDir: dir, modelRuntime: options.modelRuntime, model: options.model, settingsManager: settings, resourceLoader: loader, sessionManager: manager, noTools: 'builtin', customTools: options.tools ?? []
         });
         const stream = session.agent.streamFunction;
+        if (options.thinkingLevel)
+            session.setThinkingLevel(options.thinkingLevel);
         // A correction must be visible with the accumulated chatter at the next
         // provider boundary, rather than waiting behind one queued item per turn.
         session.setSteeringMode('all');
@@ -268,7 +275,20 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
             const controller = new AbortController();
             inference = controller;
             preempted = false;
-            const signals = [controller.signal, request?.signal, options.inferenceSignal].filter((s): s is AbortSignal => !!s);
+            const requestDeadline = new AbortController();
+            const timeout = options.inferenceRequestTimeoutMs === undefined ? undefined : setTimeout(() => {
+                try {
+                    options.onInferenceTimeout?.();
+                }
+                catch { /* observer only */
+                }
+                requestDeadline.abort();
+            }, options.inferenceRequestTimeoutMs);
+            const clearDeadline = () => {
+                if (timeout !== undefined)
+                    clearTimeout(timeout);
+            };
+            const signals = [controller.signal, requestDeadline.signal, request?.signal, options.inferenceSignal].filter((s): s is AbortSignal => !!s);
             const signal = AbortSignal.any(signals);
             const maxTokens = Math.min(options.maxOutputTokens ?? model.maxTokens, request?.maxTokens ?? model.maxTokens);
             try {
@@ -306,10 +326,14 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                             }
                         });
                     }
+                    finally {
+                        clearDeadline();
+                    }
                 })();
                 return output;
             }
             catch {
+                clearDeadline();
                 if (inference === controller)
                     inference = undefined;
                 throw Error('Provider request refused or failed before streaming');

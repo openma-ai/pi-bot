@@ -93,7 +93,7 @@ preempt, stable-prefix exclusion of late corrections and next-boundary adoption.
 npm run evaluate -- --dry-run --model deepseek-v4-flash
 
 # Only AFTER exact provider/model/budget approval; run in your own Terminal app:
-npm run evaluate -- --real --approved-budget --model deepseek-v4-flash --report /tmp/pi-bot-real-smoke.json
+npm run evaluate -- --real --approved-budget-usd 0.80 --model deepseek-v4-flash --report /tmp/pi-bot-real-smoke.json
 ```
 
 Open macOS Terminal yourself, run `cd /Users/xiaoyang/Documents/Codex/2026-10-12/task-2/pi-bot`, then run the approved command above. Do not use an agent-owned PTY: the user must control the terminal and type directly.
@@ -108,24 +108,33 @@ SQLite files are removed at completion. No external side effects are available.
 
 Capped initial smoke: **3 scenarios, 23 scheduled incoming messages, 5 expected
 tasks; at most 32 total provider requests; at most 384,000 conservative input
-reservations; 1,024 output tokens per request (32,768 total); 90-second overall
-deadline; zero automatic transport/agent retries; no background summaries**.
+reservations; 16,384 output tokens per request (524,288 total, reasoning plus final
+response); thinking enabled at high effort; 10-minute per-request timeout and
+60-minute overall deadline; zero automatic transport/agent retries; no background summaries**.
 The request guard reserves before dispatch and refuses at a cap; budget exhaustion
 is reported as incomplete work, not a successful score. Byte-based input
 reservations include 1,024 tokens/request for protocol framing; they are not exact
-provider tokenization. The deadline cancels cooperative provider requests; an
+provider tokenization. The previous 90-second round deadline could systematically truncate thinking
+and is no longer used. The longer limits are bounded safety stop conditions,
+not latency targets. A timeout is recorded separately in `timeouts` and makes
+the smoke incomplete; it should not be reported as evidence of model task
+incompetence. The deadline cancels cooperative provider requests; an
 abort-ignoring provider can delay shutdown because the runtime preserves a single
 foreground request and does not kill already-started tools.
 
 Official DeepSeek peak Flash pricing retrieved 2026-10-12 is $0.30/M uncached
 input and $1.20/M output. The conservative reservation bound is
-`384000*0.30/1e6 + 32768*1.20/1e6 = $0.1545216`.
-Ask approval for a **$0.20 ceiling**. Cached/off-peak usage may cost less.
-An independent reviewer found and confirmed a fix for default thinking mode:
-this smoke explicitly sends `thinking: {type: "disabled"}`. A mocked-fetch
-wire test exercises the installed OpenAI-compatible adapter and verifies
-`https://api.deepseek.com/chat/completions`, requested Flash alias and 1024 output
-cap; it does not test live API acceptance. Thinking control documentation:
+`384000*0.30/1e6 + 524288*1.20/1e6 = $0.7443456`.
+Ask approval for a **$0.80 ceiling**. Cached/off-peak usage may cost less.
+The revised user-requested smoke explicitly sends `thinking: {type: "enabled"}`
+and `reasoning_effort: "high"`, marks the model as reasoning-capable and sets
+DeepSeek reasoning replay compatibility. Offline mocked-fetch tests exercise the
+installed OpenAI-compatible adapter, verify the fixed endpoint and 16,384 output
+cap, and preserve streamed reasoning_content across two tool calls and later
+user turns. A native Pi runtime test also checks tool/result pairing, send_message
+and all prior reasoning fields on its fifth request. Live API acceptance remains
+untested. The former non-thinking/1024-token configuration was superseded;
+old `--approved-budget` commands now fail before any credential prompt. Thinking control documentation:
 https://api-docs.deepseek.com/guides/thinking_mode/
 
 Recheck official pricing before actual launch; this estimate is not a provider
@@ -161,7 +170,7 @@ The current runner is clearly labelled custom, not a Gaia2 result.
 ## Verification
 
 Lockfile installation used `npm ci --ignore-scripts` (no lifecycle scripts).
-TypeScript check passed. Local suite: **63 tests, 63 pass, 0 failures/cancelled/
+TypeScript check passed. Local suite: **67 tests, 67 pass, 0 failures/cancelled/
 skipped**. Hidden terminal also exercised with a fake secret in a real PTY:
 completed, input not echoed, process exited 0. `git diff --check` passed.
 Real API/tool compatibility and real-model scores remain untested pending approval.

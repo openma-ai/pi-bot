@@ -160,3 +160,14 @@ test('request budget keeps aborted reservations and rejects invalid output caps/
     assert.equal(budget.requests, 1);
     assert.equal(budget.outputReserved, 1024);
 });
+test('thinking evaluation: round timeout is distinct from behavioral outcome and fails incomplete', async () => {
+    const report = await runEvaluation({
+        deadlineMs: 5
+    });
+    assert.equal(report.timeouts.roundReached, true);
+    assert.equal(report.pass, false);
+    assert.ok(report.budget.requests <= SMOKE_CAP.requests);
+    assert.equal(SMOKE_CAP.outputTokensPerRequest, 16384);
+    assert.equal(SMOKE_CAP.requests * SMOKE_CAP.outputTokensPerRequest, 524288);
+    assert.ok(Math.abs(SMOKE_CAP.estimatedUsd - (384000 * 0.30 + 524288 * 1.20) / 1000000) < 1e-10);
+});

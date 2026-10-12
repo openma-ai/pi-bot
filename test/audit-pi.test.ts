@@ -24,7 +24,7 @@ const until = async (f: () => boolean) => {
         await new Promise(r => setTimeout(r, 5));
     }
 };
-async function setup(steps: FauxResponseStep[], tools: ToolDefinition[] = [], extensions: ExtensionFactory[] = [], maxRequestsPerWake = 16, context?: PiOptions['context'], preemptInference = false) {
+async function setup(steps: FauxResponseStep[], tools: ToolDefinition[] = [], extensions: ExtensionFactory[] = [], maxRequestsPerWake = 16, context?: PiOptions['context'], preemptInference = false, extra: Partial<PiOptions> = {}) {
     const dir = await mkdtemp(join(tmpdir(), 'pi-real-audit-'));
     const faux = fauxProvider({
         provider: `audit-${Math.random().toString(36).slice(2)}`, models: [{
@@ -36,7 +36,7 @@ async function setup(steps: FauxResponseStep[], tools: ToolDefinition[] = [], ex
         credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(dir, 'models.json'), refreshOnCreate: false
     });
     const runtime = new BotRuntime(join(dir, 'bot.db'), piSessionFactory({
-        dir: join(dir, 'sessions'), modelRuntime, model: faux.getModel(), tools, extensions: [pi => pi.registerProvider(faux.provider), ...extensions], allowTools: tools.map(t => t.name), maxRequestsPerWake, context, preemptInference
+        dir: join(dir, 'sessions'), modelRuntime, model: faux.getModel(), tools, extensions: [pi => pi.registerProvider(faux.provider), ...extensions], allowTools: tools.map(t => t.name), maxRequestsPerWake, context, preemptInference, ...extra
     }));
     return {
         runtime, faux, dir, modelRuntime, async close() {
@@ -768,6 +768,35 @@ test('compaction under flood: prefix summary survives inference preempt and pres
         finishSummary('PRESERVED_PREFIX_COMMITMENT');
         releaseFirst.resolve();
         releaseSecond.resolve();
+        await h.close();
+    }
+});
+test('provider deadline: reports timeout without retry or cancelling native tool lifetime', async () => {
+    let timedOut = 0;
+    const h = await setup([async (_ctx, options) => {
+            await new Promise<void>(resolve => options?.signal?.addEventListener('abort', () => resolve(), {
+                once: true
+            }));
+            return fauxAssistantMessage([], {
+                stopReason: 'aborted'
+            });
+        }], [], [], 16, undefined, true, {
+        inferenceRequestTimeoutMs: 20, onInferenceTimeout: () => {
+            timedOut++;
+        }
+    });
+    try {
+        const bot = h.runtime.createBot('deadline');
+        const event = h.runtime.accept({
+            to: bot.id, text: 'held synthetic request', key: 'deadline'
+        });
+        await h.runtime.idle();
+        assert.equal(timedOut, 1);
+        assert.equal(h.faux.state.callCount, 1);
+        assert.equal(h.runtime.store.get<Envelope>('inbox', event.id)?.state, 'uncertain');
+        assert.ok(h.runtime.errors.length > 0);
+    }
+    finally {
         await h.close();
     }
 });

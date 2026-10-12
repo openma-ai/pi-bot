@@ -9,19 +9,19 @@ export function configureSmokeProvider(models: ModelRuntime, modelId: string) {
     models.registerProvider(SMOKE_PROVIDER, {
         baseUrl: `https://${SMOKE_HOST}`, api: 'openai-completions', authHeader: true,
         models: [{
-                id: modelId, name: modelId, reasoning: false, input: ['text'], contextWindow: 1000000, maxTokens: 1024,
+                id: modelId, name: modelId, reasoning: true, input: ['text'], contextWindow: 1000000, maxTokens: 16384,
                 cost: {
                     input: 0.30, output: 1.20, cacheRead: 0.30, cacheWrite: 0.30
                 },
-                // Current DeepSeek API defaults to thinking enabled. Explicitly
-                // disable it to avoid incompatible reasoning replay and cap drift.
+                // Explicit thinking mode, high effort and intact reasoning replay.
+                // max_tokens caps reasoning plus final response together.
                 samplingParams: {
                     thinking: {
-                        type: 'disabled'
-                    }
+                        type: 'enabled'
+                    }, reasoning_effort: 'high'
                 },
                 compat: {
-                    supportsStore: false, supportsDeveloperRole: false
+                    supportsStore: false, supportsDeveloperRole: false, thinkingFormat: 'deepseek', requiresReasoningContentOnAssistantMessages: true, maxTokensField: 'max_tokens'
                 }
             }]
     });

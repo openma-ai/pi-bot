@@ -29,13 +29,15 @@ try {
         console.log(JSON.stringify({
             mode: 'dry-run', providerHostname: host, modelId, scenarios: scenarios.map(s => ({
                 id: s.id, scheduledMessages: s.events.length, expectedTasks: s.expected.length
-            })), caps: SMOKE_CAP, backgroundSummary: false, paidRequests: 0, note: 'Real run requires explicit approval flag and direct hidden local TTY entry; no existing DSH auth bridge was verified.'
+            })), caps: SMOKE_CAP, thinking: {
+                enabled: true, effort: 'high', outputCapIncludesReasoningAndFinal: true
+            }, backgroundSummary: false, paidRequests: 0, note: 'Real run requires explicit approval flag and direct hidden local TTY entry; no existing DSH auth bridge was verified.'
         }, null, 2));
     }
     else {
         if (real) {
-            if (!args.includes('--approved-budget') || modelId === 'deepseek-v4-pro')
-                throw Error('Real Flash run requires approved budget; Pro needs a separately reviewed pricing plan');
+            if (Number(value('--approved-budget-usd')) !== SMOKE_CAP.approvedUsdNeeded || modelId === 'deepseek-v4-pro')
+                throw Error('Real Flash run requires exact revised USD approval; Pro needs a separately reviewed pricing plan');
             authDir = await mkdtemp(join(tmpdir(), 'pi-bot-model-metadata-'));
             models = await ModelRuntime.create({
                 credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(authDir, 'models.json'), refreshOnCreate: false, allowModelNetwork: false

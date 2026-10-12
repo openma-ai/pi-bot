@@ -9,7 +9,7 @@ import { piSessionFactory } from './pi.ts';
 import { SimulatedChat } from './chat.ts';
 import type { Envelope, Job, Outbound, Bot } from './store.ts';
 export const SMOKE_CAP = {
-    requests: 32, inputTokenReservations: 384000, outputTokensPerRequest: 1024, estimatedUsd: 0.1545216, approvedUsdNeeded: 0.20, deadlineMs: 90000
+    requests: 32, inputTokenReservations: 384000, outputTokensPerRequest: 16384, estimatedUsd: 0.7443456, approvedUsdNeeded: 0.80, deadlineMs: 3600000, requestTimeoutMs: 600000
 };
 export class RequestBudget {
     requests = 0;
@@ -18,7 +18,7 @@ export class RequestBudget {
     refused = 0;
     readonly limits: typeof SMOKE_CAP;
     constructor(limits = SMOKE_CAP) {
-        if (![limits.requests, limits.inputTokenReservations, limits.outputTokensPerRequest, limits.deadlineMs].every(n => Number.isSafeInteger(n) && n > 0))
+        if (![limits.requests, limits.inputTokenReservations, limits.outputTokensPerRequest, limits.deadlineMs, limits.requestTimeoutMs].every(n => Number.isSafeInteger(n) && n > 0))
             throw Error('Invalid evaluation budget');
         this.limits = Object.freeze({
             ...limits
@@ -218,6 +218,7 @@ export async function runEvaluation(options: {
     const root = await mkdtemp(join(tmpdir(), 'pi-bot-evaluation-'));
     const budget = options.budget ?? new RequestBudget();
     const results: ScenarioResult[] = [];
+    let requestTimeouts = 0;
     const lifetime = new AbortController();
     const deadline = setTimeout(() => lifetime.abort(), options.deadlineMs ?? SMOKE_CAP.deadlineMs);
     const modelRuntime = options.modelRuntime ?? await ModelRuntime.create({
@@ -231,7 +232,7 @@ export async function runEvaluation(options: {
             let dispatchOrder = 0;
             const faux = mode === 'scripted' ? fauxProvider({
                 provider: `evaluation-${scenario.id}`, models: [{
-                        id: 'scripted', contextWindow: 128000, maxTokens: 1024
+                        id: 'scripted', contextWindow: 1000000, maxTokens: SMOKE_CAP.outputTokensPerRequest
                     }], tokensPerSecond: 1000000
             }) : undefined;
             const policy: FauxResponseFactory = async (context) => {
@@ -319,8 +320,10 @@ export async function runEvaluation(options: {
                     }
                 }];
             runtime = new BotRuntime(join(root, `${scenario.id}.db`), async (bot, host) => piSessionFactory({
-                dir: join(root, scenario.id), modelRuntime, model: faux?.getModel() ?? options.model!, tools: toolsFor(bot), allowTools: ['commit_record'], extensions: faux ? [pi => pi.registerProvider(faux.provider)] : [], maxRequestsPerWake: 16, maxOutputTokens: SMOKE_CAP.outputTokensPerRequest, inferenceSignal: lifetime.signal, beforeProviderRequest: (ctx, max) => budget.reserve(ctx, max), context: {
-                    backgroundEnabled: false, maxContextTokens: 64000, outputReserveTokens: 1024
+                dir: join(root, scenario.id), modelRuntime, model: faux?.getModel() ?? options.model!, tools: toolsFor(bot), allowTools: ['commit_record'], extensions: faux ? [pi => pi.registerProvider(faux.provider)] : [], maxRequestsPerWake: 16, maxOutputTokens: SMOKE_CAP.outputTokensPerRequest, thinkingLevel: mode === 'real' ? 'high' : undefined, inferenceRequestTimeoutMs: SMOKE_CAP.requestTimeoutMs, onInferenceTimeout: () => {
+                    requestTimeouts++;
+                }, inferenceSignal: lifetime.signal, beforeProviderRequest: (ctx, max) => budget.reserve(ctx, max), context: {
+                    backgroundEnabled: false, maxContextTokens: 256000, outputReserveTokens: SMOKE_CAP.outputTokensPerRequest
                 }
             })(bot, host));
             chat = new SimulatedChat(runtime);
@@ -356,9 +359,11 @@ export async function runEvaluation(options: {
             }
         }
         return {
-            mode, scenarios: results, budget: {
+            mode, scenarios: results, timeouts: {
+                roundReached: lifetime.signal.aborted, providerRequests: requestTimeouts
+            }, budget: {
                 requests: budget.requests, inputReserved: budget.inputReserved, outputReserved: budget.outputReserved, refused: budget.refused
-            }, pass: results.every(r => r.score.missedCommitments === 0 && r.score.duplicateActions === 0 && r.score.wrongRecipients === 0 && r.score.obsoleteActions === 0 && r.score.appropriateSilence && r.score.malformedOutputs === 0 && r.runtimeErrors === 0 && r.pendingEvents === 0 && r.transcriptPairsValid), note: mode === 'scripted' ? 'Scripted local runner validation; no model competence claim.' : 'Real provider behavioral smoke; small custom fixtures, not Gaia2.'
+            }, pass: !lifetime.signal.aborted && requestTimeouts === 0 && results.every(r => r.score.missedCommitments === 0 && r.score.duplicateActions === 0 && r.score.wrongRecipients === 0 && r.score.obsoleteActions === 0 && r.score.appropriateSilence && r.score.malformedOutputs === 0 && r.runtimeErrors === 0 && r.pendingEvents === 0 && r.transcriptPairsValid), note: mode === 'scripted' ? 'Scripted local runner validation; no model competence claim.' : 'Real provider behavioral smoke; small custom fixtures, not Gaia2.'
         };
     }
     finally {

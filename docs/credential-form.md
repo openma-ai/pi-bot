@@ -6,7 +6,7 @@ Usable commands:
 npm run credential-entry
 npm run evaluate -- --dry-run
 # After model/budget approval, user personally launches this in a local terminal:
-npm run evaluate -- --real --approved-budget --model deepseek-v4-flash
+npm run evaluate -- --real --approved-budget-usd 0.80 --model deepseek-v4-flash
 ```
 
 `credential-entry` demonstrates direct hidden entry, consumes and deletes the
