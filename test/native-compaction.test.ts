@@ -505,3 +505,31 @@ test('native compaction: a later compaction summarizes the previous native summa
         await h.close();
     }
 });
+test('native compaction: summary becoming ready after idle waits for next safe native boundary', async () => {
+    const summary = deferred<string>();
+    let started = false;
+    const h = await setup([fauxAssistantMessage('idle'), fauxAssistantMessage('next')], {
+        summarize: async () => {
+            started = true;
+            return summary.promise;
+        }
+    });
+    try {
+        await h.session.prompt('first wake');
+        await until(() => started);
+        assert.equal(h.manager.getBranch().filter(e => e.type === 'compaction').length, 0);
+        const requests = h.faux.state.callCount;
+        summary.resolve('LATE_IDLE_SUMMARY');
+        await tick();
+        await tick();
+        assert.equal(h.faux.state.callCount, requests, 'summary adoption does not create a provider request');
+        assert.equal(h.manager.getBranch().filter(e => e.type === 'compaction').length, 0, 'no mid-idle transcript mutation');
+        await h.session.prompt('new input after idle');
+        assert.ok(h.manager.getBranch().some(e => e.type === 'compaction' && e.summary === 'LATE_IDLE_SUMMARY'));
+        assert.equal(h.errors.length, 0);
+    }
+    finally {
+        summary.resolve('LATE_IDLE_SUMMARY');
+        await h.close();
+    }
+});

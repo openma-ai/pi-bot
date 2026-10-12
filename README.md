@@ -41,7 +41,7 @@ CLI 的 outbox sink 仅输出本地 stdout；`delivered` 只表示该 sink 成�
 
 ### 1. 新输入不强行中断正在生成的 LLM
 
-每个 bot 只有一条模型执行 lane，不同 bot 可并行。已有模型请求继续自然完成；新消息先提交 SQLite，再使用 Pi `streamingBehavior: 'steer'` 进入下一模型边界。不会因为新输入调用 `abort()`，也不会启动第二个并发同-bot 模型请求。这里的 steer 是边界注入，不是打断网络生成。
+每个 bot 只有一条模型执行 lane，不同 bot 可并行。新消息先提交 SQLite，再使用 Pi `streamingBehavior: 'steer'` 进入下一模型边界；所有排队消息一起注入，避免纠正指令被闲聊阻挡。默认 host user/answer 会取消当前 provider 请求的独立信号，丢弃过时工具调用并继续处理新输入。不会调用 session/agent abort，已经启动的工具、job 和后台摘要继续运行。`preemptInference: false` 可关闭推理抢占。忽略取消信号的 provider 必须结束后才能继续，保持单 bot 单前台请求。
 
 执行期间收到的消息归入 active wake batch。`processed` 仅代表承载该批消息的 Pi run 正常结束，不承诺模型逐条理解或完成任务。批内错误/进程崩溃归为 `uncertain`。工具的默认 task/reply 关联跟随最近一个已进入模型上下文的消息；精细多任务工具调用归属不做语义推断。
 
@@ -103,3 +103,12 @@ job receipt、执行完成、inbox processing、外部投递是不同状态。�
 ## 尚未声称完成
 
 这是可运行的本地 headless baseline，不是生产级 SaaS：当前没有 job cancellation API，也没有真实 Slack/邮件 adapter、分布式租约、自动安全重放、人类审批 UI、磁盘保留/配额管理或插件隔离。native `final` 文本保存在 Pi session；用户可见发送必须显式用 `send_message`，避免把模型内部工作文本当作已投递消息。
+
+## 本机行为评估与隐藏凭据输入
+
+`npm run evaluate -- --dry-run` 显示三个场景和受限真实模型计划，不调用 API。
+`npm run evaluate -- --report docs/scripted-evaluation-result.json` 运行定时交错消息、
+真实隔离模拟频道、工具结果与路由判定；provider 决策为明确标注的脚本。
+`npm run credential-entry` 提供本地 TTY 隐藏输入并立即删除，不发起模型请求。
+真实模式只在模型/预算确认后，由用户亲自在终端启动并输入；详见
+[行为评估](docs/behavior-evaluation.md) 和 [凭据入口](docs/credential-form.md)。

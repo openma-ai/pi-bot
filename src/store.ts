@@ -8,6 +8,13 @@ export type Bot = {
     description: string;
     sessionFile: string | null;
     createdAt: number;
+    channelId?: string;
+};
+/** Host-bound chat routing. Models cannot select an outbound channel. */
+export type ChatRoute = {
+    channelId: string;
+    threadId: string;
+    senderId: string;
 };
 export type Envelope = {
     id: string;
@@ -22,6 +29,8 @@ export type Envelope = {
     state: 'queued' | 'processing' | 'processed' | 'uncertain' | 'failed';
     createdAt: number;
     error?: string;
+    route?: ChatRoute;
+    taskControl?: 'replace' | 'cancel';
 };
 export type Job = {
     id: string;
@@ -54,8 +63,9 @@ export type Outbound = {
     replyTo: string | null;
     key: string;
     text: string;
-    state: 'pending' | 'sending' | 'delivered' | 'uncertain';
+    state: 'pending' | 'sending' | 'delivered' | 'uncertain' | 'superseded';
     createdAt: number;
+    route?: ChatRoute;
 };
 type Row = {
     id: string;

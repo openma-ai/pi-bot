@@ -12,7 +12,9 @@
     "test": "node --import tsx --test test/*.test.ts",
     "demo": "node --import tsx src/demo.ts",
     "start": "node --import tsx src/cli.ts",
-    "format": "node scripts/format.mjs"
+    "format": "node scripts/format.mjs",
+    "evaluate": "node --import tsx src/evaluation-cli.ts",
+    "credential-entry": "node --import tsx src/credential-cli.ts"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "1.1.0",

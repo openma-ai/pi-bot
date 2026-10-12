@@ -1,6 +1,6 @@
 import { acquireLock } from './lock.ts';
 import { randomUUID } from 'node:crypto';
-import { Store, type Bot, type Envelope, type Job, type Question, type Outbound } from './store.ts';
+import { Store, type Bot, type Envelope, type Job, type Question, type Outbound, type ChatRoute } from './store.ts';
 export class JobExecutionError extends Error {
     constructor(message: string, readonly outcome: unknown) {
         super(message);
@@ -9,6 +9,8 @@ export class JobExecutionError extends Error {
 export interface BotSession {
     run(e: Envelope): Promise<void>;
     enqueue?(e: Envelope): Promise<void>;
+    /** Native adapter confirms event actually reached a provider boundary. */
+    consumed?(e: Envelope): boolean;
     close(): Promise<void>;
 }
 export type SessionFactory = (bot: Bot, runtime: BotRuntime) => Promise<BotSession>;
@@ -49,10 +51,15 @@ export class BotRuntime {
             throw e;
         }
     }
-    createBot(name: string, description = '') {
+    createBot(name: string, description = '', channelId?: string) {
         if (this.store.list('bots').length >= (this.options.maxBots ?? 16))
             throw Error('Bot capacity reached');
-        return this.store.createBot(name, description);
+        const bot = this.store.createBot(name, description);
+        if (channelId) {
+            bot.channelId = channelId;
+            this.store.put('bots', bot);
+        }
+        return bot;
     }
     listBots() {
         return this.store.list<Bot>('bots');
@@ -70,6 +77,8 @@ export class BotRuntime {
         taskId?: string;
         replyTo?: string;
         hop?: number;
+        route?: ChatRoute;
+        taskControl?: Envelope['taskControl'];
     }): Envelope {
         if (this.stopped)
             throw Error('Runtime closing');
@@ -78,14 +87,19 @@ export class BotRuntime {
         if (input.text.length > 64000)
             throw Error('Input exceeds 64000 characters; split it or use an attachment');
         const from = input.from ?? 'user';
+        if (input.taskControl && input.kind && !['user', 'answer'].includes(input.kind))
+            throw Error('Only host user input can control a task');
         const old = this.store.find<Envelope>('inbox', from, input.key);
         if (old) {
-            if (old.to !== input.to || old.text !== input.text)
+            if (old.to !== input.to || old.text !== input.text || old.taskControl !== input.taskControl || JSON.stringify(old.route) !== JSON.stringify(input.route))
                 throw Error('Idempotency key conflict');
             return old;
         }
-        if (!this.store.get<Bot>('bots', input.to))
+        const recipient = this.store.get<Bot>('bots', input.to);
+        if (!recipient)
             throw Error('Unknown recipient');
+        if (recipient.channelId !== input.route?.channelId)
+            throw Error('Recipient channel mismatch');
         const hop = input.hop ?? 0;
         if (hop > (this.options.maxHops ?? 8))
             throw Error('Message hop budget exceeded');
@@ -95,15 +109,22 @@ export class BotRuntime {
         if (input.kind !== 'job' && input.kind !== 'answer' && this.store.count('inbox', 'to', input.to, 'queued') >= (this.options.maxPending ?? 100))
             throw Error('Inbox capacity reached');
         const e: Envelope = {
-            id: randomUUID(), from, to: input.to, text: input.text, key: input.key, kind: input.kind ?? 'user', taskId, replyTo: input.replyTo ?? null, hop, state: 'queued', createdAt: Date.now()
+            id: randomUUID(), from, to: input.to, text: input.text, key: input.key, kind: input.kind ?? 'user', taskId, replyTo: input.replyTo ?? null, hop, state: 'queued', createdAt: Date.now(), ...(input.route ? {
+                route: {
+                    ...input.route
+                }
+            } : {}), ...(input.taskControl ? {
+                taskControl: input.taskControl
+            } : {})
         };
         this.store.put('inbox', e);
         this.wake(e.to);
         return e;
     }
     sendToBot(source: Envelope, to: string, text: string, key: string) {
+        this.assertTaskCurrent(source);
         return this.accept({
-            from: source.to, to, text, key, kind: 'bot', taskId: source.taskId, replyTo: source.id, hop: source.hop + 1
+            from: source.to, to, text, key, kind: 'bot', taskId: source.taskId, replyTo: source.id, hop: source.hop + 1, route: source.route
         });
     }
     private wake(id: string) {
@@ -170,7 +191,7 @@ export class BotRuntime {
                 for (const item of batch)
                     if (this.store.get<Envelope>('inbox', item.id)?.state === 'processing')
                         this.store.put('inbox', {
-                            ...item, state: 'processed'
+                            ...item, state: session.consumed && !session.consumed(item) ? (item.id === e.id ? 'uncertain' : 'queued') : 'processed'
                         });
             }
             catch (error) {
@@ -184,23 +205,29 @@ export class BotRuntime {
         }
     }
     sendMessage(e: Envelope, text: string, key: string) {
+        this.assertTaskCurrent(e, true);
         if (text.length > 64000)
             throw Error('Message too large');
         const old = this.store.find<Outbound>('outbox', e.to, key);
         if (old) {
-            if (old.text !== text)
+            if (old.text !== text || old.taskId !== e.taskId || JSON.stringify(old.route) !== JSON.stringify(e.route))
                 throw Error('Idempotency key conflict');
             return old;
         }
         if (this.store.count('outbox', 'taskId', e.taskId) >= 64)
             throw Error('Task outbox budget exceeded');
         const o: Outbound = {
-            id: randomUUID(), botId: e.to, taskId: e.taskId, replyTo: e.id, key, text, state: 'pending', createdAt: Date.now()
+            id: randomUUID(), botId: e.to, taskId: e.taskId, replyTo: e.id, key, text, state: 'pending', createdAt: Date.now(), ...(e.route ? {
+                route: {
+                    ...e.route
+                }
+            } : {})
         };
         this.store.put('outbox', o);
         return o;
     }
     askUser(e: Envelope, text: string, key: string) {
+        this.assertTaskCurrent(e);
         if (text.length > 4000)
             throw Error('Question exceeds 4000 characters');
         const old = this.store.find<Question>('questions', e.to, key);
@@ -235,7 +262,7 @@ export class BotRuntime {
             this.accept({
                 to: q.botId, text: JSON.stringify({
                     questionId: id, answer: text
-                }), key, kind: 'answer', taskId: q.taskId, replyTo: q.messageId
+                }), key, kind: 'answer', taskId: q.taskId, replyTo: q.messageId, route: this.store.get<Envelope>('inbox', q.messageId)?.route
             });
             this.store.put('questions', {
                 ...q, state: 'answered', answer: text
@@ -243,6 +270,7 @@ export class BotRuntime {
         });
     }
     startJob(e: Envelope, tool: string, args: unknown, key: string, execute: () => Promise<unknown>): Job {
+        this.assertTaskCurrent(e);
         const old = this.store.find<Job>('jobs', e.to, key);
         if (old) {
             if (old.tool !== tool || JSON.stringify(old.args) !== JSON.stringify(args))
@@ -273,6 +301,29 @@ export class BotRuntime {
         this.jobs.add(p);
         return j;
     }
+    /** Host-declared replacement/cancellation prevents future obsolete actions.
+     * A dispatched job continues; its eventual result remains available. */
+    assertTaskCurrent(e: Envelope, allowCancellationReply = false) {
+        const inbox = this.store.list<Envelope>('inbox');
+        const controls = inbox.filter(item => item.taskId === e.taskId && item.taskControl &&
+            item.route?.channelId === e.route?.channelId && item.route?.threadId === e.route?.threadId);
+        const latest = controls.at(-1);
+        if (!latest)
+            return;
+        if (latest.taskControl === 'cancel' && allowCancellationReply && latest.id === e.id)
+            return;
+        let root = e;
+        const seen = new Set<string>();
+        while (['bot', 'job'].includes(root.kind) && root.replyTo && !seen.has(root.id)) {
+            seen.add(root.id);
+            const parent = this.store.get<Envelope>('inbox', root.replyTo);
+            if (!parent)
+                break;
+            root = parent;
+        }
+        if (latest.taskControl === 'cancel' || inbox.findIndex(item => item.id === root.id) < inbox.findIndex(item => item.id === latest.id))
+            throw Error('Task superseded or cancelled; no new action permitted');
+    }
     private settleJob(j: Job, state: Job['state'], result?: string, error?: string) {
         error = error?.slice(0, 2000);
         this.store.transaction(() => {
@@ -281,7 +332,7 @@ export class BotRuntime {
             });
             try {
                 this.accept({
-                    from: `job:${j.id}`, to: j.botId, kind: 'job', key: `settled:${j.id}`, taskId: j.taskId, replyTo: j.messageId, text: JSON.stringify({
+                    from: `job:${j.id}`, to: j.botId, kind: 'job', key: `settled:${j.id}`, taskId: j.taskId, replyTo: j.messageId, route: this.store.get<Envelope>('inbox', j.messageId)?.route, text: JSON.stringify({
                         jobId: j.id, state, error, resultPreview: result?.slice(0, 2000), resultCharacters: result?.length, retrieve: 'job_result'
                     })
                 });
@@ -301,6 +352,18 @@ export class BotRuntime {
             return this.delivery;
         const work = async () => {
             for (const o of this.store.list<Outbound>('outbox').filter(x => x.state === 'pending')) {
+                const source = o.replyTo && this.store.get<Envelope>('inbox', o.replyTo);
+                if (source) {
+                    try {
+                        this.assertTaskCurrent(source, true);
+                    }
+                    catch {
+                        this.store.put('outbox', {
+                            ...o, state: 'superseded'
+                        });
+                        continue;
+                    }
+                }
                 this.store.put('outbox', {
                     ...o, state: 'sending'
                 });

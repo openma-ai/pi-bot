@@ -24,7 +24,7 @@ const until = async (f: () => boolean) => {
         await new Promise(r => setTimeout(r, 5));
     }
 };
-async function setup(steps: FauxResponseStep[], tools: ToolDefinition[] = [], extensions: ExtensionFactory[] = [], maxRequestsPerWake = 16, context?: PiOptions['context']) {
+async function setup(steps: FauxResponseStep[], tools: ToolDefinition[] = [], extensions: ExtensionFactory[] = [], maxRequestsPerWake = 16, context?: PiOptions['context'], preemptInference = false) {
     const dir = await mkdtemp(join(tmpdir(), 'pi-real-audit-'));
     const faux = fauxProvider({
         provider: `audit-${Math.random().toString(36).slice(2)}`, models: [{
@@ -36,7 +36,7 @@ async function setup(steps: FauxResponseStep[], tools: ToolDefinition[] = [], ex
         credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(dir, 'models.json'), refreshOnCreate: false
     });
     const runtime = new BotRuntime(join(dir, 'bot.db'), piSessionFactory({
-        dir: join(dir, 'sessions'), modelRuntime, model: faux.getModel(), tools, extensions: [pi => pi.registerProvider(faux.provider), ...extensions], allowTools: tools.map(t => t.name), maxRequestsPerWake, context
+        dir: join(dir, 'sessions'), modelRuntime, model: faux.getModel(), tools, extensions: [pi => pi.registerProvider(faux.provider), ...extensions], allowTools: tools.map(t => t.name), maxRequestsPerWake, context, preemptInference
     }));
     return {
         runtime, faux, dir, modelRuntime, async close() {
@@ -209,7 +209,9 @@ test('audit Pi: per-wake model request cap actually fails closed', async () => {
     }
 });
 test('audit Pi: oversized context never reaches provider and receipt is not processed', async () => {
-    const h = await setup([fauxAssistantMessage('must not run')], [], [], 16, { maxContextTokens: 32000 });
+    const h = await setup([fauxAssistantMessage('must not run')], [], [], 16, {
+        maxContextTokens: 32000
+    });
     try {
         const b = h.runtime.createBot('bot');
         const e = h.runtime.accept({
@@ -398,6 +400,374 @@ test('audit Pi: failed native outcomes preserve structured details and usage in 
         assert.deepEqual(archived.result.usage, usage);
     }
     finally {
+        await h.close();
+    }
+});
+test('behavior fixture: user correction preempts inference; flood stays native and silence is scored', async () => {
+    const started = deferred();
+    let providerSignal: AbortSignal | undefined;
+    let transcript = '';
+    const h = await setup([async (_ctx, options) => {
+            providerSignal = options?.signal;
+            started.resolve();
+            await new Promise<void>(resolve => options?.signal?.addEventListener('abort', () => resolve(), {
+                once: true
+            }));
+            return fauxAssistantMessage([], {
+                stopReason: 'aborted'
+            });
+        }, ctx => {
+            transcript = JSON.stringify(ctx);
+            return fauxAssistantMessage(fauxToolCall('send_message', {
+                text: 'Corrected: blue', key: 'corrected'
+            }, {
+                id: 'corrected'
+            }), {
+                stopReason: 'toolUse'
+            });
+        }, ...Array.from({
+            length: 30
+        }, () => fauxAssistantMessage('internal silence'))], [], [], 32, undefined, true);
+    try {
+        const bot = h.runtime.createBot('coordinator');
+        const original = h.runtime.accept({
+            to: bot.id, text: 'Prepare red draft', key: 'original', taskId: 'draft'
+        });
+        await started.promise;
+        for (let i = 0; i < 12; i++)
+            h.runtime.accept({
+                from: 'group:design', kind: 'bot', to: bot.id, text: `irrelevant chatter ${i}`, key: `chatter-${i}`, taskId: `noise-${i}`
+            });
+        assert.equal(providerSignal?.aborted, false, 'untrusted chatter cannot preempt');
+        const corrected = h.runtime.accept({
+            to: bot.id, text: 'Cancel red. Use blue.', key: 'correction', taskId: 'draft', replyTo: original.id
+        });
+        await until(() => providerSignal?.aborted === true);
+        await h.runtime.idle();
+        const out = h.runtime.store.list<Outbound>('outbox');
+        // Custom scripted fixture: measures routing/ledger behavior, NOT model judgment.
+        const score = {
+            validTaskCompletion: out.filter(o => o.text === 'Corrected: blue' && o.taskId === 'draft').length,
+            missedCommitments: out.some(o => o.text === 'Corrected: blue') ? 0 : 1,
+            duplicateActions: Math.max(0, out.length - 1),
+            wrongRecipients: out.filter(o => o.botId !== bot.id || o.replyTo !== corrected.id).length,
+            obsoleteActions: out.filter(o => /red/i.test(o.text)).length,
+            appropriateSilence: out.every(o => o.taskId === 'draft')
+        };
+        assert.deepEqual(score, {
+            validTaskCompletion: 1, missedCommitments: 0, duplicateActions: 0, wrongRecipients: 0, obsoleteActions: 0, appropriateSilence: true
+        });
+        assert.match(transcript, /Cancel red/);
+        assert.match(transcript, /irrelevant chatter 11/);
+        assert.equal(h.runtime.store.list<Envelope>('inbox').filter(e => e.state === 'processed').length, 14);
+        assert.equal(h.runtime.errors.length, 0);
+    }
+    finally {
+        await h.close();
+    }
+});
+test('behavior fixture: correction aborts provider while started native job survives', async () => {
+    const gate = deferred(), inferenceStarted = deferred();
+    let toolSignal: AbortSignal | undefined;
+    let effects = 0;
+    const tool: ToolDefinition = {
+        name: 'held_job', label: 'Held job', description: 'Synthetic isolated job', parameters: Type.Object({}),
+        async execute(_id, _args, signal) {
+            toolSignal = signal;
+            await gate.promise;
+            effects++;
+            return {
+                content: [{
+                        type: 'text', text: 'SYNTHETIC_COMPLETE'
+                    }], details: {}
+            };
+        }
+    };
+    const h = await setup([
+        fauxAssistantMessage(fauxToolCall('start_job', {
+            tool: 'held_job', args: {}, key: 'one-job'
+        }, {
+            id: 'dispatch-held'
+        }), {
+            stopReason: 'toolUse'
+        }),
+        async (_ctx, options) => {
+            inferenceStarted.resolve();
+            await new Promise<void>(resolve => options?.signal?.addEventListener('abort', () => resolve(), {
+                once: true
+            }));
+            return fauxAssistantMessage([], {
+                stopReason: 'aborted'
+            });
+        }, fauxAssistantMessage('cancelled future plan; already started job remains'), fauxAssistantMessage('job completion observed')
+    ], [tool], [], 16, undefined, true);
+    try {
+        const bot = h.runtime.createBot('worker');
+        h.runtime.accept({
+            to: bot.id, text: 'start isolated job then plan followup', key: 'start', taskId: 'task'
+        });
+        await inferenceStarted.promise;
+        h.runtime.accept({
+            to: bot.id, text: 'Cancel only future followup.', key: 'cancel', taskId: 'task'
+        });
+        await until(() => h.faux.state.callCount === 3);
+        assert.equal(toolSignal?.aborted, false);
+        assert.equal(h.runtime.store.list<Job>('jobs')[0]?.state, 'running');
+        gate.resolve();
+        await h.runtime.idle();
+        assert.equal(toolSignal?.aborted, false);
+        assert.equal(effects, 1);
+        assert.equal(h.runtime.store.list<Job>('jobs')[0]?.state, 'completed');
+        assert.equal(h.runtime.errors.length, 0);
+    }
+    finally {
+        gate.resolve();
+        await h.close();
+    }
+});
+test('behavior fixture: interleaved tasks and teammate handoff retain explicit source correlation', async () => {
+    const started = deferred(), release = deferred();
+    let first: Envelope, second: Envelope;
+    let teammate = '';
+    const h = await setup([
+        async () => {
+            started.resolve();
+            await release.promise;
+            return fauxAssistantMessage('internal');
+        },
+        () => fauxAssistantMessage([
+            fauxToolCall('send_to_bot', {
+                bot_id: teammate, text: 'finish task A', key: 'handoff-a', source_message_id: first.id
+            }, {
+                id: 'handoff'
+            }),
+            fauxToolCall('send_message', {
+                text: 'task B finished', key: 'finish-b', source_message_id: second.id
+            }, {
+                id: 'finish-b'
+            })
+        ], {
+            stopReason: 'toolUse'
+        }),
+        ...Array.from({
+            length: 8
+        }, () => fauxAssistantMessage('internal silence'))
+    ]);
+    try {
+        const a = h.runtime.createBot('coordinator'), b = h.runtime.createBot('teammate');
+        teammate = b.id;
+        first = h.runtime.accept({
+            from: 'conversation:A', to: a.id, text: 'task A', key: 'a', taskId: 'task-a'
+        });
+        await started.promise;
+        second = h.runtime.accept({
+            from: 'conversation:B', to: a.id, text: 'task B', key: 'b', taskId: 'task-b'
+        });
+        release.resolve();
+        await h.runtime.idle();
+        const handoff = h.runtime.store.list<Envelope>('inbox').find(e => e.key === 'handoff-a');
+        assert.equal(handoff?.taskId, first.taskId);
+        assert.equal(handoff?.replyTo, first.id);
+        assert.equal(handoff?.to, b.id);
+        assert.equal(handoff?.state, 'processed');
+        const out = h.runtime.store.list<Outbound>('outbox');
+        assert.equal(out.length, 1);
+        assert.equal(out[0]?.taskId, second.taskId);
+        assert.equal(out[0]?.replyTo, second.id);
+        assert.equal(h.runtime.errors.length, 0);
+    }
+    finally {
+        release.resolve();
+        await h.close();
+    }
+});
+test('native ordinary tool batch: input during dispatched hook preserves batch signal and matching results', async () => {
+    const started = deferred(), release = deferred();
+    let requestSignal: AbortSignal | undefined;
+    let calls = 0;
+    let context = '';
+    const h = await setup([
+        (_ctx, options) => {
+            requestSignal = options?.signal;
+            return fauxAssistantMessage([
+                fauxToolCall('list_bots', {}, {
+                    id: 'ordinary-one'
+                }),
+                fauxToolCall('list_bots', {}, {
+                    id: 'ordinary-two'
+                })
+            ], {
+                stopReason: 'toolUse'
+            });
+        },
+        ctx => {
+            context = JSON.stringify(ctx);
+            return fauxAssistantMessage('internal');
+        }
+    ], [], [pi => {
+            pi.on('tool_call', async (event) => {
+                if (event.toolName === 'list_bots') {
+                    calls++;
+                    if (calls === 1) {
+                        started.resolve();
+                        await release.promise;
+                    }
+                }
+            });
+        }], 16, undefined, true);
+    try {
+        const b = h.runtime.createBot('native-batch');
+        h.runtime.accept({
+            to: b.id, text: 'start ordinary batch', key: 'batch'
+        });
+        await started.promise;
+        h.runtime.accept({
+            to: b.id, text: 'new task during ordinary tool', key: 'during-tool'
+        });
+        await new Promise(resolve => setTimeout(resolve, 10));
+        assert.equal(requestSignal?.aborted, false, 'provider is settled; root tool signal remains intact');
+        release.resolve();
+        await h.runtime.idle();
+        assert.equal(calls, 2);
+        assert.match(context, /ordinary-one/);
+        assert.match(context, /ordinary-two/);
+        assert.match(context, /new task during ordinary tool/);
+        assert.equal(h.runtime.errors.length, 0);
+    }
+    finally {
+        release.resolve();
+        await h.close();
+    }
+});
+test('sustained input: bounded preemptions allow inference progress and consume all late events', async () => {
+    let calls = 0;
+    let interrupted = 0;
+    const requestStarted = async (n: number) => until(() => calls >= n);
+    const h = await setup(Array.from({
+        length: 12
+    }, () => async (_ctx, options) => {
+        calls++;
+        await new Promise<void>(resolve => {
+            const timer = setTimeout(resolve, 60);
+            options?.signal?.addEventListener('abort', () => {
+                interrupted++;
+                clearTimeout(timer);
+                resolve();
+            }, {
+                once: true
+            });
+        });
+        return options?.signal?.aborted ? fauxAssistantMessage([], {
+            stopReason: 'aborted'
+        }) : fauxAssistantMessage('progress');
+    }), [], [], 16, undefined, true);
+    try {
+        const b = h.runtime.createBot('fairness');
+        h.runtime.accept({
+            to: b.id, text: 'initial', key: 'first'
+        });
+        for (let n = 1; n <= 4; n++) {
+            await requestStarted(n);
+            for (let i = 0; i < 5; i++)
+                h.runtime.accept({
+                    to: b.id, text: `sustained-${n}-${i}`, key: `f-${n}-${i}`
+                });
+        }
+        await h.runtime.idle();
+        assert.equal(interrupted, 3, 'default cap prevents indefinite inference cancellation');
+        assert.equal(h.runtime.store.list<Envelope>('inbox').filter(e => e.state === 'processed').length, 21);
+        assert.equal(h.runtime.errors.length, 0);
+    }
+    finally {
+        await h.close();
+    }
+});
+test('provider errors: synthetic secret diagnostic is absent from inbox errors and native transcript', async () => {
+    const diagnostic = 'SYNTHETIC-SECRET-DIAGNOSTIC-NOT-A-REAL-KEY';
+    const h = await setup([fauxAssistantMessage(diagnostic, {
+            stopReason: 'error', errorMessage: diagnostic
+        })]);
+    try {
+        const bot = h.runtime.createBot('redaction');
+        h.runtime.accept({
+            to: bot.id, text: 'safe input', key: 'safe'
+        });
+        await h.runtime.idle();
+        assert.ok(h.runtime.errors.length > 0);
+        assert.doesNotMatch(JSON.stringify(h.runtime.store.list<Envelope>('inbox')), /SYNTHETIC-SECRET/);
+        assert.doesNotMatch(h.runtime.errors.map(String).join('\n'), /SYNTHETIC-SECRET/);
+        const { readFile } = await import('node:fs/promises');
+        assert.doesNotMatch(await readFile(h.runtime.listBots()[0]!.sessionFile!, 'utf8'), /SYNTHETIC-SECRET/);
+    }
+    finally {
+        await h.close();
+    }
+});
+test('compaction under flood: prefix summary survives inference preempt and preserves late correction', async () => {
+    const first = deferred(), releaseFirst = deferred(), second = deferred(), releaseSecond = deferred();
+    let finishSummary!: (value: string) => void;
+    const summary = new Promise<string>(r => finishSummary = r);
+    let snapshot: import('../src/context.ts').SummarySnapshot | undefined;
+    let finalContext = '';
+    const h = await setup([
+        async () => {
+            first.resolve();
+            await releaseFirst.promise;
+            return fauxAssistantMessage(fauxToolCall('list_bots', {}, {
+                id: 'flood-boundary'
+            }), {
+                stopReason: 'toolUse'
+            });
+        },
+        async () => {
+            second.resolve();
+            await releaseSecond.promise;
+            return fauxAssistantMessage('interrupted');
+        },
+        ctx => {
+            finalContext = JSON.stringify(ctx);
+            return fauxAssistantMessage('internal');
+        }
+    ], [], [], 16, {
+        maxContextTokens: 100000, outputReserveTokens: 4096, thresholdTokens: 1000, recentMessages: 2, summarize: async (s) => {
+            snapshot = s;
+            return summary;
+        }
+    }, true);
+    try {
+        const b = h.runtime.createBot('compaction-flood');
+        h.runtime.accept({
+            to: b.id, text: 'KEEP ORIGINAL COMMITMENT', key: 'original'
+        });
+        await first.promise;
+        for (let i = 0; i < 8; i++)
+            h.runtime.accept({
+                from: 'ambient', kind: 'bot', to: b.id, text: `FLOOD PREFIX ${i}`, key: `prefix-${i}`
+            });
+        releaseFirst.resolve();
+        await second.promise;
+        await until(() => !!snapshot);
+        const correction = h.runtime.accept({
+            to: b.id, text: 'LATE_CORRECTION_KEEP_BLUE', key: 'late'
+        });
+        assert.equal(snapshot!.signal.aborted, false, 'new input does not cancel background summary');
+        assert.doesNotMatch(JSON.stringify(snapshot!.messages), /LATE_CORRECTION/);
+        finishSummary('PRESERVED_PREFIX_COMMITMENT');
+        await new Promise(r => setImmediate(r));
+        await new Promise(r => setImmediate(r));
+        releaseSecond.resolve();
+        await h.runtime.idle();
+        assert.match(finalContext, /LATE_CORRECTION_KEEP_BLUE/);
+        assert.match(finalContext, /PRESERVED_PREFIX_COMMITMENT/);
+        assert.equal(h.runtime.store.get<Envelope>('inbox', correction.id)?.state, 'processed');
+        assert.equal(h.runtime.errors.length, 0);
+        const { readFile } = await import('node:fs/promises');
+        assert.match(await readFile(h.runtime.listBots()[0]!.sessionFile!, 'utf8'), /"type":"compaction"/);
+    }
+    finally {
+        finishSummary('PRESERVED_PREFIX_COMMITMENT');
+        releaseFirst.resolve();
+        releaseSecond.resolve();
         await h.close();
     }
 });
