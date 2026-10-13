@@ -1,0 +1,24 @@
+{
+  "repository": "https://github.com/openma-ai/OpenMatter",
+  "commit": "a5181d3f11d52f60c76aca1ab3e0665193b751df",
+  "files": [
+    {
+      "source": "packages/core/src/index.ts",
+      "destination": "vendor/openmatter/core/index.ts",
+      "upstreamSha256": "764e6651f7c332a7fb9539127b3242d9ef736e1e8e0b4c0ce00616a1adf2e00a",
+      "adaptation": "package import aliases changed to relative paths only"
+    },
+    {
+      "source": "packages/inbox/src/index.ts",
+      "destination": "vendor/openmatter/inbox/index.ts",
+      "upstreamSha256": "57e9a88bbb4649bf121438c500ec48ad66e0a536d45b954e2d688108df5662cb",
+      "adaptation": "package import aliases changed to relative paths only"
+    },
+    {
+      "source": "packages/inbox-sqlite/src/index.ts",
+      "destination": "vendor/openmatter/inbox-sqlite/index.ts",
+      "upstreamSha256": "3361dde722ba8d18265ea789c3ede1c305a219fb611bf84fb8bd224758530491",
+      "adaptation": "package import aliases changed to relative paths only"
+    }
+  ]
+}

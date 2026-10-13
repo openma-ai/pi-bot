@@ -7,7 +7,7 @@ import { Type } from 'typebox';
 import { ModelRuntime, type ExtensionFactory, type ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore, type FauxResponseStep } from '@earendil-works/pi-ai';
 import { BotRuntime } from '../src/runtime.ts';
-import { piSessionFactory } from '../src/pi.ts';
+import { piSessionFactory, type PiOptions } from '../src/pi.ts';
 import type { Envelope, Job, Outbound, Question } from '../src/store.ts';
 const deferred = () => {
     let resolve!: () => void;
@@ -24,7 +24,7 @@ const until = async (f: () => boolean) => {
         await new Promise(r => setTimeout(r, 5));
     }
 };
-async function setup(steps: FauxResponseStep[], tools: ToolDefinition[] = [], extensions: ExtensionFactory[] = [], maxRequestsPerWake = 16) {
+async function setup(steps: FauxResponseStep[], tools: ToolDefinition[] = [], extensions: ExtensionFactory[] = [], maxRequestsPerWake = 16, context?: PiOptions['context'], preemptInference = false, extra: Partial<PiOptions> = {}) {
     const dir = await mkdtemp(join(tmpdir(), 'pi-real-audit-'));
     const faux = fauxProvider({
         provider: `audit-${Math.random().toString(36).slice(2)}`, models: [{
@@ -36,7 +36,7 @@ async function setup(steps: FauxResponseStep[], tools: ToolDefinition[] = [], ex
         credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(dir, 'models.json'), refreshOnCreate: false
     });
     const runtime = new BotRuntime(join(dir, 'bot.db'), piSessionFactory({
-        dir: join(dir, 'sessions'), modelRuntime, model: faux.getModel(), tools, extensions: [pi => pi.registerProvider(faux.provider), ...extensions], allowTools: tools.map(t => t.name), maxRequestsPerWake
+        dir: join(dir, 'sessions'), modelRuntime, model: faux.getModel(), tools, extensions: [pi => pi.registerProvider(faux.provider), ...extensions], allowTools: tools.map(t => t.name), maxRequestsPerWake, context, preemptInference, ...extra
     }));
     return {
         runtime, faux, dir, modelRuntime, async close() {
@@ -95,6 +95,20 @@ test('audit Pi: sender is runtime-bound and bot/user/ask channels stay distinct'
     finally {
         await h.close();
     }
+});
+
+test('ledger references alone cannot acknowledge an inbox envelope absent from provider messages', async () => {
+    let id = '';
+    const h = await setup([fauxAssistantMessage('internal')], [], [pi => {
+        // Negative admission fixture: retain only a ledger pointer, no actual typed inbox body.
+        pi.on('context', event => ({ messages: [...event.messages.filter(m => m.role !== 'user' || !JSON.stringify(m.content).includes('\\"type\\":\\"inbox\\"')), { role: 'user', content: `Ledger pointer ${id}`, timestamp: 0 }] }));
+    }]);
+    try {
+        const bot = h.runtime.createBot('main'); id = h.runtime.accept({ to: bot.id, text: 'must actually be admitted', key: 'request' }).id;
+        await h.runtime.idle();
+        assert.equal(h.runtime.store.get<Envelope>('inbox', id)?.state, 'uncertain');
+        assert.equal(h.runtime.store.get<Envelope>('inbox', id)?.resolvedAt, undefined);
+    } finally { await h.close(); }
 });
 test('audit Pi: detached tools traverse native deny hooks with parent correlation', async () => {
     let effects = 0;
@@ -209,7 +223,9 @@ test('audit Pi: per-wake model request cap actually fails closed', async () => {
     }
 });
 test('audit Pi: oversized context never reaches provider and receipt is not processed', async () => {
-    const h = await setup([fauxAssistantMessage('must not run')]);
+    const h = await setup([fauxAssistantMessage('must not run')], [], [], 16, {
+        maxContextTokens: 32000
+    });
     try {
         const b = h.runtime.createBot('bot');
         const e = h.runtime.accept({
@@ -400,4 +416,498 @@ test('audit Pi: failed native outcomes preserve structured details and usage in 
     finally {
         await h.close();
     }
+});
+test('behavior fixture: user correction preempts inference; flood stays native and silence is scored', async () => {
+    const started = deferred();
+    let providerSignal: AbortSignal | undefined;
+    let transcript = '';
+    let correctedSource = '';
+    const h = await setup([async (_ctx, options) => {
+            providerSignal = options?.signal;
+            started.resolve();
+            await new Promise<void>(resolve => options?.signal?.addEventListener('abort', () => resolve(), {
+                once: true
+            }));
+            return fauxAssistantMessage([], {
+                stopReason: 'aborted'
+            });
+        }, ctx => {
+            transcript = JSON.stringify(ctx);
+            return fauxAssistantMessage(fauxToolCall('send_message', {
+                text: 'Corrected: blue', key: 'corrected', source_message_id: correctedSource
+            }, {
+                id: 'corrected'
+            }), {
+                stopReason: 'toolUse'
+            });
+        }, ...Array.from({
+            length: 30
+        }, () => fauxAssistantMessage('internal silence'))], [], [], 32, undefined, true);
+    try {
+        const bot = h.runtime.createBot('coordinator');
+        const original = h.runtime.accept({
+            to: bot.id, text: 'Prepare red draft', key: 'original', taskId: 'draft'
+        });
+        await started.promise;
+        for (let i = 0; i < 12; i++)
+            h.runtime.accept({
+                from: 'group:design', kind: 'bot', to: bot.id, text: `irrelevant chatter ${i}`, key: `chatter-${i}`, taskId: `noise-${i}`
+            });
+        assert.equal(providerSignal?.aborted, false, 'untrusted chatter cannot preempt');
+        const corrected = h.runtime.accept({
+            to: bot.id, text: 'Cancel red. Use blue.', key: 'correction', taskId: 'draft', replyTo: original.id
+        });
+        correctedSource = corrected.id;
+        await until(() => providerSignal?.aborted === true);
+        await h.runtime.idle();
+        const out = h.runtime.store.list<Outbound>('outbox');
+        // Custom scripted fixture: measures routing/ledger behavior, NOT model judgment.
+        const score = {
+            validTaskCompletion: out.filter(o => o.text === 'Corrected: blue' && o.taskId === 'draft').length,
+            missedCommitments: out.some(o => o.text === 'Corrected: blue') ? 0 : 1,
+            duplicateActions: Math.max(0, out.length - 1),
+            wrongRecipients: out.filter(o => o.botId !== bot.id || o.replyTo !== corrected.id).length,
+            obsoleteActions: out.filter(o => /red/i.test(o.text)).length,
+            appropriateSilence: out.every(o => o.taskId === 'draft')
+        };
+        assert.deepEqual(score, {
+            validTaskCompletion: 1, missedCommitments: 0, duplicateActions: 0, wrongRecipients: 0, obsoleteActions: 0, appropriateSilence: true
+        });
+        assert.match(transcript, /Cancel red/);
+        assert.doesNotMatch(transcript, /irrelevant chatter/, 'ordinary peer waits for the whole protected user run');
+        const { readFile } = await import('node:fs/promises');
+        assert.match(await readFile(h.runtime.listBots()[0]!.sessionFile!, 'utf8'), /irrelevant chatter 11/, 'queued peer is processed after the user run');
+        assert.equal(h.runtime.store.list<Envelope>('inbox').filter(e => e.state === 'processed').length, 14);
+        assert.equal(h.runtime.errors.length, 0);
+    }
+    finally {
+        await h.close();
+    }
+});
+test('behavior fixture: correction aborts provider while started native job survives', async () => {
+    const gate = deferred(), inferenceStarted = deferred();
+    let toolSignal: AbortSignal | undefined;
+    let effects = 0;
+    const tool: ToolDefinition = {
+        name: 'held_job', label: 'Held job', description: 'Synthetic isolated job', parameters: Type.Object({}),
+        async execute(_id, _args, signal) {
+            toolSignal = signal;
+            await gate.promise;
+            effects++;
+            return {
+                content: [{
+                        type: 'text', text: 'SYNTHETIC_COMPLETE'
+                    }], details: {}
+            };
+        }
+    };
+    const h = await setup([
+        fauxAssistantMessage(fauxToolCall('start_job', {
+            tool: 'held_job', args: {}, key: 'one-job'
+        }, {
+            id: 'dispatch-held'
+        }), {
+            stopReason: 'toolUse'
+        }),
+        async (_ctx, options) => {
+            inferenceStarted.resolve();
+            await new Promise<void>(resolve => options?.signal?.addEventListener('abort', () => resolve(), {
+                once: true
+            }));
+            return fauxAssistantMessage([], {
+                stopReason: 'aborted'
+            });
+        }, fauxAssistantMessage('cancelled future plan; already started job remains'), fauxAssistantMessage('job completion observed')
+    ], [tool], [], 16, undefined, true);
+    try {
+        const bot = h.runtime.createBot('worker');
+        h.runtime.accept({
+            to: bot.id, text: 'start isolated job then plan followup', key: 'start', taskId: 'task'
+        });
+        await inferenceStarted.promise;
+        h.runtime.accept({
+            to: bot.id, text: 'Cancel only future followup.', key: 'cancel', taskId: 'task'
+        });
+        await until(() => h.faux.state.callCount === 3);
+        assert.equal(toolSignal?.aborted, false);
+        assert.equal(h.runtime.store.list<Job>('jobs')[0]?.state, 'running');
+        gate.resolve();
+        await h.runtime.idle();
+        assert.equal(toolSignal?.aborted, false);
+        assert.equal(effects, 1);
+        assert.equal(h.runtime.store.list<Job>('jobs')[0]?.state, 'completed');
+        assert.equal(h.runtime.errors.length, 0);
+    }
+    finally {
+        gate.resolve();
+        await h.close();
+    }
+});
+test('behavior fixture: interleaved tasks and teammate handoff retain explicit source correlation', async () => {
+    const started = deferred(), release = deferred();
+    let first: Envelope, second: Envelope;
+    let teammate = '';
+    const h = await setup([
+        async () => {
+            started.resolve();
+            await release.promise;
+            return fauxAssistantMessage('internal');
+        },
+        () => fauxAssistantMessage([
+            fauxToolCall('send_to_bot', {
+                bot_id: teammate, text: 'finish task A', key: 'handoff-a', source_message_id: first.id
+            }, {
+                id: 'handoff'
+            }),
+            fauxToolCall('send_message', {
+                text: 'task B finished', key: 'finish-b', source_message_id: second.id
+            }, {
+                id: 'finish-b'
+            })
+        ], {
+            stopReason: 'toolUse'
+        }),
+        ...Array.from({
+            length: 8
+        }, () => fauxAssistantMessage('internal silence'))
+    ]);
+    try {
+        const a = h.runtime.createBot('coordinator'), b = h.runtime.createBot('teammate');
+        teammate = b.id;
+        first = h.runtime.accept({
+            from: 'conversation:A', to: a.id, text: 'task A', key: 'a', taskId: 'task-a'
+        });
+        await started.promise;
+        second = h.runtime.accept({
+            from: 'conversation:B', to: a.id, text: 'task B', key: 'b', taskId: 'task-b'
+        });
+        release.resolve();
+        await h.runtime.idle();
+        const handoff = h.runtime.store.list<Envelope>('inbox').find(e => e.key === 'handoff-a');
+        assert.equal(handoff?.taskId, first.taskId);
+        assert.equal(handoff?.replyTo, first.id);
+        assert.equal(handoff?.to, b.id);
+        assert.equal(handoff?.state, 'processed');
+        const out = h.runtime.store.list<Outbound>('outbox');
+        assert.equal(out.length, 1);
+        assert.equal(out[0]?.taskId, second.taskId);
+        assert.equal(out[0]?.replyTo, second.id);
+        assert.equal(h.runtime.errors.length, 0);
+    }
+    finally {
+        release.resolve();
+        await h.close();
+    }
+});
+test('native ordinary tool batch: input during dispatched hook preserves batch signal and matching results', async () => {
+    const started = deferred(), release = deferred();
+    let requestSignal: AbortSignal | undefined;
+    let calls = 0;
+    let context = '';
+    const h = await setup([
+        (_ctx, options) => {
+            requestSignal = options?.signal;
+            return fauxAssistantMessage([
+                fauxToolCall('list_bots', {}, {
+                    id: 'ordinary-one'
+                }),
+                fauxToolCall('list_bots', {}, {
+                    id: 'ordinary-two'
+                })
+            ], {
+                stopReason: 'toolUse'
+            });
+        },
+        ctx => {
+            context = JSON.stringify(ctx);
+            return fauxAssistantMessage('internal');
+        }
+    ], [], [pi => {
+            pi.on('tool_call', async (event) => {
+                if (event.toolName === 'list_bots') {
+                    calls++;
+                    if (calls === 1) {
+                        started.resolve();
+                        await release.promise;
+                    }
+                }
+            });
+        }], 16, undefined, true);
+    try {
+        const b = h.runtime.createBot('native-batch');
+        h.runtime.accept({
+            to: b.id, text: 'start ordinary batch', key: 'batch'
+        });
+        await started.promise;
+        h.runtime.accept({
+            to: b.id, text: 'new task during ordinary tool', key: 'during-tool'
+        });
+        await new Promise(resolve => setTimeout(resolve, 10));
+        assert.equal(requestSignal?.aborted, false, 'provider is settled; root tool signal remains intact');
+        release.resolve();
+        await h.runtime.idle();
+        assert.equal(calls, 2);
+        assert.match(context, /ordinary-one/);
+        assert.match(context, /ordinary-two/);
+        assert.match(context, /new task during ordinary tool/);
+        assert.equal(h.runtime.errors.length, 0);
+    }
+    finally {
+        release.resolve();
+        await h.close();
+    }
+});
+test('sustained input: bounded preemptions allow inference progress and consume all late events', async () => {
+    let calls = 0;
+    let interrupted = 0;
+    const requestStarted = async (n: number) => until(() => calls >= n);
+    const h = await setup(Array.from({
+        length: 12
+    }, () => async (_ctx, options) => {
+        calls++;
+        await new Promise<void>(resolve => {
+            const timer = setTimeout(resolve, 60);
+            options?.signal?.addEventListener('abort', () => {
+                interrupted++;
+                clearTimeout(timer);
+                resolve();
+            }, {
+                once: true
+            });
+        });
+        return options?.signal?.aborted ? fauxAssistantMessage([], {
+            stopReason: 'aborted'
+        }) : fauxAssistantMessage('progress');
+    }), [], [], 16, undefined, true);
+    try {
+        const b = h.runtime.createBot('fairness');
+        h.runtime.accept({
+            to: b.id, text: 'initial', key: 'first'
+        });
+        for (let n = 1; n <= 4; n++) {
+            await requestStarted(n);
+            for (let i = 0; i < 5; i++)
+                h.runtime.accept({
+                    to: b.id, text: `sustained-${n}-${i}`, key: `f-${n}-${i}`
+                });
+        }
+        await h.runtime.idle();
+        assert.equal(interrupted, 3, 'default cap prevents indefinite inference cancellation');
+        assert.equal(h.runtime.store.list<Envelope>('inbox').filter(e => e.state === 'processed').length, 21);
+        assert.equal(h.runtime.errors.length, 0);
+    }
+    finally {
+        await h.close();
+    }
+});
+test('provider errors: synthetic secret diagnostic is absent from inbox errors and native transcript', async () => {
+    const diagnostic = 'SYNTHETIC-SECRET-DIAGNOSTIC-NOT-A-REAL-KEY';
+    const h = await setup([fauxAssistantMessage(diagnostic, {
+            stopReason: 'error', errorMessage: diagnostic
+        })]);
+    try {
+        const bot = h.runtime.createBot('redaction');
+        h.runtime.accept({
+            to: bot.id, text: 'safe input', key: 'safe'
+        });
+        await h.runtime.idle();
+        assert.ok(h.runtime.errors.length > 0);
+        assert.doesNotMatch(JSON.stringify(h.runtime.store.list<Envelope>('inbox')), /SYNTHETIC-SECRET/);
+        assert.doesNotMatch(h.runtime.errors.map(String).join('\n'), /SYNTHETIC-SECRET/);
+        const { readFile } = await import('node:fs/promises');
+        assert.doesNotMatch(await readFile(h.runtime.listBots()[0]!.sessionFile!, 'utf8'), /SYNTHETIC-SECRET/);
+    }
+    finally {
+        await h.close();
+    }
+});
+test('compaction under job-result flood: prefix summary survives inference preempt and preserves late correction', async () => {
+    const first = deferred(), releaseFirst = deferred(), second = deferred(), releaseSecond = deferred();
+    let finishSummary!: (value: string) => void;
+    const summary = new Promise<string>(r => finishSummary = r);
+    let snapshot: import('../src/context.ts').SummarySnapshot | undefined;
+    let finalContext = '';
+    const h = await setup([
+        async () => {
+            first.resolve();
+            await releaseFirst.promise;
+            return fauxAssistantMessage(fauxToolCall('list_bots', {}, {
+                id: 'flood-boundary'
+            }), {
+                stopReason: 'toolUse'
+            });
+        },
+        async () => {
+            second.resolve();
+            await releaseSecond.promise;
+            return fauxAssistantMessage('interrupted');
+        },
+        ctx => {
+            finalContext = JSON.stringify(ctx);
+            return fauxAssistantMessage('internal');
+        }
+    ], [], [], 16, {
+        maxContextTokens: 100000, outputReserveTokens: 4096, thresholdTokens: 1000, recentMessages: 2, summarize: async (s) => {
+            snapshot = s;
+            return summary;
+        }
+    }, true);
+    try {
+        const b = h.runtime.createBot('compaction-flood');
+        h.runtime.accept({
+            to: b.id, text: 'KEEP ORIGINAL COMMITMENT', key: 'original'
+        });
+        await first.promise;
+        for (let i = 0; i < 8; i++)
+            h.runtime.accept({
+                from: `job:ambient-${i}`, kind: 'job', to: b.id, text: `FLOOD PREFIX ${i}`, key: `prefix-${i}`
+            });
+        releaseFirst.resolve();
+        await second.promise;
+        await until(() => !!snapshot);
+        const correction = h.runtime.accept({
+            to: b.id, text: 'LATE_CORRECTION_KEEP_BLUE', key: 'late'
+        });
+        assert.equal(snapshot!.signal.aborted, false, 'new input does not cancel background summary');
+        assert.doesNotMatch(JSON.stringify(snapshot!.messages), /LATE_CORRECTION/);
+        finishSummary('PRESERVED_PREFIX_COMMITMENT');
+        await new Promise(r => setImmediate(r));
+        await new Promise(r => setImmediate(r));
+        releaseSecond.resolve();
+        await h.runtime.idle();
+        assert.match(finalContext, /LATE_CORRECTION_KEEP_BLUE/);
+        assert.match(finalContext, /PRESERVED_PREFIX_COMMITMENT/);
+        assert.equal(h.runtime.store.get<Envelope>('inbox', correction.id)?.state, 'processed');
+        assert.equal(h.runtime.errors.length, 0);
+        const { readFile } = await import('node:fs/promises');
+        assert.match(await readFile(h.runtime.listBots()[0]!.sessionFile!, 'utf8'), /"type":"compaction"/);
+    }
+    finally {
+        finishSummary('PRESERVED_PREFIX_COMMITMENT');
+        releaseFirst.resolve();
+        releaseSecond.resolve();
+        await h.close();
+    }
+});
+test('provider deadline: reports timeout without retry or cancelling native tool lifetime', async () => {
+    let timedOut = 0;
+    const h = await setup([async (_ctx, options) => {
+            await new Promise<void>(resolve => options?.signal?.addEventListener('abort', () => resolve(), {
+                once: true
+            }));
+            return fauxAssistantMessage([], {
+                stopReason: 'aborted'
+            });
+        }], [], [], 16, undefined, true, {
+        inferenceRequestTimeoutMs: 20, onInferenceTimeout: () => {
+            timedOut++;
+        }
+    });
+    try {
+        const bot = h.runtime.createBot('deadline');
+        const event = h.runtime.accept({
+            to: bot.id, text: 'held synthetic request', key: 'deadline'
+        });
+        await h.runtime.idle();
+        assert.equal(timedOut, 1);
+        assert.equal(h.faux.state.callCount, 1);
+        assert.equal(h.runtime.store.get<Envelope>('inbox', event.id)?.state, 'uncertain');
+        assert.ok(h.runtime.errors.length > 0);
+    }
+    finally {
+        await h.close();
+    }
+});
+
+test('interleaved task reply without source is rejected instead of attached to later chatter', async () => {
+    let admitted = false;
+    const h = await setup([
+        async () => { while (!admitted) await new Promise(r => setTimeout(r, 1)); return fauxAssistantMessage('waiting'); },
+        () => fauxAssistantMessage([fauxToolCall('send_message', {text:'DONE original task',key:'implicit'})], {stopReason:'toolUse'}),
+        fauxAssistantMessage('done')
+    ]);
+    try {
+        const bot = h.runtime.createBot('interleaved');
+        h.runtime.accept({to:bot.id,text:'Produce task artifact',key:'task',taskId:'work'});
+        await until(() => h.runtime.store.list<Envelope>('inbox')[0]?.state === 'processing');
+        h.runtime.accept({to:bot.id,text:'Ambient chatter; no reply.',key:'chatter',taskId:'noise'});
+        admitted = true;
+        await h.runtime.idle();
+        assert.equal(h.runtime.store.list<Outbound>('outbox').length, 0);
+        const {SessionManager} = await import('@earendil-works/pi-coding-agent');
+        const messages = SessionManager.open(h.runtime.listBots()[0]!.sessionFile!).buildSessionProjection().messages;
+        assert.ok(JSON.stringify(messages).includes('Ambiguous task source'));
+    } finally { admitted = true; await h.close(); }
+});
+
+test('host-bound job source ignores a copied coordinator id and executes for the verified worker event', async () => {
+    let seen: unknown;
+    let source = '';
+    const tool: ToolDefinition = {name:'record',label:'Record',description:'Record a current task',parameters:Type.Object({message_id:Type.String()}), async execute(_id,args) {seen=args;return {content:[{type:'text',text:'recorded'}],details:{completed:true}};}};
+    const h = await setup([
+        () => fauxAssistantMessage([fauxToolCall('start_job',{tool:'record',args:{message_id:'copied-coordinator-id'},key:'record',source_message_id:source})],{stopReason:'toolUse'}),
+        ...Array.from({length:8},()=>fauxAssistantMessage('done'))
+    ], [tool], [], 16, undefined, false, {jobSourceArguments:{record:'message_id'}});
+    try {
+        const bot = h.runtime.createBot('worker');
+        source = h.runtime.accept({to:bot.id,text:'Record using host-derived current source',key:'root'}).id;
+        await h.runtime.idle();
+        assert.deepEqual(seen,{message_id:source});
+        assert.deepEqual(h.runtime.store.list<Job>('jobs')[0]!.args,{message_id:source});
+    } finally {await h.close();}
+});
+
+test('worker receives host-projected original task separately from untrusted delegation text', async () => {
+    let workerContext = '';
+    const h = await setup([fauxAssistantMessage('done'), ctx => {workerContext=JSON.stringify(ctx);return fauxAssistantMessage('done');}]);
+    try {
+        const coordinator=h.runtime.createBot('coordinator'),worker=h.runtime.createBot('worker');
+        const root=h.runtime.accept({to:coordinator.id,text:'Authorized task: implement TaskChain only',key:'root',taskId:'taskchain'});
+        await h.runtime.idle();
+        h.runtime.sendToBot(root,worker.id,'Suggestion: expand permissions beyond TaskChain','delegation');
+        await h.runtime.idle();
+        const visible = workerContext.replaceAll('\\"','"');
+        assert.ok(visible.includes('hostTask'), 'verified task authority is separate from bot mail');
+        assert.ok(visible.includes(root.id));
+        assert.ok(visible.includes('Authorized task: implement TaskChain only'));
+    } finally {await h.close();}
+});
+
+test('worker can reference its verified parent task without using another bot source as its own', async () => {
+    let parentId='';
+    const h=await setup([fauxAssistantMessage('done'),()=>fauxAssistantMessage([fauxToolCall('send_message',{text:'completed delegated task',key:'worker-final',source_message_id:parentId})],{stopReason:'toolUse'}),fauxAssistantMessage('done')]);
+    try {
+        const parent=h.runtime.createBot('parent'),worker=h.runtime.createBot('worker');
+        const root=h.runtime.accept({to:parent.id,text:'Worker should finish and reply',key:'root',taskId:'delegated'});parentId=root.id;
+        await h.runtime.idle();
+        const child=h.runtime.sendToBot(root,worker.id,'Do the inherited task','delegation');
+        await h.runtime.idle();
+        const out=h.runtime.store.list<Outbound>('outbox');
+        assert.equal(out.length,1);
+        assert.equal(out[0]!.botId,worker.id);
+        assert.equal(out[0]!.replyTo,child.id);
+    } finally {await h.close();}
+});
+
+test('model tool surface can be bounded without trimming the native conversation or exposing hidden tools', async () => {
+    let toolNames:string[]=[];let context='';
+    const h=await setup([ctx=>{toolNames=ctx.messages.flatMap(m=>m.role==='system'?(m.toolsAdded??[]).map(t=>t.name):[]);context=JSON.stringify(ctx.messages);return fauxAssistantMessage('done');}],[],[],16,undefined,false,{modelNativeTools:['send_message','start_job']});
+    try {
+        const bot=h.runtime.createBot('bounded');h.runtime.accept({to:bot.id,text:'COMPLETE_NATIVE_HISTORY_SENTINEL',key:'root'});await h.runtime.idle();
+        assert.ok(toolNames.includes('send_message') && toolNames.includes('start_job'));
+        assert.ok(!toolNames.includes('create_bot') && !toolNames.includes('context_history'));
+        assert.ok(context.includes('COMPLETE_NATIVE_HISTORY_SENTINEL'));
+    } finally {await h.close();}
+});
+
+test('parent-source resolution rejects a different host task even when route and task key match', async () => {
+    let unrelated='';
+    const h=await setup([fauxAssistantMessage('done'),fauxAssistantMessage('done'),()=>fauxAssistantMessage([fauxToolCall('send_message',{text:'must not route',key:'invalid-source',source_message_id:unrelated})],{stopReason:'toolUse'}),fauxAssistantMessage('done')]);
+    try {
+        const parent=h.runtime.createBot('parent'),worker=h.runtime.createBot('worker');
+        const root=h.runtime.accept({to:parent.id,text:'Original task',key:'original',taskId:'same-key'});
+        unrelated=h.runtime.accept({to:parent.id,text:'Different request with same task key',key:'other',taskId:'same-key'}).id;
+        await h.runtime.idle();h.runtime.sendToBot(root,worker.id,'Inherited original only','delegation');await h.runtime.idle();
+        assert.equal(h.runtime.store.list<Outbound>('outbox').length,0);
+    } finally {await h.close();}
 });

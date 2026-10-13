@@ -374,3 +374,18 @@ test('audit: outbox cap is per task and pending question cap is per bot', async 
         await h.close();
     }
 });
+
+test('authoritative ledger includes processing inbox until the active task settles', async () => {
+    const release=deferred();
+    const h=await fixture(async()=>({async run(){await release.promise;},async close(){}}));
+    try {
+        const bot=h.runtime.createBot('active');
+        const event=h.runtime.accept({to:bot.id,text:'unfinished commitment',key:'active'});
+        await until(()=>h.runtime.store.get<Envelope>('inbox',event.id)?.state==='processing');
+        const state=h.runtime.store.state(bot.id);
+        assert.equal(state.counts.inbox,1);
+        assert.ok(state.inbox.some(e=>e.id===event.id && e.state==='processing'));
+        release.resolve();await h.runtime.idle();
+        assert.equal(h.runtime.store.state(bot.id).counts.inbox,0);
+    } finally {release.resolve();await h.close();}
+});

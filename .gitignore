@@ -1,6 +1,8 @@
 node_modules/
+work/
 .pi-bot/
 *.db
 *.db-wal
 *.db-shm
 *.lock
+gui/dist/

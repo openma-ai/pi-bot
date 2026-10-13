@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
-import { ContextBudgetError, NonBlockingContextManager, estimateContextTokens, hasValidToolPairs, createContextExtension } from '../src/context.ts';
+import type { ModelRuntime, ProjectedSessionEntry } from '@earendil-works/pi-coding-agent';
+import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai';
+import { ContextBudgetError, NonBlockingContextManager, estimateContextTokens, hasValidToolPairs, createContextExtension, type ContextOptions, type SummarySnapshot } from '../src/context.ts';
+import { createModelSummarizer } from '../src/pi.ts';
 const user = (content: string): AgentMessage => ({
     role: 'user', content, timestamp: 1
 });
@@ -12,16 +15,12 @@ const system: AgentMessage = {
             }
         }], timestamp: 1
 };
-const assistant = (ids: string[]): AgentMessage => ({
-    role: 'assistant', content: ids.map(id => ({
-        type: 'toolCall', id, name: 'read', arguments: {
-            id
-        }
-    })), api: 'openai-responses', provider: 'openai', model: 'fake', usage: {
-        input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: {
-            input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0
-        }
-    }, stopReason: 'toolUse', timestamp: 1
+const assistant = (ids: string[]): AgentMessage => fauxAssistantMessage(ids.map(id => ({
+    type: 'toolCall' as const, id, name: 'read', arguments: {
+        id
+    }
+})), {
+    stopReason: 'toolUse', timestamp: 1
 });
 const result = (id: string, content = 'result'): AgentMessage => ({
     role: 'toolResult', toolCallId: id, toolName: 'read', content: [{
@@ -29,156 +28,209 @@ const result = (id: string, content = 'result'): AgentMessage => ({
         }], isError: false, timestamp: 1
 });
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
+const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const history = Array.from({
     length: 20
-}, (_, i) => user(`old request ${i}`));
+}, (_, i) => user(`old request ${i} ${'x'.repeat(100)}`));
 const input = (messages: AgentMessage[], sessionId = 'a') => ({
     sessionId, messages, historyRef: 'durable-session.jsonl'
 });
-test('never waits on a hanging summarizer; next full-context projection proceeds', async () => {
+const entries = (messages: AgentMessage[]): ProjectedSessionEntry[] => messages.map((message, index) => ({
+    sourceEntry: {
+        type: 'message', id: `entry-${index}`, parentId: index ? `entry-${index - 1}` : null, timestamp: '2026-10-11T00:00:00Z', message
+    }, messages: [message]
+}));
+const schedule = (manager: NonBlockingContextManager, messages = history, sessionId = 'a') => manager.schedule({
+    sessionId, entries: entries(messages), state: {
+        jobs: ['job1']
+    }
+});
+const options: ContextOptions = {
+    getState: () => ({
+        pendingJobs: ['job1'], questions: ['question1']
+    }), recentMessages: 2, thresholdTokens: 500
+};
+test('soft threshold schedules later; full context stays unchanged while summary hangs', async () => {
     let invoked = 0;
     const manager = new NonBlockingContextManager({
-        getState: () => ({
-            pendingJobs: ['job1'], questions: ['question1']
-        }), recentMessages: 2, maxContextTokens: 5000, outputReserveTokens: 500,
-        summarize: async () => {
+        ...options, summarize: async () => {
             invoked++;
             return new Promise<string>(() => {
             });
         }
     });
-    const first = manager.project(input([system, ...history, user('do this now')]));
+    const messages = [system, ...history, user('do this now')];
+    const before = structuredClone(messages);
+    const first = manager.preserveContext(input(messages));
+    schedule(manager, messages);
+    assert.equal(invoked, 0, 'background work must not start on the foreground stack');
     await tick();
     assert.equal(invoked, 1);
-    const second = manager.project(input([system, ...history, user('do this now'), user('new foreground request')]));
-    assert.ok(second.some(message => message.role === 'user' && message.content === 'new foreground request'));
-    assert.ok(JSON.stringify(second).includes('job1'));
-    assert.ok(JSON.stringify(second).includes('question1'));
+    const next = [...messages, user('new foreground request')];
+    const second = manager.preserveContext(input(next));
+    schedule(manager, next);
+    assert.deepEqual(messages, before);
+    assert.deepEqual(first.filter(message => !JSON.stringify(message).includes('[Runtime ledger;')), messages);
+    assert.deepEqual(second.filter(message => !JSON.stringify(message).includes('[Runtime ledger;')), next);
+    for (const message of messages)
+        assert.ok(first.includes(message), 'every original message identity is retained');
+    assert.match(JSON.stringify(second), /job1/);
+    assert.match(JSON.stringify(second), /question1/);
     assert.equal(invoked, 1);
-    assert.ok(estimateContextTokens(first) <= 4500);
     manager.reset();
 });
-test('ready result is adopted only at a boundary and only for the same prefix', async () => {
-    let resolve!: (value: string) => void;
+test('below soft threshold creates no background request', async () => {
+    let invoked = 0;
     const manager = new NonBlockingContextManager({
-        getState: () => ({}), recentMessages: 2, summarize: () => new Promise(r => {
-            resolve = r;
-        })
+        ...options, thresholdTokens: 10000, summarize: async () => {
+            invoked++;
+            return 'summary';
+        }
     });
-    manager.project(input(history));
+    schedule(manager);
     await tick();
+    assert.equal(invoked, 0);
+});
+test('ready summary becomes only a native boundary draft and preserves the late tail', async () => {
+    let resolve!: (value: string) => void;
+    const snapshots: SummarySnapshot[] = [];
+    const manager = new NonBlockingContextManager({
+        ...options, summarize: snapshot => {
+            snapshots.push(snapshot);
+            return new Promise(r => {
+                resolve = r;
+            });
+        }
+    });
+    schedule(manager);
+    await tick();
+    assert.deepEqual(snapshots[0]!.messages, history.slice(0, -2));
+    assert.notEqual(snapshots[0]!.messages[0], history[0], 'the snapshot must not reference mutable native messages');
     resolve('background summary');
     await tick();
-    assert.equal(JSON.stringify(manager.project(input(history))).includes('background summary'), false);
-    const ready = manager.adoptReady('a', history);
-    assert.ok(ready);
-    assert.ok(JSON.stringify(manager.project(input(history))).includes('background summary'));
-    const changed = [user('forked prefix'), ...history.slice(1)];
-    assert.equal(JSON.stringify(manager.project(input(changed))).includes('background summary'), false);
-    manager.reset();
+    assert.doesNotMatch(JSON.stringify(manager.preserveContext(input(history))), /background summary/);
+    const late = [...history, user('arrived after snapshot')];
+    const ready = manager.adoptReady('a', entries(late));
+    assert.equal(ready?.type, 'compaction');
+    assert.equal(ready?.summary, 'background summary');
+    assert.equal(ready?.firstKeptEntryId, 'entry-18');
+    assert.equal(manager.adoptReady('a', entries(late)), undefined, 'a draft is consumed once');
+    assert.deepEqual(manager.preserveContext(input(late)).filter(message => !JSON.stringify(message).includes('[Runtime ledger;')), late, 'manager does not own a second active history');
 });
-test('stale ready result and late cross-session completion are rejected', async () => {
+test('changed prefix, changed entry identity, and cross-session completion are discarded', async () => {
     let resolve!: (value: string) => void;
     const manager = new NonBlockingContextManager({
-        getState: () => ({}), recentMessages: 2, summarize: () => new Promise(r => {
+        ...options, summarize: () => new Promise(r => {
             resolve = r;
         })
     });
-    manager.schedule('a', history, {});
+    schedule(manager);
     await tick();
-    resolve('stale');
+    resolve('stale summary');
     await tick();
-    assert.equal(manager.adoptReady('a', [user('different'), ...history.slice(1)]), undefined);
+    assert.equal(manager.adoptReady('a', entries([user('different prefix'), ...history.slice(1)])), undefined);
     manager.reset();
-    manager.schedule('a', history, {});
+    schedule(manager);
+    await tick();
+    resolve('forked summary');
+    await tick();
+    const fork = entries(history);
+    fork[0]!.sourceEntry.id = 'different-id-same-content';
+    assert.equal(manager.adoptReady('a', fork), undefined);
+    manager.reset();
+    schedule(manager);
     await tick();
     const oldResolve = resolve;
-    manager.project(input([user('session b request')], 'b'));
+    manager.preserveContext(input([user('session b')], 'b'));
     oldResolve('cross-session secret');
     await tick();
-    assert.equal(manager.adoptReady('b', history), undefined);
-    assert.equal(JSON.stringify(manager.project(input([user('session b request')], 'b'))).includes('cross-session secret'), false);
-    manager.reset();
+    assert.equal(manager.adoptReady('b', entries(history)), undefined);
 });
-test('failed background work never becomes a synchronous fallback', async () => {
+test('background failure keeps complete foreground context with cooldown and bounded retry', async () => {
     let invocations = 0;
     const errors: Error[] = [];
     const manager = new NonBlockingContextManager({
-        getState: () => ({}), recentMessages: 2, summarize: async () => {
+        ...options, summaryRetryMs: 20, summaryMaxAttempts: 2,
+        summarize: async () => {
             invocations++;
-            throw new Error('offline');
+            throw Error('offline');
         }, onSummaryError: error => errors.push(error)
     });
-    manager.project(input(history));
+    schedule(manager);
     await tick();
     await tick();
     assert.equal(invocations, 1);
-    assert.equal(errors.length, 1);
-    for (let i = 0; i < 5; i++)
-        assert.ok(manager.project(input(history)).length > 0);
+    for (let i = 0; i < 5; i++) {
+        assert.equal(manager.preserveContext(input(history)).length, history.length + 1);
+        schedule(manager);
+    }
     assert.equal(invocations, 1);
-    manager.reset();
+    await delay(25);
+    schedule(manager);
+    await tick();
+    await tick();
+    assert.equal(invocations, 2);
+    await delay(25);
+    schedule(manager);
+    await tick();
+    assert.equal(invocations, 2);
+    assert.equal(errors.length, 2);
 });
-test('oversized tool result is explicit and retrievable, retains parallel pairs and system/tools', () => {
+test('oversized tool results and long tool runs fail explicitly instead of trimming', () => {
     const manager = new NonBlockingContextManager({
-        getState: () => ({
-            pending: ['p']
-        }), maxContextTokens: 5000, outputReserveTokens: 500
+        ...options, maxContextTokens: 5000, outputReserveTokens: 500
     });
-    const messages = [system, user('current instruction must survive'), assistant(['a', 'b']), result('a', 'x'.repeat(50000)), result('b')];
+    const messages = [system, user('current instruction'), assistant(['a', 'b']), result('a', 'x'.repeat(50000)), result('b')];
     const original = structuredClone(messages);
-    const projected = manager.project(input(messages));
+    assert.throws(() => manager.preserveContext(input(messages)), /Nothing was truncated and no summary was awaited/);
     assert.deepEqual(messages, original);
-    assert.equal(projected[0], system);
-    assert.ok(hasValidToolPairs(projected));
-    assert.ok(estimateContextTokens(projected) <= 4500);
-    assert.ok(JSON.stringify(projected).includes('context_history'));
-    assert.ok(JSON.stringify(projected).includes('toolCallId=a'));
-    assert.ok(JSON.stringify(projected).includes('current instruction must survive'));
-});
-test('long tool run retains latest user and bounded recent complete tool batches without summary', () => {
-    const manager = new NonBlockingContextManager({
-        getState: () => ({
-            jobs: ['durable-job']
-        }), maxContextTokens: 5000, outputReserveTokens: 500
-    });
-    const messages: AgentMessage[] = [system, user('Never delete production data')];
+    const long: AgentMessage[] = [system, user('Never delete production data')];
     for (let i = 0; i < 100; i++)
-        messages.push(assistant([`call-${i}`]), result(`call-${i}`, 'x'.repeat(1000)));
-    const projected = manager.project(input(messages));
-    assert.ok(estimateContextTokens(projected) <= 4500);
-    assert.ok(hasValidToolPairs(projected));
-    assert.ok(JSON.stringify(projected).includes('Never delete production data'));
-    assert.ok(JSON.stringify(projected).includes('call-99'));
-    assert.ok(projected.length < messages.length);
+        long.push(assistant([`call-${i}`]), result(`call-${i}`, 'x'.repeat(1000)));
+    assert.throws(() => manager.preserveContext(input(long)), ContextBudgetError);
 });
-test('incomplete or duplicate newest tool batch fails explicitly; old orphan never leaks', () => {
+test('complete parallel tool batches are preserved and never split in a summary prefix', async () => {
+    let snapshot: SummarySnapshot | undefined;
     const manager = new NonBlockingContextManager({
-        getState: () => ({}), maxContextTokens: 5000, outputReserveTokens: 500
+        ...options, recentMessages: 1, summarize: async (value) => {
+            snapshot = value;
+            return 'summary';
+        }
     });
-    assert.throws(() => manager.project(input([user('request'), assistant(['a', 'b']), result('a')])), ContextBudgetError);
-    assert.throws(() => manager.project(input([user('request'), assistant(['a']), result('a'), result('a')])), ContextBudgetError);
-    const projected = manager.project(input([result('old orphan'), user('new request')]));
-    assert.ok(hasValidToolPairs(projected));
-    assert.ok(!projected.some(message => message.role === 'toolResult'));
+    const messages = [...history, assistant(['a', 'b']), result('a'), result('b')];
+    const full = manager.preserveContext(input(messages));
+    assert.ok(hasValidToolPairs(full));
+    schedule(manager, messages);
+    await tick();
+    assert.deepEqual(snapshot!.messages, history);
+    assert.equal(manager.adoptReady('a', entries(messages))?.firstKeptEntryId, 'entry-20');
 });
-test('oversized latest input and oversized state never silently truncate instructions', () => {
+test('all incomplete, duplicate, or orphan tool results fail rather than dropping old history', () => {
+    const manager = new NonBlockingContextManager(options);
+    assert.throws(() => manager.preserveContext(input([user('request'), assistant(['a', 'b']), result('a')])), ContextBudgetError);
+    assert.throws(() => manager.preserveContext(input([user('request'), assistant(['a']), result('a'), result('a')])), ContextBudgetError);
+    assert.throws(() => manager.preserveContext(input([result('old orphan'), user('new request')])), ContextBudgetError);
+});
+test('oversized input, state, or invalid reserve never silently truncate instructions', () => {
     const manager = new NonBlockingContextManager({
-        getState: () => ({}), maxContextTokens: 4000, outputReserveTokens: 500
+        ...options, maxContextTokens: 4000, outputReserveTokens: 500
     });
-    assert.throws(() => manager.project(input([system, user('x'.repeat(10000))])), /current user input/);
+    assert.throws(() => manager.preserveContext(input([system, user('x'.repeat(10000))])), /Full native context/);
     const bigState = new NonBlockingContextManager({
-        getState: () => ({
+        ...options, getState: () => ({
             pending: 'x'.repeat(10000)
         }), maxContextTokens: 4000, outputReserveTokens: 500
     });
-    assert.throws(() => bigState.project(input([system, user('small')])), /authoritative runtime state/);
+    assert.throws(() => bigState.preserveContext(input([system, user('small')])), /authoritative runtime state/);
+    assert.throws(() => new NonBlockingContextManager({
+        ...options, maxContextTokens: 4000
+    }).preserveContext(input(history)), /output reserve/);
 });
-test('manual compact hook always cancels, fail-closed handler aborts, history is paginated', async () => {
+test('manual compact is cancelled; guard aborts without changing history; history stays paginated', async () => {
     const hooks = new Map<string, Function>();
     let tool: any;
     const factory = createContextExtension({
-        getState: () => ({}), maxContextTokens: 4000, outputReserveTokens: 500
+        ...options, maxContextTokens: 4000, outputReserveTokens: 500
     });
     await factory({
         on: (name: string, fn: Function) => hooks.set(name, fn), registerTool: (definition: any) => {
@@ -196,11 +248,12 @@ test('manual compact hook always cancels, fail-closed handler aborts, history is
                 }]
         }
     };
-    const projected = hooks.get('context_with_system')!({
-        messages: [system, user('x'.repeat(50000))]
-    }, ctx);
+    const messages = [system, user('x'.repeat(50000))];
+    assert.equal(hooks.get('context_with_system')!({
+        messages
+    }, ctx), undefined);
     assert.equal(aborted, 1);
-    assert.ok(JSON.stringify(projected).includes('Request blocked'));
+    assert.equal((messages[1] as any).content.length, 50000);
     const page = await tool.execute('id', {
         toolCallId: 'a', maxChars: 256
     }, undefined, undefined, ctx);
@@ -209,37 +262,100 @@ test('manual compact hook always cancels, fail-closed handler aborts, history is
         offset: 0, charOffset: 256
     });
 });
-test('timeout and session reset cannot multiply an abort-ignoring background task', async () => {
+test('timeout and reset cannot multiply an abort-ignoring task', async (t) => {
+    t.mock.timers.enable({
+        apis: ['setTimeout']
+    });
     let invocations = 0;
+    let signal: AbortSignal | undefined;
     const manager = new NonBlockingContextManager({
-        getState: () => ({}), recentMessages: 2, summaryTimeoutMs: 5, summarize: async () => {
+        ...options, summaryTimeoutMs: 5, summarize: async (snapshot) => {
+            signal = snapshot.signal;
             invocations++;
             return new Promise<string>(() => {
             });
         }
     });
-    manager.project(input(history));
+    schedule(manager);
     await tick();
-    await new Promise(resolve => setTimeout(resolve, 15));
-    manager.project(input([...history, user('new')]));
+    t.mock.timers.tick(6);
+    assert.equal(signal?.aborted, true);
+    schedule(manager, [...history, user('new')]);
     manager.reset();
-    manager.project(input([...history, user('other session')], 'b'));
+    schedule(manager, [...history, user('new session')], 'b');
     await tick();
     assert.equal(invocations, 1);
     manager.reset();
 });
-test('system updates keep original chronology relative to retained tool calls', () => {
+test('host shutdown cancels only the background summary, never waits on it or restarts it', async () => {
+    const lifetime = new AbortController();
+    let snapshot: SummarySnapshot | undefined;
     const manager = new NonBlockingContextManager({
-        getState: () => ({})
+        ...options, signal: lifetime.signal, summarize: async (value) => {
+            snapshot = value;
+            return new Promise<string>(() => {
+            });
+        }
     });
+    schedule(manager);
+    await tick();
+    lifetime.abort();
+    assert.equal(snapshot?.signal.aborted, true);
+    schedule(manager);
+    assert.equal(manager.adoptReady('a', entries(history)), undefined);
+});
+test('system updates and all original message chronology remain unchanged', () => {
+    const manager = new NonBlockingContextManager(options);
     const update: AgentMessage = {
         role: 'system', content: 'Updated policy', toolsRemoved: [{
                 name: 'read'
             }], timestamp: 2
     };
     const messages = [system, user('request'), assistant(['a']), result('a'), update, user('next')];
-    const projected = manager.project(input(messages));
-    const toolIndex = projected.findIndex(message => message.role === 'toolResult');
-    assert.ok(projected.indexOf(update) > toolIndex);
-    assert.equal(projected[0], system);
+    const full = manager.preserveContext(input(messages));
+    assert.deepEqual(full.filter(message => !JSON.stringify(message).includes('[Runtime ledger;')), messages);
+    assert.ok(estimateContextTokens(full) > estimateContextTokens(messages));
+});
+test('default model summarizer makes a separate tool-free request with the snapshot cancellation signal', async () => {
+    const model = fauxProvider().getModel();
+    const signal = new AbortController().signal;
+    let request: any;
+    const runtime = {
+        completeSimple: async (...args: unknown[]) => {
+            request = args;
+            return fauxAssistantMessage('useful factual summary');
+        }
+    } as unknown as ModelRuntime;
+    const summarize = createModelSummarizer(runtime, model);
+    assert.equal(await summarize({
+        sessionId: 'a', messages: history, state: {
+            jobs: ['pending']
+        }, signal
+    }), 'useful factual summary');
+    assert.equal(request[0], model);
+    assert.equal(request[2].signal, signal);
+    assert.equal(request[1].tools, undefined);
+    assert.match(request[1].messages[0].content, /old request 0/);
+    assert.match(request[1].systemPrompt, /actually delivered/);
+    assert.equal(request[2].maxTokens, 2048);
+});
+test('host summary eligibility defers background launch without changing or blocking foreground context', async () => {
+    let eligible = false, calls = 0;
+    const manager = new NonBlockingContextManager({
+        ...options, canSummarize: () => eligible, summarize: async () => {
+            calls++;
+            return 'Stable prefix facts.';
+        }
+    });
+    const foreground = manager.preserveContext(input(history));
+    schedule(manager);
+    await tick();
+    assert.equal(calls, 0);
+    assert.ok(JSON.stringify(foreground).includes('old request 0'));
+    eligible = true;
+    schedule(manager);
+    await tick();
+    await tick();
+    assert.equal(calls, 1);
+    manager.reset();
 });

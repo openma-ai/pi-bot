@@ -1,0 +1,150 @@
+{
+  "mode": "scripted",
+  "scenarios": [
+    {
+      "id": "overlap-isolation",
+      "mode": "scripted",
+      "score": {
+        "validTaskCompletion": 3,
+        "expectedTasks": 3,
+        "missedCommitments": 0,
+        "duplicateActions": 0,
+        "wrongRecipients": 0,
+        "obsoleteActions": 0,
+        "appropriateSilence": true,
+        "malformedOutputs": 0
+      },
+      "effects": [
+        {
+          "channel": "beta",
+          "task": "b-brief",
+          "messageId": "451f52e9-1b0e-4880-95a8-575c075dd9ba",
+          "item": "brief",
+          "value": "BETA",
+          "dispatchOrder": 1
+        },
+        {
+          "channel": "alpha",
+          "task": "a-brief",
+          "messageId": "de0c9f21-0dcc-4233-9b0a-b169fcd4e76a",
+          "item": "brief",
+          "value": "ALPHA",
+          "dispatchOrder": 2
+        },
+        {
+          "channel": "alpha",
+          "task": "a-count",
+          "messageId": "4ac245f6-9d74-4027-9539-8470b372d4ba",
+          "item": "count",
+          "value": "2",
+          "dispatchOrder": 3
+        }
+      ],
+      "routes": [
+        {
+          "channel": "beta",
+          "thread": "brief",
+          "sender": "alice",
+          "task": "b-brief"
+        },
+        {
+          "channel": "alpha",
+          "thread": "brief",
+          "sender": "alice",
+          "task": "a-brief"
+        },
+        {
+          "channel": "alpha",
+          "thread": "count",
+          "sender": "bob",
+          "task": "a-count"
+        }
+      ],
+      "pendingEvents": 0,
+      "runtimeErrors": 0,
+      "transcriptPairsValid": true
+    },
+    {
+      "id": "replace-cancel",
+      "mode": "scripted",
+      "score": {
+        "validTaskCompletion": 1,
+        "expectedTasks": 1,
+        "missedCommitments": 0,
+        "duplicateActions": 0,
+        "wrongRecipients": 0,
+        "obsoleteActions": 0,
+        "appropriateSilence": true,
+        "malformedOutputs": 0
+      },
+      "effects": [
+        {
+          "channel": "alpha",
+          "task": "draft",
+          "messageId": "ca30ce9a-1811-4dfc-9448-4a622d0f7b7d",
+          "item": "draft",
+          "value": "BLUE",
+          "dispatchOrder": 1
+        }
+      ],
+      "routes": [
+        {
+          "channel": "alpha",
+          "thread": "draft",
+          "sender": "alice",
+          "task": "draft"
+        }
+      ],
+      "pendingEvents": 0,
+      "runtimeErrors": 0,
+      "transcriptPairsValid": true
+    },
+    {
+      "id": "handoff",
+      "mode": "scripted",
+      "score": {
+        "validTaskCompletion": 1,
+        "expectedTasks": 1,
+        "missedCommitments": 0,
+        "duplicateActions": 0,
+        "wrongRecipients": 0,
+        "obsoleteActions": 0,
+        "appropriateSilence": true,
+        "malformedOutputs": 0
+      },
+      "effects": [
+        {
+          "channel": "alpha",
+          "task": "delegated",
+          "messageId": "a71a5629-c742-48ee-83a9-3f9d0ec2c0c1",
+          "item": "handoff",
+          "value": "FINISHED",
+          "dispatchOrder": 1
+        }
+      ],
+      "routes": [
+        {
+          "channel": "alpha",
+          "thread": "handoff",
+          "sender": "alice",
+          "task": "delegated"
+        }
+      ],
+      "pendingEvents": 0,
+      "runtimeErrors": 0,
+      "transcriptPairsValid": true
+    }
+  ],
+  "timeouts": {
+    "roundReached": false,
+    "providerRequests": 0
+  },
+  "budget": {
+    "requests": 29,
+    "inputReserved": 294707,
+    "outputReserved": 475136,
+    "refused": 0
+  },
+  "pass": true,
+  "note": "Scripted local runner validation; no model competence claim."
+}

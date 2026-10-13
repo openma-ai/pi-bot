@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "project": {
+    "name": "pi-bot",
+    "productType": "local real Pi messenger",
+    "stack": [
+      "react",
+      "vite",
+      "radix themes"
+    ]
+  },
+  "sources": {
+    "tokens": [
+      "gui/style.css"
+    ],
+    "components": [
+      "gui/main.jsx"
+    ],
+    "assets": [],
+    "instructions": []
+  },
+  "design": {
+    "colorMode": "dark",
+    "colors": {},
+    "typography": {},
+    "spacing": {},
+    "radius": {},
+    "shadows": {},
+    "motion": {},
+    "density": "compact"
+  },
+  "components": {
+    "installed": [
+      "@radix-ui/themes"
+    ],
+    "preferredPrimitives": [
+      "Radix Themes"
+    ],
+    "patterns": []
+  },
+  "constraints": {
+    "must": [
+      "Simple messenger navigation",
+      "Real Pi inbox and send_message results",
+      "All group members see public messages",
+      "Dedicated schedule and monitor pages"
+    ],
+    "avoid": [
+      "Ant Design",
+      "Fake bot replies",
+      "Technical dispatch controls in group composer"
+    ]
+  },
+  "decisions": [],
+  "evidence": [
+    {
+      "fact": "project.stack:react",
+      "source": "package.json"
+    },
+    {
+      "fact": "project.stack:vite",
+      "source": "package.json"
+    }
+  ],
+  "generatedAt": "2026-10-13T01:23:27.532Z"
+}
