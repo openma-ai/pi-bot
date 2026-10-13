@@ -11,7 +11,7 @@ type Base = {
     createdAt: number;
 };
 export type Schedule = Base & {
-    state: 'active' | 'completed' | 'cancelled';
+    state: 'active' | 'paused' | 'completed' | 'cancelled';
     timezone: string;
     nextFire: number;
     firstFire: number;
@@ -199,6 +199,28 @@ export class ProactiveService {
         this.runtime.store.put('schedules', {
             ...s, state: 'cancelled', revision: s.revision + 1
         });
+        this.invalidateFires(id);
+    }
+    pauseSchedule(botId: string, id: string) {
+        const s = this.owned<Schedule>('schedules', botId, id);
+        if (s.state === 'paused') return;
+        if (s.state !== 'active') throw Error('Schedule completed or cancelled');
+        this.runtime.store.put('schedules', { ...s, state: 'paused', revision: s.revision + 1 });
+        this.invalidateFires(id);
+    }
+    resumeSchedule(botId: string, id: string) {
+        const s = this.owned<Schedule>('schedules', botId, id);
+        this.source(s.sourceId);
+        if (s.state === 'active') return;
+        if (s.state !== 'paused') throw Error('Schedule completed or cancelled');
+        this.runtime.store.put('schedules', { ...s, state: 'active', revision: s.revision + 1 });
+    }
+    pauseMonitor(botId: string, id: string) {
+        const m = this.owned<Monitor>('monitors', botId, id);
+        if (m.state !== 'active') throw Error('Monitor expired or cancelled');
+        if (!m.enabled) return;
+        this.runtime.store.put('monitors', { ...m, enabled: false, revision: m.revision + 1 });
+        this.controllers.get(id)?.abort();
         this.invalidateFires(id);
     }
     createMonitor(source: Envelope, input: {

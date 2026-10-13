@@ -20,17 +20,25 @@
     "credential-entry": "node --import tsx src/credential-cli.ts",
     "evaluate:behavior": "node --import tsx src/behavior-cli.ts",
     "benchmark:proactive": "node --import tsx src/proactive-benchmark-cli.ts",
-    "messages:query": "node --import tsx src/channel-messages-cli.ts"
+    "messages:query": "node --import tsx src/channel-messages-cli.ts",
+    "gui:build": "vite build gui --outDir dist",
+    "gui": "npm run gui:build && node --import tsx src/gui-server.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "1.1.0",
-    "@earendil-works/pi-ai": "1.1.0",
     "@earendil-works/pi-agent-core": "1.1.0",
+    "@earendil-works/pi-ai": "1.1.0",
+    "@earendil-works/pi-coding-agent": "1.1.0",
+    "@radix-ui/themes": "^3.2.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "typebox": "1.3.27"
   },
   "devDependencies": {
     "@types/node": "22.19.15",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "tsx": "4.23.15",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vite": "^8.3.4"
   }
 }

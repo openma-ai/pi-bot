@@ -5,3 +5,4 @@ work/
 *.db-wal
 *.db-shm
 *.lock
+gui/dist/

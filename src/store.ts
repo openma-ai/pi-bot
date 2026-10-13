@@ -221,7 +221,7 @@ export class Store {
         const questions = select('questions', 'botId', ['pending'], []);
         const inbox = select('inbox', 'to', ['queued', 'processing', 'uncertain'], ['text']);
         const outbox = select('outbox', 'botId', ['pending', 'sending', 'uncertain'], ['text']);
-        const schedules = select('schedules', 'botId', ['active'], ['prompt']);
+        const schedules = select('schedules', 'botId', ['active', 'paused'], ['prompt']);
         const monitors = select('monitors', 'botId', ['active'], ['prompt', 'baseline', 'cursor']);
         const proposals = select('proposals', 'botId', ['running', 'approved', 'uncertain'], ['candidate', 'evidenceRefs', 'review']);
         return {
