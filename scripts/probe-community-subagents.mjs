@@ -1,0 +1,12 @@
+import * as pi from '@earendil-works/pi-coding-agent';
+import {InMemoryCredentialStore,fauxProvider,fauxAssistantMessage,fauxToolCall} from '@earendil-works/pi-ai';
+import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';import{resolve,join}from'node:path';
+import {pathToFileURL} from 'node:url';
+const packageDir=resolve(process.argv[2]??'work/subagents-compat/node_modules/pi-subagents');
+const {createDefaultChildSessionFactory}=await import(pathToFileURL(join(packageDir,'src/runs/shared/child-session.js')).href);
+const cwd=resolve('work/subagents-compat/fixture');mkdirSync(cwd,{recursive:true});
+const models=await pi.ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsPath:null,refreshOnCreate:false});const faux=fauxProvider();models.registerNativeProvider(faux.provider);
+faux.setResponses([fauxAssistantMessage(fauxToolCall('write',{path:'result.txt',content:'73'}),{stopReason:'toolUse'}),fauxAssistantMessage(fauxToolCall('read',{path:'result.txt'}),{stopReason:'toolUse'}),fauxAssistantMessage('Verified 73')]);
+const factory=createDefaultChildSessionFactory({loadPiCodingAgent:async()=>({...pi,ModelRuntime:{create:async()=>models},SettingsManager:{...pi.SettingsManager,create:()=>pi.SettingsManager.inMemory({compaction:{enabled:false},retry:{enabled:false}})}})});
+let child;const report={package:'pi-subagents@0.77.0',pi:pi.VERSION,kind:'offline real community child factory with native Pi tools and faux provider'};
+try{child=await factory.create({cwd,storage:{kind:'dir',sessionDir:cwd},model:'faux/faux-1',tools:['write','read'],extensionPaths:[],ambientExtensions:false,hooks:[],noSkills:true,noContextFiles:true,systemPrompt:'Write result.txt with 73 and read it back.',runtime:{}});await child.prompt('Write and verify 73');report.success=true;report.artifact=readFileSync(join(cwd,'result.txt'),'utf8');report.model=child.modelId;report.sessionFile=child.sessionFile;report.final=child.messages.at(-1)?.content;}catch(e){report.success=false;report.error=String(e);}finally{await child?.dispose();await factory.dispose();}writeFileSync('work/subagents-compat/report.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report));

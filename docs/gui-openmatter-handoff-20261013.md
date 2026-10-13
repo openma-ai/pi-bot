@@ -1,5 +1,7 @@
 # GUI / OpenMatter 交接（2026-10-13）
 
+后续变更：模型/认证已改为 Pi 原生配置，移除 GUI 的 DSH 兜底与自定义模型环境变量，并增加独立 coding worker。参见 [当前认证与重活派发](pi-auth-workers.md)。下面的真实 DeepSeek 数据描述当时已经执行的验收，不代表新认证路径的真实 API 验收。
+
 ## 最终实现
 
 React + Radix Themes 的本地聊天 GUI，连接真实 Pi 1.1.0。保留原 bot、SQLite 消息记录、任务和原生会话文件。左侧直接进入定时任务、监控、Bot 对话；可在 GUI 发任务、看 send_message 结果、创建群聊、创建/暂停/恢复/取消 schedule 与 monitor。没有演示回复兜底，没有升级 Pi 1.2。

@@ -3,6 +3,7 @@ import {join,resolve} from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 const directory=resolve(process.env.PI_BOT_DIR ?? 'work/gui/demo');
 const {token,...state}=await (await fetch('http://127.0.0.1:4317/api/state')).json();
+if(!state.budget)throw Error('No active authenticated Pi evaluation round; snapshot would not represent real API usage');
 const start=state.budget.expiresAt-60*60*1000;
 const usage={responses:0,input:0,output:0,cacheRead:0,reasoning:0,totalTokens:0,estimatedUsd:0};
 const files=root=>readdirSync(root,{withFileTypes:true}).flatMap(e=>e.isDirectory()?files(join(root,e.name)):[join(root,e.name)]);

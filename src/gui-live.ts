@@ -1,26 +1,29 @@
 import { join } from 'node:path';
-import { ModelRuntime, type ExtensionFactory } from '@earendil-works/pi-coding-agent';
-import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
+import { getAgentDir, type ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { piSessionFactory } from './pi.ts';
-import { configureSmokeProvider, SMOKE_PROVIDER } from './smoke-provider.ts';
-import { readLocalDshDeepSeekKey } from './local-evaluation-auth.ts';
+import { loadPiConfiguration } from './pi-config.ts';
 import { estimateContextTokens } from './context.ts';
 import type { ProactiveService } from './proactive.ts';
-import type { BotRuntime } from './runtime.ts';
+import type { SessionFactory, BotRuntime } from './runtime.ts';
 import { redactTraceValue } from './evaluation-trace.ts';
 import { appendFileSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 export async function guiPiFactory(dir: string, proactive: (host: BotRuntime) => ProactiveService) {
-    const models = await ModelRuntime.create({
-        credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(dir, 'models.json'), refreshOnCreate: false, allowModelNetwork: false
-    });
-    const model = configureSmokeProvider(models, 'deepseek-v4-flash');
-    let secret = process.env.DEEPSEEK_API_KEY ?? await readLocalDshDeepSeekKey();
+    let configuration;
     try {
-        await models.setRuntimeApiKey(SMOKE_PROVIDER, secret);
+        configuration = await loadPiConfiguration();
     }
-    finally {
-        secret = '';
+    catch {
+        const factory: SessionFactory = async () => {
+            throw Error('Pi 配置不可用，请在 Pi 中完成 /login 和 /model 后重启 GUI');
+        };
+        return {
+            factory, model: '未配置', configuration: {
+                auth: 'Pi native', agentDir: getAgentDir(), setupRequired: true, message: '请在 Pi 中完成 /login 和 /model，然后重启 GUI'
+            }, dispose: () => {
+            }, budget: undefined
+        };
     }
+    const { models, model } = configuration;
     const budgetFile = join(dir, 'gui-budget.json');
     const fresh = {
         requests: 0, inputReserved: 0, maxRequests: 32, maxInput: 384000, expiresAt: Date.now() + 3600000
@@ -45,7 +48,7 @@ export async function guiPiFactory(dir: string, proactive: (host: BotRuntime) =>
         pi.on('tool_result', event => save('tool_result', event));
     };
     const factory = piSessionFactory({
-        dir: join(dir, 'sessions'), modelRuntime: models, model, proactive, context: {
+        codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model, proactive, context: {
             backgroundEnabled: false
         }, backgroundTools: {}, extensions: [trace], thinkingLevel: 'high', maxOutputTokens: 16384, maxRequestsPerWake: 16, inferenceRequestTimeoutMs: 600000, inferenceSignal: lifetime,
         beforeProviderRequest(context) {
@@ -62,6 +65,6 @@ export async function guiPiFactory(dir: string, proactive: (host: BotRuntime) =>
         }
     });
     return {
-        factory, budget, model: model.id, dispose: () => models.removeRuntimeApiKey(SMOKE_PROVIDER)
+        factory, budget, model: model.id, configuration: configuration.public, dispose: configuration.dispose
     };
 }
