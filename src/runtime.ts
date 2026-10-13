@@ -1,22 +1,30 @@
 import { acquireLock } from './lock.ts';
 import { randomUUID } from 'node:crypto';
-import { Store, type Bot, type Envelope, type Job, type Question, type Outbound, type ChatRoute } from './store.ts';
+import { Store, type Bot, type Envelope, type Job, type Question, type Outbound, type ChatRoute, type ChatGroup } from './store.ts';
 import { redactChannelText } from './channel-messages.ts';
+import type { OpenMatterTrigger } from './openmatter-trigger.ts';
+import { groupMentions } from './group-mentions.ts';
 export class JobExecutionError extends Error {
     constructor(message: string, readonly outcome: unknown) {
         super(message);
     }
 }
+export class InferenceYieldError extends Error {
+    constructor() {
+        super('Inference yielded to host input');
+    }
+}
 export interface BotSession {
     run(e: Envelope): Promise<void>;
     enqueue?(e: Envelope): Promise<void>;
+    yieldForUser?(): void;
     /** Native adapter confirms event actually reached a provider boundary. */
     consumed?(e: Envelope): boolean;
     /** A successful final native step, unlike merely reaching a provider boundary. */
     resolved?(e: Envelope): boolean;
     close(): Promise<void>;
 }
-export type SessionFactory = (bot: Bot, runtime: BotRuntime) => Promise<BotSession>;
+export type SessionFactory = (bot: Bot, runtime: BotRuntime, scope?: string) => Promise<BotSession>;
 export type Permission = (request: {
     botId: string;
     tool: string;
@@ -34,6 +42,7 @@ export class BotRuntime {
         session: BotSession;
         batch: Envelope[];
         lane: 'user' | 'peer' | 'background';
+        scope: string;
     }>();
     private foregroundBursts = new Map<string, number>();
     private readonly generation = randomUUID();
@@ -41,6 +50,8 @@ export class BotRuntime {
     readonly errors: unknown[] = [];
     private releaseLock: () => void;
     constructor(path: string, private factory: SessionFactory, readonly options: {
+        isolateConversations?: boolean;
+        activation?: OpenMatterTrigger;
         maxBots?: number;
         maxHops?: number;
         maxTaskMessages?: number;
@@ -64,15 +75,60 @@ export class BotRuntime {
             throw Error('Bot capacity reached');
         const bot = this.store.createBot(name, description);
         if (channelId) {
-            bot.channelId = channelId;
-            this.store.put('bots', bot);
+            const group = this.store.get<ChatGroup>('groups', channelId);
+            if (group) {
+                bot.groupIds = [group.id];
+                this.store.transaction(() => {
+                    this.store.put('bots', bot);
+                    this.store.put('groups', {
+                        ...group, memberIds: [...group.memberIds, bot.id]
+                    });
+                });
+            }
+            else {
+                bot.channelId = channelId;
+                this.store.put('bots', bot);
+            }
         }
         return bot;
     }
     listBots() {
         return this.store.list<Bot>('bots');
     }
+    listGroups() {
+        return this.store.list<ChatGroup>('groups');
+    }
+    createGroup(name: string, memberIds: string[]) {
+        if (!name.trim() || name.length > 60 || memberIds.length < 2 || memberIds.length > 16 || new Set(memberIds).size !== memberIds.length || memberIds.some(id => !this.store.get<Bot>('bots', id)))
+            throw Error('群名及至少两名有效成员必填');
+        if (this.listGroups().length >= 32)
+            throw Error('Group capacity reached');
+        const group: ChatGroup = {
+            id: 'group:' + randomUUID(), name: name.trim(), memberIds, createdAt: Date.now()
+        };
+        this.store.transaction(() => {
+            this.store.put('groups', group);
+            for (const id of memberIds) {
+                const bot = this.store.get<Bot>('bots', id)!;
+                this.store.put('bots', {
+                    ...bot, groupIds: [...(bot.groupIds ?? []), group.id]
+                });
+            }
+        });
+        return group;
+    }
+    channelBots(channelId?: string) {
+        return this.listBots().filter(b => b.channelId === channelId || (channelId !== undefined && b.groupIds?.includes(channelId)));
+    }
+    activateInbox(id: string) {
+        const e = this.store.get<Envelope>('inbox', id);
+        if (!e)
+            throw Error('Missing native inbox; explicit reconciliation required');
+        if (e.state === 'queued')
+            this.wake(e.to);
+    }
     start() {
+        this.options.activation?.flush();
         for (const b of this.listBots())
             this.wake(b.id);
     }
@@ -82,6 +138,9 @@ export class BotRuntime {
         text: string;
         key: string;
         kind?: Envelope['kind'];
+        groupMessageId?: string;
+        mentions?: string[];
+        groupAttention?: Envelope['groupAttention'];
         peerPriority?: Envelope['peerPriority'];
         deliveryTarget?: Envelope['deliveryTarget'];
         taskId?: string;
@@ -103,14 +162,14 @@ export class BotRuntime {
             throw Error('Only host user input can control a task');
         const old = this.store.find<Envelope>('inbox', from, input.key);
         if (old) {
-            if (old.to !== input.to || old.text !== text || old.taskControl !== input.taskControl || old.peerPriority !== input.peerPriority || (old.kind === 'bot' ? old.deliveryTarget ?? 'direct' : undefined) !== deliveryTarget || JSON.stringify(old.route) !== JSON.stringify(input.route))
+            if (JSON.stringify(old.mentions) !== JSON.stringify(input.mentions) || old.groupMessageId !== input.groupMessageId || old.to !== input.to || old.text !== text || old.taskControl !== input.taskControl || old.peerPriority !== input.peerPriority || (old.kind === 'bot' ? old.deliveryTarget ?? 'direct' : undefined) !== deliveryTarget || JSON.stringify(old.route) !== JSON.stringify(input.route))
                 throw Error('Idempotency key conflict');
             return old;
         }
         const recipient = this.store.get<Bot>('bots', input.to);
         if (!recipient)
             throw Error('Unknown recipient');
-        if (recipient.channelId !== input.route?.channelId)
+        if (recipient.channelId !== input.route?.channelId && !(input.route?.channelId && recipient.groupIds?.includes(input.route.channelId)))
             throw Error('Recipient channel mismatch');
         const hop = input.hop ?? 0;
         if (hop > (this.options.maxHops ?? 8))
@@ -127,13 +186,66 @@ export class BotRuntime {
                 }
             } : {}), ...(input.taskControl ? {
                 taskControl: input.taskControl
-            } : {}), ...(input.peerPriority ? { peerPriority: input.peerPriority } : {}), ...(deliveryTarget ? { deliveryTarget } : {})
+            } : {}), ...(input.groupMessageId ? {
+                groupMessageId: input.groupMessageId, mentions: input.mentions ?? [], groupAttention: input.groupAttention ?? 'normal'
+            } : {}), ...(input.peerPriority ? {
+                peerPriority: input.peerPriority
+            } : {}), ...(deliveryTarget ? {
+                deliveryTarget
+            } : {})
         };
+        this.options.activation?.publish(e);
         this.store.put('inbox', e);
-        this.wake(e.to);
+        if (this.options.activation) {
+            if (!this.store.db.isTransaction)
+                this.options.activation.flush();
+        }
+        else
+            this.wake(e.to);
         return e;
     }
-    sendToBot(source: Envelope, to: string, text: string, key: string, options?: Envelope['peerPriority'] | { priority?: boolean }) {
+    acceptGroupUser(groupId: string, text: string, key: string) {
+        const group = this.listGroups().find(g => g.id === groupId);
+        if (!group)
+            throw Error('Unknown group');
+        const members = group.memberIds.map(id => this.store.get<Bot>('bots', id)!);
+        const mentions = groupMentions(text, members).ids;
+        const messageId = 'user-group:' + key;
+        const old = this.store.get<{
+            text: string;
+            channelId: string;
+        }>('group_messages', messageId);
+        if (old && (old.text !== redactChannelText(text) || old.channelId !== groupId))
+            throw Error('Idempotency key conflict');
+        const taskId = old ? (old as any).taskId : randomUUID();
+        return this.store.transaction(() => {
+            const deliveries = members.map(bot => this.accept({
+                to: bot.id, text, key: key + ':' + bot.id, taskId, groupMessageId: messageId, mentions, groupAttention: mentions.includes(bot.id) ? 'mention' : 'normal', route: {
+                    channelId: groupId, conversationId: groupId, threadId: 'gui', senderId: 'user'
+                }
+            }));
+            if (!old)
+                this.store.put('group_messages', {
+                    ...this.projectGroup(deliveries[0]), id: messageId, messageId, groupMessageId: messageId, recipient: 'group', mentions, status: 'received'
+                });
+            return {
+                ...deliveries[0], deliveries: deliveries.map(e => ({
+                    id: e.id, to: e.to, state: e.state, groupAttention: e.groupAttention
+                }))
+            };
+        });
+    }
+    private projectGroup(e: Envelope) {
+        return {
+            messageId: e.id, channelId: e.route!.channelId, conversationId: e.route!.conversationId ?? e.route!.channelId, threadId: e.route!.threadId, direction: 'inbound', sourceKind: e.kind, sender: e.from, recipient: e.to, botId: e.to, taskId: e.taskId, causationId: e.replyTo, text: redactChannelText(e.text), status: e.state, receivedAt: e.createdAt
+        };
+    }
+    private sessionScope(e: Envelope) {
+        return this.options.isolateConversations ? JSON.stringify([e.route?.channelId ?? 'private', e.route?.conversationId ?? e.route?.channelId ?? 'private', e.route?.threadId ?? '']) : '';
+    }
+    sendToBot(source: Envelope, to: string, text: string, key: string, options?: Envelope['peerPriority'] | {
+        priority?: boolean;
+    }) {
         this.assertTaskCurrent(source);
         const peerPriority = typeof options === 'string' ? options : options?.priority ? 'urgent' : undefined;
         return this.accept({
@@ -142,9 +254,20 @@ export class BotRuntime {
     }
     sendToGroup(source: Envelope, text: string, key: string, _priority = false): Envelope[] {
         this.assertTaskCurrent(source);
-        if (!source.route?.channelId) throw Error('Group delivery requires an inherited channel');
-        const recipients = this.listBots().filter(b => b.channelId === source.route!.channelId && b.id !== source.to);
-        return this.store.transaction(() => recipients.map(b => this.accept({ from: source.to, to: b.id, kind: 'bot', text, key: `${key}:${b.id}`, taskId: source.taskId, replyTo: source.id, hop: source.hop + 1, route: source.route, deliveryTarget: 'group' })));
+        if (!source.route?.channelId)
+            throw Error('Group delivery requires an inherited channel');
+        const recipients = this.channelBots(source.route.channelId).filter(b => b.id !== source.to);
+        const messageId = `bot-group:${source.to}:${key}`;
+        return this.store.transaction(() => {
+            const deliveries = recipients.map(b => this.accept({
+                from: source.to, to: b.id, kind: 'bot', text, key: `${key}:${b.id}`, taskId: source.taskId, replyTo: source.id, hop: source.hop + 1, route: source.route, deliveryTarget: 'group', groupMessageId: messageId
+            }));
+            if (deliveries[0] && this.store.get('groups', source.route!.channelId))
+                this.store.put('group_messages', {
+                    ...this.projectGroup(deliveries[0]), id: messageId, messageId, groupMessageId: messageId, recipient: 'group', status: 'received'
+                });
+            return deliveries;
+        });
     }
     private wake(id: string) {
         if (this.stopped)
@@ -171,8 +294,14 @@ export class BotRuntime {
             return;
         let e: Envelope | undefined;
         while ((e = this.pending(id, false, active.lane === 'user'))) {
+            if (active.scope !== this.sessionScope(e)) {
+                if (!e.deferredContinuation && ['user', 'answer'].includes(e.kind) && (!e.groupMessageId || e.groupAttention === 'mention'))
+                    active.session.yieldForUser?.();
+                break;
+            }
             const item = e;
-            if (['user', 'answer'].includes(item.kind)) active.lane = 'user';
+            if (['user', 'answer'].includes(item.kind))
+                active.lane = 'user';
             this.store.put('inbox', {
                 ...item, state: 'processing', admittedAt: Date.now()
             });
@@ -197,16 +326,18 @@ export class BotRuntime {
             const batch = [e];
             let activeSession: BotSession | undefined;
             try {
-                let s = this.sessions.get(id);
+                const scope = this.sessionScope(e);
+                const sessionKey = id + ':' + scope;
+                let s = this.sessions.get(sessionKey);
                 if (!s) {
-                    s = this.factory(this.store.get<Bot>('bots', id)!, this);
-                    this.sessions.set(id, s);
+                    s = this.factory(this.store.get<Bot>('bots', id)!, this, scope || undefined);
+                    this.sessions.set(sessionKey, s);
                 }
                 const session = await s;
                 activeSession = session;
                 const run = session.run(e);
                 this.active.set(id, {
-                    session, batch, lane: ['user', 'answer'].includes(e.kind) ? 'user' : ['bot', 'job'].includes(e.kind) ? 'peer' : 'background'
+                    session, batch, scope, lane: ['user', 'answer'].includes(e.kind) ? 'user' : ['bot', 'job'].includes(e.kind) ? 'peer' : 'background'
                 });
                 this.pump(id);
                 await run;
@@ -214,16 +345,30 @@ export class BotRuntime {
                 for (const item of batch)
                     if (this.store.get<Envelope>('inbox', item.id)?.state === 'processing')
                         this.store.put('inbox', {
-                            ...this.store.get<Envelope>('inbox', item.id)!, state: session.consumed && !session.consumed(item) ? (item.id === e.id ? 'uncertain' : 'queued') : 'processed', ...(session.consumed && !session.consumed(item) ? {} : { resolvedAt: Date.now() })
+                            ...this.store.get<Envelope>('inbox', item.id)!, state: session.consumed && !session.consumed(item) ? (item.id === e.id ? 'uncertain' : 'queued') : 'processed', ...(session.consumed && !session.consumed(item) ? {} : {
+                                resolvedAt: Date.now()
+                            })
                         });
             }
             catch (error) {
                 this.active.delete(id);
+                if (error instanceof InferenceYieldError) {
+                    for (const item of batch) {
+                        const saved = this.store.get<Envelope>('inbox', item.id);
+                        if (saved?.state === 'processing')
+                            this.store.put('inbox', {
+                                ...saved, state: saved.resolvedAt ? 'processed' : 'queued', deferredContinuation: !saved.resolvedAt
+                            });
+                    }
+                    continue;
+                }
                 for (const item of batch) {
                     const saved = this.store.get<Envelope>('inbox', item.id)!;
                     const resolved = saved.resolvedAt || activeSession?.resolved?.(item);
                     this.store.put('inbox', {
-                        ...saved, state: resolved ? 'processed' : 'uncertain', error: resolved ? undefined : String(error), ...(resolved ? { resolvedAt: saved.resolvedAt ?? Date.now() } : {})
+                        ...saved, state: resolved ? 'processed' : 'uncertain', error: resolved ? undefined : String(error), ...(resolved ? {
+                            resolvedAt: saved.resolvedAt ?? Date.now()
+                        } : {})
                     });
                 }
                 this.errors.push(error);
@@ -234,22 +379,49 @@ export class BotRuntime {
     checkpointInbox(ids: Iterable<string>, stage: 'consumed' | 'resolved') {
         for (const id of ids) {
             const e = this.store.get<Envelope>('inbox', id);
-            if (e?.state !== 'processing') continue;
-            this.store.put('inbox', { ...e, consumedAt: e.consumedAt ?? Date.now(), ...(stage === 'resolved' ? { resolvedAt: Date.now(), resolution: { owner: 'native-final', evidence: [] } } : {}) });
+            if (e?.state !== 'processing')
+                continue;
+            this.store.put('inbox', {
+                ...e, consumedAt: e.consumedAt ?? Date.now(), ...(stage === 'resolved' ? {
+                    resolvedAt: Date.now(), resolution: {
+                        owner: 'native-final', evidence: []
+                    }
+                } : {})
+            });
         }
     }
     /** Host-only reconciliation: delivered correlated output is independently verifiable. */
-    reconcileInbox(id: string, review: { outcome: 'processed' | 'failed' | 'queued'; evidence: string[]; note?: string }) {
+    reconcileInbox(id: string, review: {
+        outcome: 'processed' | 'failed' | 'queued';
+        evidence: string[];
+        note?: string;
+    }) {
         const e = this.store.get<Envelope>('inbox', id);
-        if (!e || e.state !== 'uncertain') throw Error('Inbox must be uncertain');
-        if (!review.evidence.length) throw Error('Resolution requires evidence');
+        if (!e || e.state !== 'uncertain')
+            throw Error('Inbox must be uncertain');
+        if (!review.evidence.length)
+            throw Error('Resolution requires evidence');
         if (review.outcome === 'processed' && !review.evidence.every(ref => {
             const o = this.store.get<Outbound>('outbox', ref);
             return o?.state === 'delivered' && o.replyTo === id && o.botId === e.to && o.taskId === e.taskId;
-        })) throw Error('Evidence must be delivered correlated output');
-        if (review.outcome !== 'processed' && !review.note?.trim()) throw Error('Host review note required before retry or failure');
-        this.store.put('inbox', { ...e, state: review.outcome, error: undefined, resolvedAt: review.outcome === 'queued' ? undefined : Date.now(), resolution: { owner: 'host-review', evidence: review.evidence, note: review.note } });
-        if (review.outcome === 'queued') this.wake(e.to);
+        }))
+            throw Error('Evidence must be delivered correlated output');
+        if (review.outcome !== 'processed' && !review.note?.trim())
+            throw Error('Host review note required before retry or failure');
+        this.store.put('inbox', {
+            ...e, state: review.outcome, error: undefined, resolvedAt: review.outcome === 'queued' ? undefined : Date.now(), resolution: {
+                owner: 'host-review', evidence: review.evidence, note: review.note
+            }
+        });
+        if (review.outcome === 'queued') {
+            const reviewed = this.store.get<Envelope>('inbox', id)!;
+            if (this.options.activation) {
+                this.options.activation.publish(reviewed);
+                this.options.activation.flush();
+            }
+            else
+                this.wake(e.to);
+        }
     }
     sendMessage(e: Envelope, text: string, key: string) {
         this.assertTaskCurrent(e, true);
@@ -317,7 +489,10 @@ export class BotRuntime {
             });
         });
     }
-    startJob(e: Envelope, tool: string, args: unknown, key: string, execute: () => Promise<unknown>, options: { quiet?: boolean; onSettled?: (state: Job['state']) => void } = {}): Job {
+    startJob(e: Envelope, tool: string, args: unknown, key: string, execute: () => Promise<unknown>, options: {
+        quiet?: boolean;
+        onSettled?: (state: Job['state']) => void;
+    } = {}): Job {
         this.assertTaskCurrent(e);
         const old = this.store.find<Job>('jobs', e.to, key);
         if (old) {
@@ -330,7 +505,9 @@ export class BotRuntime {
         if (this.jobs.size >= (this.options.maxJobs ?? 8))
             throw Error('Concurrent job budget reached');
         const j: Job = {
-            id: randomUUID(), botId: e.to, taskId: e.taskId, messageId: e.id, key, tool, args, state: 'running', createdAt: Date.now(), generation: randomUUID(), attempt: 1, owner: this.generation, ...(options.quiet ? { quiet: true } : {})
+            id: randomUUID(), botId: e.to, taskId: e.taskId, messageId: e.id, key, tool, args, state: 'running', createdAt: Date.now(), generation: randomUUID(), attempt: 1, owner: this.generation, ...(options.quiet ? {
+                quiet: true
+            } : {})
         };
         this.store.put('jobs', j);
         const p = Promise.resolve().then(async () => {
@@ -346,8 +523,16 @@ export class BotRuntime {
                 this.settleJob(j, 'failed', error instanceof JobExecutionError ? JSON.stringify(error.outcome) : undefined, String(error));
             }
         }).finally(() => {
-            this.jobs.delete(p); this.jobCompletions.delete(j.id);
-            if (options.onSettled) { try { options.onSettled(this.store.get<Job>('jobs', j.id)!.state); } catch (error) { this.errors.push(error); } }
+            this.jobs.delete(p);
+            this.jobCompletions.delete(j.id);
+            if (options.onSettled) {
+                try {
+                    options.onSettled(this.store.get<Job>('jobs', j.id)!.state);
+                }
+                catch (error) {
+                    this.errors.push(error);
+                }
+            }
         });
         this.jobs.add(p);
         this.jobCompletions.set(j.id, p);
@@ -355,9 +540,11 @@ export class BotRuntime {
     }
     /** Await the existing host execution; never create or replay work. */
     async waitForJob(id: string): Promise<Job> {
-        if (!this.store.get<Job>('jobs', id)) throw Error('Unknown job');
+        if (!this.store.get<Job>('jobs', id))
+            throw Error('Unknown job');
         const completion = this.jobCompletions.get(id);
-        if (completion) await completion;
+        if (completion)
+            await completion;
         return this.store.get<Job>('jobs', id)!;
     }
     /** Host-declared replacement/cancellation prevents future obsolete actions.
@@ -367,7 +554,8 @@ export class BotRuntime {
         const visited = new Set<string>();
         while (ancestor && !visited.has(ancestor.id)) {
             visited.add(ancestor.id);
-            if (ancestor.triggerCancelled) throw Error('Trigger cancelled; no new action permitted');
+            if (ancestor.triggerCancelled)
+                throw Error('Trigger cancelled; no new action permitted');
             ancestor = ancestor.replyTo ? this.store.get<Envelope>('inbox', ancestor.replyTo) : undefined;
         }
         const inbox = this.store.list<Envelope>('inbox');
@@ -394,11 +582,13 @@ export class BotRuntime {
         error = error?.slice(0, 2000);
         this.store.transaction(() => {
             const current = this.store.get<Job>('jobs', j.id);
-            if (!current || current.state !== 'running' || current.generation !== j.generation || current.owner !== j.owner) return;
+            if (!current || current.state !== 'running' || current.generation !== j.generation || current.owner !== j.owner)
+                return;
             this.store.put('jobs', {
                 ...j, state, result, error, completedAt: Date.now()
             });
-            if (j.quiet) return;
+            if (j.quiet)
+                return;
             try {
                 this.accept({
                     from: `job:${j.id}`, to: j.botId, kind: 'job', key: `settled:${j.id}`, taskId: j.taskId, replyTo: j.messageId, route: this.store.get<Envelope>('inbox', j.messageId)?.route, text: JSON.stringify({
@@ -459,6 +649,8 @@ export class BotRuntime {
         }
     }
     async idle() {
+        if (!this.store.db.isTransaction)
+            this.options.activation?.flush();
         while (this.lanes.size || this.jobs.size)
             await Promise.all([...this.lanes.values(), ...this.jobs]);
     }

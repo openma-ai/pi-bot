@@ -14,4 +14,8 @@ Supported GUI controls:
 
 Polling runs locally once per second. All states, including cancelled/completed routines, remain inspectable. This does not install an always-on system daemon, wake a sleeping Mac, or prove background context compression. No browser credential entry, public listener, push, merge, or deployment is involved.
 
-Validation: TypeScript and 154 offline tests, plus GUI-driven real file execution, schedule trigger, monitor change trigger, and persistence after restart. Sanitized evidence is saved under `work/gui/real-validation.json` and `work/gui/demo/tools.jsonl`.
+Validation: TypeScript, GUI build and 162 offline tests pass. Separate bounded real DeepSeek rounds validate mentions, shared group visibility, quiet non-actionable chat, isolated groups, schedules, monitors and bot-to-bot handoff with actual bash file execution. See [the current handoff and evidence](gui-openmatter-handoff-20261013.md). Sanitized runtime evidence stays under ignored `work/gui/`.
+
+Group chat delivers messages to every member. @member and @全体成员 change attention rather than visibility. Public group history is separate from direct bot-to-bot messages. Private, group and thread Pi contexts are isolated; interrupted commitments resume without cancelling dispatched jobs.
+
+Triggers use pinned upstream OpenMatter WorkEvent/DurableInbox/SQLite lease handoff, with provenance in `vendor/openmatter/`. Pi still owns execution. Dedicated left-sidebar pages manage schedules, monitors and bot conversations. Real smoke disables background compression; it does not validate real compaction.

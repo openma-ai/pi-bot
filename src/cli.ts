@@ -7,6 +7,7 @@ import { createFileChangeDetector } from './proactive-detectors.ts';
 import { createModelBackgroundWorker } from './proactive-model-worker.ts';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
+import { OpenMatterTrigger } from './openmatter-trigger.ts';
 import { BotRuntime } from './runtime.ts';
 import { piSessionFactory } from './pi.ts';
 import type { Outbound } from './store.ts';
@@ -28,15 +29,34 @@ else {
     if (!model)
         throw Error('Unknown model; select an installed Pi model ID');
     let proactive: ProactiveService | undefined;
-    const proactiveOptions: ConstructorParameters<typeof ProactiveService>[1] = { detectors: process.env.PI_BOT_WATCH_FILE ? { file: createFileChangeDetector(resolve(process.env.PI_BOT_WATCH_FILE)) } : {}, ...(process.env.PI_BOT_BACKGROUND_WORK === '1' ? { workers: { memory: createModelBackgroundWorker(models, model, 'memory'), research: createModelBackgroundWorker(models, model, 'research') } } : {}) };
+    const proactiveOptions: ConstructorParameters<typeof ProactiveService>[1] = {
+        detectors: process.env.PI_BOT_WATCH_FILE ? {
+            file: createFileChangeDetector(resolve(process.env.PI_BOT_WATCH_FILE))
+        } : {}, ...(process.env.PI_BOT_BACKGROUND_WORK === '1' ? {
+            workers: {
+                memory: createModelBackgroundWorker(models, model, 'memory'), research: createModelBackgroundWorker(models, model, 'research')
+            }
+        } : {})
+    };
+    const trigger = new OpenMatterTrigger(join(dir, 'triggers.db'));
     const runtime = new BotRuntime(join(dir, 'runtime.db'), piSessionFactory({
         dir: join(dir, 'sessions'), modelRuntime: models, model,
-        ...(process.env.PI_BOT_PROACTIVE === '1' ? { proactive: (host: BotRuntime) => proactive ??= new ProactiveService(host, proactiveOptions) } : {}),
-        ...(process.env.PI_BOT_BACKGROUND_TOOLS === '1' ? { backgroundTools: {} } : {})
-    }));
+        ...(process.env.PI_BOT_PROACTIVE === '1' ? {
+            proactive: (host: BotRuntime) => proactive ??= new ProactiveService(host, proactiveOptions)
+        } : {}),
+        ...(process.env.PI_BOT_BACKGROUND_TOOLS === '1' ? {
+            backgroundTools: {}
+        } : {})
+    }), {
+        activation: trigger, isolateConversations: true
+    });
+    trigger.bind(id => runtime.activateInbox(id));
     const bot = runtime.listBots()[0] ?? runtime.createBot('main', 'Personal assistant');
     runtime.start();
-    if (process.env.PI_BOT_PROACTIVE === '1') { proactive ??= new ProactiveService(runtime, proactiveOptions); proactive.start(); }
+    if (process.env.PI_BOT_PROACTIVE === '1') {
+        proactive ??= new ProactiveService(runtime, proactiveOptions);
+        proactive.start();
+    }
     const print = async (o: Outbound) => {
         console.log(JSON.stringify({
             type: 'message', ...o
@@ -51,6 +71,8 @@ else {
         type: 'ready', botId: bot.id, commands: ['/bots', '/new NAME', '/to BOT_ID TEXT', '/answer QUESTION_ID TEXT', '/reconcile INBOX_ID DELIVERED_OUTBOX_ID', '/state', '/quit'], note: 'Plain lines go to main bot. Outbox delivered means written to local console only.'
     }));
     timer = setInterval(() => {
+        if (!runtime.store.db.isTransaction)
+            trigger.flush();
         void runtime.deliver(print).catch(e => console.error(String(e)));
     }, 100);
     const stop = async () => {
@@ -65,6 +87,7 @@ else {
         for (const error of runtime.errors)
             console.error('RUNTIME', String(error));
         await runtime.close();
+        trigger.close();
     };
     rl.on('line', line => {
         try {
@@ -86,9 +109,14 @@ else {
             }
             if (line.startsWith('/reconcile ')) {
                 const parts = line.trim().split(/\s+/);
-                if (parts.length !== 3) throw Error('Expected inbox ID and delivered outbox ID');
-                runtime.reconcileInbox(parts[1], { outcome: 'processed', evidence: [parts[2]] });
-                console.log(JSON.stringify({ type: 'reconciled', messageId: parts[1] }));
+                if (parts.length !== 3)
+                    throw Error('Expected inbox ID and delivered outbox ID');
+                runtime.reconcileInbox(parts[1], {
+                    outcome: 'processed', evidence: [parts[2]]
+                });
+                console.log(JSON.stringify({
+                    type: 'reconciled', messageId: parts[1]
+                }));
                 return;
             }
             if (line.startsWith('/answer ')) {

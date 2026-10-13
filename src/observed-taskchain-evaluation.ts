@@ -560,7 +560,7 @@ export async function runObservedTaskChainEvaluation(options: {
                 roundReached: lifetime.signal.aborted, providerRequests: timeouts
             }, budget: {
                 requests: budget.requests, inputReserved: budget.inputReserved, outputReserved: budget.outputReserved, refused: budget.refused
-            }, pass: compressionPass && (!options.cancelDuringExecution || compaction.blockedStaleActions > 0) && completed === expected.length && duplicates === 0 && score.noiseReplies === 0 && score.cancelledActions === 0 && score.wrongRecipients === 0 && score.obsoleteFinalArtifacts === 0 && pending === 0 && runtime.errors.length === 0 && paired && sameProcess && observedProgress() && fullRead() && !lifetime.signal.aborted && timeouts === 0 && budget.refused === 0
+            }, pass: compressionPass && (!options.cancelDuringExecution || compaction.blockedStaleActions > 0) && completed === expected.length && duplicates === 0 && score.noiseReplies === 0 && score.cancelledActions === 0 && score.wrongRecipients === 0 && score.obsoleteFinalArtifacts === 0 && pending === 0 && runtime.errors.length === 0 && paired && sameProcess && observedProgress() && (options.cancelDuringExecution || fullRead()) && !lifetime.signal.aborted && timeouts === 0 && budget.refused === 0
         };
     }
     finally {

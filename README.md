@@ -4,6 +4,10 @@
 
 核心依赖固定到 `@earendil-works/pi-coding-agent@1.1.0`。模型、工具 schema、extension hooks、工具权限链与会话文件复用 Pi。Node.js 24+（内置 SQLite），不需要外部数据库。
 
+## 本地 GUI
+
+`npm run gui` 后访问 http://127.0.0.1:4317/。React + Radix Themes，连接真实 Pi、现有 bot 与消息记录，支持群聊 @ / @全体、bot 间协作和 schedule / monitor 管理。触发交接复用固定源码的 OpenMatter DurableInbox；Pi 仍负责工具和模型执行。参见 [GUI 使用说明](docs/gui.md) 和 [当前交接、验收与边界](docs/gui-openmatter-handoff-20261013.md)。
+
 ## 快速验证（无需 API key）
 
 ```sh

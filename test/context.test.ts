@@ -262,7 +262,10 @@ test('manual compact is cancelled; guard aborts without changing history; histor
         offset: 0, charOffset: 256
     });
 });
-test('timeout and reset cannot multiply an abort-ignoring task', async () => {
+test('timeout and reset cannot multiply an abort-ignoring task', async (t) => {
+    t.mock.timers.enable({
+        apis: ['setTimeout']
+    });
     let invocations = 0;
     let signal: AbortSignal | undefined;
     const manager = new NonBlockingContextManager({
@@ -275,7 +278,7 @@ test('timeout and reset cannot multiply an abort-ignoring task', async () => {
     });
     schedule(manager);
     await tick();
-    await delay(15);
+    t.mock.timers.tick(6);
     assert.equal(signal?.aborted, true);
     schedule(manager, [...history, user('new')]);
     manager.reset();
@@ -336,11 +339,23 @@ test('default model summarizer makes a separate tool-free request with the snaps
     assert.match(request[1].systemPrompt, /actually delivered/);
     assert.equal(request[2].maxTokens, 2048);
 });
-
-test('host summary eligibility defers background launch without changing or blocking foreground context',async()=>{
-    let eligible=false,calls=0;
-    const manager=new NonBlockingContextManager({...options,canSummarize:()=>eligible,summarize:async()=>{calls++;return 'Stable prefix facts.';}});
-    const foreground=manager.preserveContext(input(history));schedule(manager);await tick();assert.equal(calls,0);
-    assert.ok(JSON.stringify(foreground).includes('old request 0'));eligible=true;schedule(manager);await tick();await tick();assert.equal(calls,1);
+test('host summary eligibility defers background launch without changing or blocking foreground context', async () => {
+    let eligible = false, calls = 0;
+    const manager = new NonBlockingContextManager({
+        ...options, canSummarize: () => eligible, summarize: async () => {
+            calls++;
+            return 'Stable prefix facts.';
+        }
+    });
+    const foreground = manager.preserveContext(input(history));
+    schedule(manager);
+    await tick();
+    assert.equal(calls, 0);
+    assert.ok(JSON.stringify(foreground).includes('old request 0'));
+    eligible = true;
+    schedule(manager);
+    await tick();
+    await tick();
+    assert.equal(calls, 1);
     manager.reset();
 });

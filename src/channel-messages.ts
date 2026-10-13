@@ -21,6 +21,9 @@ export type ChannelMessage = {
     deliveredAt?: number;
     deliveryTarget?: string;
     peerPriority?: string;
+    groupMessageId?: string;
+    mentions?: string[];
+    groupAttention?: string;
     error?: string;
 };
 /** Credential entry uses the separate host broker. Also mask recognizable accidental channel secrets. */
@@ -33,7 +36,7 @@ export function projectChannelMessage(table: 'inbox' | 'outbox', value: Envelope
     const channelId = value.route?.channelId ?? `local:${botId}`;
     return {
         messageId: value.id, channelId, conversationId: value.route?.conversationId ?? channelId, threadId: value.route?.threadId ?? null, direction: incoming ? 'inbound' : 'outbound', sourceKind: incoming ? e.kind : 'bot', sender: incoming ? e.from : o.botId, recipient: incoming ? e.to : value.route?.senderId ?? 'user', botId, taskId: value.taskId, causationId: value.replyTo, text: redactChannelText(value.text), status: value.state, receivedAt: value.createdAt, ...(incoming ? {
-            admittedAt: e.admittedAt, consumedAt: e.consumedAt, resolvedAt: e.resolvedAt, deliveryTarget: e.deliveryTarget, peerPriority: e.peerPriority, error: e.error ? redactChannelText(e.error) : undefined
+            groupMessageId: e.groupMessageId, mentions: e.mentions, groupAttention: e.groupAttention, admittedAt: e.admittedAt, consumedAt: e.consumedAt, resolvedAt: e.resolvedAt, deliveryTarget: e.deliveryTarget, peerPriority: e.peerPriority, error: e.error ? redactChannelText(e.error) : undefined
         } : {
             deliveredAt: o.deliveredAt
         })

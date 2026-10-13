@@ -55,6 +55,10 @@ test('TaskChain background execution retains native cells, observes grading prog
     assert.equal(report.background!.processStarts, 1);
     assert.equal(report.background!.processEnds, 1);
     assert.ok(report.background!.sameProcess);
+    assert.equal(report.background!.processStarts, 1);
+    assert.equal(report.background!.processEnds, 1);
+    // Cancellation owes no final user result or gratuitous read of cancelled work.
+    // Full-result observation remains mandatory for non-cancelled task suites.
 });
 test('executable oracle exposes started/finished observations for one real Python PID', async () => {
     const { gradeTaskChain } = await import('../src/taskchain-evaluation.ts');
