@@ -1,3 +1,5 @@
+import { DesktopClient } from './desktop-client.ts';
+import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
@@ -61,6 +63,7 @@ export async function startGui(options: {
     };
     let proactive: ProactiveService;
     const live = options.factory ? undefined : await guiPiFactory(dir, host => proactive);
+    const desktop = DesktopClient.load(resolve('work/gui/desktop/control.json'));
     const trigger = new OpenMatterTrigger(join(dir, 'triggers.db'));
     const runtime = new BotRuntime(join(dir, 'runtime.db'), options.factory ?? live!.factory, {
         isolateConversations: true, activation: trigger
@@ -108,9 +111,10 @@ export async function startGui(options: {
                     return json({
                         error: 'Invalid host'
                     }, 403);
-                if (req.method === 'GET' && url.pathname === '/api/state')
+                if (req.method === 'GET' && url.pathname === '/api/state') {
+                    res.setHeader('set-cookie', `pi-gui-view=${token}; HttpOnly; SameSite=Strict; Path=/`);
                     return json({
-                        mode: live ? `真实 Pi · ${live.model}` : '测试 runtime', configuration: live?.configuration, budget: live?.budget, usage: modelUsage(dir, live?.model), watchFile: resolve(process.env.PI_BOT_WATCH_FILE ?? 'README.md'), token, bots: runtime.listBots(), trigger: {
+                        mode: live ? `真实 Pi · ${live.model}` : '测试 runtime', desktop: !!desktop, configuration: live?.configuration, budget: live?.budget, usage: modelUsage(dir, live?.model), watchFile: resolve(process.env.PI_BOT_WATCH_FILE ?? 'README.md'), token, bots: runtime.listBots(), trigger: {
                             implementation: 'OpenMatter SQLite DurableInbox', halted: trigger.halted, queued: trigger.inspect().filter(r => r.state !== 'completed').length
                         }, groups: runtime.listGroups(), groupMessages: runtime.store.list('group_messages'), messages: [...runtime.store.list<Envelope>('inbox').map(e => projectChannelMessage('inbox', e)), ...runtime.store.list<Outbound>('outbox').filter(e => e.state === 'delivered').map(e => projectChannelMessage('outbox', e))].sort((a, b) => a.receivedAt - b.receivedAt), errors: runtime.errors.map(() => 'Pi 执行未完成，请检查任务状态；不会自动重放'), jobs: runtime.store.list<Job>('jobs').map(j => ({
                             id: j.id, botId: j.botId, tool: j.tool, state: j.state, error: j.error ? redactChannelText(j.error) : undefined
@@ -120,6 +124,19 @@ export async function startGui(options: {
                                 }
                             }]))
                     });
+                }
+                if (req.method === 'GET' && url.pathname.startsWith('/api/desktop/') && url.pathname.endsWith('/screen')) {
+                    const id = url.pathname.split('/')[3];
+                    if (!desktop || !runtime.listBots().some(b => b.id === id))
+                        return json({
+                            error: 'Unknown desktop'
+                        }, 404);
+                    const r = await desktop.request('/screen/' + id);
+                    res.setHeader('content-type', 'image/png');
+                    res.setHeader('cache-control', 'no-store');
+                    res.end(Buffer.from(await r.arrayBuffer()));
+                    return;
+                }
                 if (req.method !== 'POST' || req.headers['x-gui-token'] !== token || (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`))
                     return json({
                         error: 'Forbidden'
@@ -131,6 +148,18 @@ export async function startGui(options: {
                         throw Error('Request too large');
                 }
                 const data = JSON.parse(body);
+                if (url.pathname.startsWith('/api/desktop/')) {
+                    if (!desktop || !runtime.listBots().some(b => b.id === data.botId))
+                        return json({
+                            error: 'Unknown desktop'
+                        }, 404);
+                    if (url.pathname === '/api/desktop/bind')
+                        return json(await desktop.bind(data.botId));
+                    if (url.pathname === '/api/desktop/control')
+                        return json(await (await desktop.request('/control', {
+                            botId: data.botId, take: data.take === true
+                        })).json());
+                }
                 if (url.pathname === '/api/message') {
                     if (live?.configuration && 'setupRequired' in live.configuration && live.configuration.setupRequired)
                         return json({
@@ -293,6 +322,29 @@ export async function startGui(options: {
                 res.end();
         }
     });
+    const desktopWs = new WebSocketServer({
+        noServer: true
+    });
+    server.on('upgrade', (req, socket, head) => {
+        const id = new URL(req.url ?? '/', 'http://localhost').pathname.match(/^\/api\/desktop\/([^/]+)\/ws$/)?.[1];
+        if (!desktop || !id || !runtime.listBots().some(b => b.id === id) || req.headers.origin !== `http://${req.headers.host}` || !req.headers.cookie?.split(';').some(c => c.trim() === `pi-gui-view=${token}`)) {
+            socket.destroy();
+            return;
+        }
+        desktopWs.handleUpgrade(req, socket, head, client => {
+            const remote = new WebSocket(desktop.url.replace('http:', 'ws:') + '/ws/' + id, {
+                headers: desktop.headers()
+            });
+            remote.on('open', () => {
+                client.on('message', d => remote.readyState === 1 && remote.send(d));
+            });
+            remote.on('message', d => client.readyState === 1 && client.send(d));
+            client.on('close', () => remote.close());
+            remote.on('close', () => client.close());
+            remote.on('error', () => client.close());
+            client.on('error', () => remote.close());
+        });
+    });
     await new Promise<void>(r => server.listen(Number(process.env.PI_BOT_GUI_PORT ?? 4317), '127.0.0.1', r));
     console.log(`Pi Bot GUI: http://127.0.0.1:${(server.address() as {
         port: number;
@@ -300,6 +352,8 @@ export async function startGui(options: {
     const close = async () => {
         clearInterval(timer);
         await proactive.close();
+        for(const client of desktopWs.clients) client.close();
+        desktopWs.close();
         server.close();
         await runtime.idle();
         await runtime.deliver(async () => {

@@ -1,3 +1,5 @@
+import { DesktopClient } from './desktop-client.ts';
+import { resolve } from 'node:path';
 import { join } from 'node:path';
 import { getAgentDir, type ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { piSessionFactory } from './pi.ts';
@@ -48,7 +50,7 @@ export async function guiPiFactory(dir: string, proactive: (host: BotRuntime) =>
         pi.on('tool_result', event => save('tool_result', event));
     };
     const factory = piSessionFactory({
-        codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model, proactive, context: {
+        desktop: DesktopClient.load(resolve('work/gui/desktop/control.json')), codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model, proactive, context: {
             backgroundEnabled: false
         }, backgroundTools: {}, extensions: [trace], thinkingLevel: 'high', maxOutputTokens: 16384, maxRequestsPerWake: 16, inferenceRequestTimeoutMs: 600000, inferenceSignal: lifetime,
         beforeProviderRequest(context) {

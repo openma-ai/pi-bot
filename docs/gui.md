@@ -23,3 +23,5 @@ Group chat delivers messages to every member. @member and @全体成员 change a
 Triggers use pinned upstream OpenMatter WorkEvent/DurableInbox/SQLite lease handoff, with provenance in `vendor/openmatter/`. Pi still owns execution. Dedicated left-sidebar pages manage schedules, monitors and bot conversations. Real smoke disables background compression; it does not validate real compaction.
 
 Coding delegation now uses pinned community pi-subagents 0.77.0 execution and child-session factories behind the durable host subagent tool. Parents retain message responsiveness; shared budget, permission checks and stale-task guards apply. 172 offline tests pass; no new real-API claim is made.
+
+Linux 桌面、共享浏览器 profile、Computer 实时画面与人工接管，见 [运行及验收说明](linux-desktop-image.md)。

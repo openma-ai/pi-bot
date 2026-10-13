@@ -1,3 +1,5 @@
+import {Tabs} from '@radix-ui/themes';
+import {DesktopPanel} from './DesktopPanel.jsx';
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Theme, Avatar, Button, TextField, TextArea, Heading, Text, Badge, Dialog, Flex, Callout, Select, Checkbox } from '@radix-ui/themes';
@@ -286,7 +288,7 @@ function App() {
     }}><Dialog.Content><Dialog.Title>任务结果</Dialog.Title><Dialog.Description>持久工具结果，最多显示首 4096 字。</Dialog.Description><pre style={{
         whiteSpace: 'pre-wrap', overflowWrap: 'anywhere'
     }}>{result}</pre><Dialog.Close><Button>关闭</Button></Dialog.Close></Dialog.Content></Dialog.Root>
- <Dialog.Root open={details} onOpenChange={setDetails}><Dialog.Content maxWidth="400px"><Dialog.Title>Bot 详情</Dialog.Title><Dialog.Description size="2" mb="4">任务结果和运行状态</Dialog.Description>{inspector}<Flex justify="end" mt="5"><Dialog.Close><Button variant="soft">关闭</Button></Dialog.Close></Flex></Dialog.Content></Dialog.Root>
+ <Dialog.Root open={details} onOpenChange={setDetails}><Dialog.Content maxWidth="600px"><Dialog.Title>Bot 详情</Dialog.Title><Dialog.Description size="2" mb="4">任务结果和运行状态</Dialog.Description><Tabs.Root key={view+selected} defaultValue="details"><Tabs.List><Tabs.Trigger value="details">Details</Tabs.Trigger>{view === "chat" && <Tabs.Trigger value="computer">Computer</Tabs.Trigger>}</Tabs.List><Tabs.Content value="details">{inspector}</Tabs.Content>{view === "chat" && <Tabs.Content value="computer"><DesktopPanel botId={selected} name={bot?.name || "Bot"} enabled={data.desktop} api={(path,body)=>post(path.replace(/^\/api\//,""),body)}/></Tabs.Content>}</Tabs.Root><Flex justify="end" mt="5"><Dialog.Close><Button variant="soft">关闭</Button></Dialog.Close></Flex></Dialog.Content></Dialog.Root>
  <Dialog.Root open={adding} onOpenChange={setAdding}><Dialog.Content maxWidth="380px"><Dialog.Title>新建 bot</Dialog.Title><Dialog.Description size="2" mb="4">给助手取个名字。</Dialog.Description><TextField.Root aria-label="名称" placeholder="名称" maxLength={60} value={name} onChange={e => setName(e.target.value)}/><Flex gap="3" justify="end" mt="5"><Dialog.Close><Button variant="soft">取消</Button></Dialog.Close><Button onClick={async () => {
         try {
             const b = await post('bot', {

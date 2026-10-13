@@ -131,3 +131,5 @@ job receipt、执行完成、inbox processing、外部投递是不同状态。�
 `--changes --after CURSOR` 查询消息状态增量。也提供 `ChannelMessageReader` 给 Node/Electron GUI。
 默认不监听网络端口。详细 API、策略、测试与 Pi Durable/1.2 兼容性评估见
 [proactive runtime](docs/proactive-runtime.md)。
+
+Linux 桌面、共享浏览器 profile、Computer 实时画面与人工接管，见 [运行及验收说明](docs/linux-desktop-image.md)。

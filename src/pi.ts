@@ -1,3 +1,4 @@
+import { createDesktopExtension, desktopToolNames, type DesktopClient } from './desktop-client.ts';
 import { runCodingWorker } from './coding-worker.ts';
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -23,6 +24,7 @@ const key = Type.String({
     minLength: 1, maxLength: 256
 });
 export interface PiOptions {
+    desktop?: DesktopClient;
     /** Isolated native coding sessions dispatched through durable jobs. */
     codingWorkers?: boolean;
     dir: string;
@@ -246,7 +248,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
             },
         }) : undefined;
         const proactive = options.proactive?.(runtime);
-        const native = new Set([...(options.codingWorkers ? ['subagent'] : []), 'request_credential', 'create_bot', 'list_bots', 'send_to_bot', 'send_to_group', 'send_message', 'ask_user', 'start_job', 'job_result', 'runtime_state', 'context_history', ...(proactive ? proactiveToolNames : []), ...(background ? ['codemode', 'codemode_wait', 'codemode_read', 'exec_wait', ...additionalTools.map(t => t.name)] : [])]);
+        const native = new Set([...(options.desktop ? desktopToolNames : []), ...(options.codingWorkers ? ['subagent'] : []), 'request_credential', 'create_bot', 'list_bots', 'send_to_bot', 'send_to_group', 'send_message', 'ask_user', 'start_job', 'job_result', 'runtime_state', 'context_history', ...(proactive ? proactiveToolNames : []), ...(background ? ['codemode', 'codemode_wait', 'codemode_read', 'exec_wait', ...additionalTools.map(t => t.name)] : [])]);
         const allowed = new Set(options.allowTools ?? []);
         const extension: ExtensionFactory = api => {
             const pi = new Proxy(api, {
@@ -452,6 +454,10 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                     return result(runtime.jobResult(bot.id, p.job_id, p.offset, p.limit));
                 }
             });
+            if (options.desktop)
+                createDesktopExtension(options.desktop, bot.id, sourceId => runtime.assertTaskCurrent(own(sourceId, true)), async (tool, args, sourceId) => !runtime.options.permission || await runtime.options.permission({
+                    botId: bot.id, taskId: own(sourceId, true).taskId, tool, args
+                }))(pi);
             if (options.codingWorkers)
                 pi.registerTool({
                     name: 'subagent', label: 'Pi coding worker', exposure: 'model-only',
@@ -472,7 +478,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                         const job = runtime.startJob(source, 'pi-coding-agent', {
                             task: p.task
                         }, p.key, () => runCodingWorker({
-                            ...options, dir: workerDir, assertCurrent: () => runtime.assertTaskCurrent(source),
+                            ...options, extensions: [...(options.extensions ?? []), ...(options.desktop ? [createDesktopExtension(options.desktop, bot.id, () => runtime.assertTaskCurrent(source))] : [])], dir: workerDir, assertCurrent: () => runtime.assertTaskCurrent(source),
                             permission: async (tool, args) => !runtime.options.permission || await runtime.options.permission({
                                 botId: bot.id, taskId: source.taskId, tool, args
                             })
