@@ -1,6 +1,6 @@
 # 社区 pi-subagents 源码与兼容性检查
 
-2026-10-13。候选：https://github.com/nicobailon/pi-subagents 。本次只检查和离线探测，没有替换生产路径或全局安装扩展。
+2026-10-13。候选：https://github.com/nicobailon/pi-subagents 。初次检查只做离线探测。用户随后授权采用，现已固定 npm 0.77.0 接入执行路径，未全局安装完整 extension。参见 [当前实现](pi-auth-workers.md)。
 
 检查两个明确版本：上游 main `a4c8ced69a8176cdf4179b127feddc8875e3418f`（package.json 0.78.0）；实际 npm 发布版 `pi-subagents@0.77.0`，gitHead `1ac9b964eb9cda1662507c52f5277764637daccc`。发布包完整性：`sha512-kpTpUnV1hyGM0845thS7IT2QFZVBuodq/rdOqsmimQgZvixzw7fOStqt7zWN++xpb3j1AtmMFWeNU5tcp8i3uQ==`。不能把 main 检查结果直接当成发布版版本号。
 

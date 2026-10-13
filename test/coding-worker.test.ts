@@ -32,6 +32,7 @@ test('isolated native coding worker executes write/read and shares request budge
     });
     assert.equal(readFileSync(join(dir, 'result.txt'), 'utf8'), '73');
     assert.equal(result.text, 'Verified 73');
+    assert.equal(result.engine, 'pi-subagents@0.77.0');
     assert.equal(requests, 3);
     assert.ok(checks >= 2);
     assert.ok(result.sessionFile?.startsWith(dir));
@@ -175,4 +176,50 @@ test('parent bot answers a new user while its independent worker is still runnin
         release();
         await runtime.close();
     }
+});
+test('community worker stops at the shared request budget without replaying its write', async () => {
+    const dir = mkdtempSync(resolve('work/worker-tests/case-'));
+    const models = await ModelRuntime.create({
+        credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false
+    });
+    const faux = fauxProvider();
+    models.registerNativeProvider(faux.provider);
+    faux.setResponses([fauxAssistantMessage(fauxToolCall('write', {
+            path: 'once.txt', content: '73'
+        }), {
+            stopReason: 'toolUse'
+        }), fauxAssistantMessage('done')]);
+    let reserved = 0;
+    await assert.rejects(runCodingWorker({
+        dir, modelRuntime: models, model: faux.getModel(), assertCurrent() {
+        }, beforeProviderRequest(_context, maxTokens) {
+            assert.ok(maxTokens <= 16384);
+            if (++reserved > 1)
+                throw Error('Shared budget exhausted');
+        }
+    }, 'write and verify', {
+        taskId: 'bounded'
+    }), /did not complete/);
+    assert.equal(faux.state.callCount, 1);
+    assert.equal(readFileSync(join(dir, 'once.txt'), 'utf8'), '73');
+});
+test('community worker cannot report success after a host permission denial', async () => {
+    const dir = mkdtempSync(resolve('work/worker-tests/case-'));
+    const models = await ModelRuntime.create({
+        credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false
+    });
+    const faux = fauxProvider();
+    models.registerNativeProvider(faux.provider);
+    faux.setResponses([fauxAssistantMessage(fauxToolCall('write', {
+            path: 'denied.txt', content: '73'
+        }), {
+            stopReason: 'toolUse'
+        }), fauxAssistantMessage('success')]);
+    await assert.rejects(runCodingWorker({
+        dir, modelRuntime: models, model: faux.getModel(), assertCurrent() {
+        }, permission: async () => false
+    }, 'write', {
+        taskId: 'denied'
+    }), /permission/i);
+    assert.equal(existsSync(join(dir, 'denied.txt')), false);
 });
