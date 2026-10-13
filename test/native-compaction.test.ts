@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager, type AgentSession, type ExtensionFactory, } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, InMemoryCredentialStore, type FauxResponseStep, } from '@earendil-works/pi-ai';
-import { createContextExtension, type ContextOptions, type SummarySnapshot } from '../src/context.ts';
-import { createModelSummarizer } from '../src/pi.ts';
+import { createContextExtension, type ContextOptions, type SummarySnapshot } from '../src/pi/context.ts';
+import { createModelSummarizer } from '../src/pi/session-factory.ts';
 const deferred = <T>() => {
     let resolve!: (value: T) => void;
     const promise = new Promise<T>(r => resolve = r);

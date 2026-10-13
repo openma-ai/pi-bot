@@ -4,10 +4,10 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore } from '@earendil-works/pi-ai';
-import { BotRuntime } from '../src/runtime.ts';
-import { piSessionFactory } from '../src/pi.ts';
-import { ProactiveService } from '../src/proactive.ts';
-import type { Envelope, Outbound } from '../src/store.ts';
+import { BotRuntime } from '../src/daemon/runtime.ts';
+import { piSessionFactory } from '../src/pi/session-factory.ts';
+import { ProactiveService } from '../src/daemon/proactive.ts';
+import type { Envelope, Outbound } from '../src/daemon/store.ts';
 test('native Pi creates a durable schedule and responds through send_message on fire', {
     timeout: 15000
 }, async () => {
@@ -49,8 +49,8 @@ test('native Pi creates a durable schedule and responds through send_message on 
     const models = await ModelRuntime.create({
         credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(dir, 'models.json'), refreshOnCreate: false, allowModelNetwork: false
     });
-    const runtime = new BotRuntime(join(dir, 'runtime.db'), piSessionFactory({
-        dir, modelRuntime: models, model: faux.getModel(), extensions: [pi => pi.registerProvider(faux.provider)], proactive: r => service ??= new ProactiveService(r, {
+    const runtime: BotRuntime = new BotRuntime(join(dir, 'runtime.db'), piSessionFactory({
+        dir, modelRuntime: models, model: faux.getModel(), extensions: [pi => pi.registerProvider(faux.provider)], proactive: () => service ??= new ProactiveService(runtime, {
             now: () => now
         }), preemptInference: false
     }));

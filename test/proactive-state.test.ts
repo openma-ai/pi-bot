@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { BotRuntime } from '../src/runtime.ts';
-import type { Envelope, Outbound, Job } from '../src/store.ts';
+import { BotRuntime } from '../src/daemon/runtime.ts';
+import type { Envelope, Outbound, Job } from '../src/daemon/store.ts';
 async function fixture(factory: ConstructorParameters<typeof BotRuntime>[1]) {
     const base = resolve('work/proactive-tests');
     await mkdir(base, {

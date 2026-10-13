@@ -18,7 +18,7 @@ React + Radix Themes 的本地聊天 GUI，连接真实 Pi 1.1.0。保留原 bot
 
 实际复用 Core WorkEvent schema、DurableInbox 合约、SQLite inbox 实现；对应源文件在 `vendor/openmatter/`，原始 SHA256 和仅修改导入路径的说明在 PROVENANCE.json。未发布 npm 包，因此使用固定源码及 lockfile 的 Effect 依赖。不是把聊天记录直接交给模型，也不是替换为 DSH agent，更没有声称采用整个 OpenMatter Loop/Reaction 内核。
 
-`src/openmatter-trigger.ts` 发布稳定事件 ID，调用真实 SQLite 去重、租约和 fenced handoff；再唤醒已经持久化的 Pi inbox。`completed` 仅代表成功交接，任务完成仍由原生 inbox、工具和 send_message 证明。GUI 与普通 CLI 均接入此边界。
+`src/daemon/openmatter-trigger.ts` 发布稳定事件 ID，调用真实 SQLite 去重、租约和 fenced handoff；再唤醒已经持久化的 Pi inbox。`completed` 仅代表成功交接，任务完成仍由原生 inbox、工具和 send_message 证明。GUI 与普通 CLI 均接入此边界。
 
 OpenMatter DB 与 Pi DB 不共享一个事务。意图先持久化，若交接发现原生消息不存在，会保留事件、停止自动重试，等待宿主核查；不会虚构原始任务。重启按原生队列恢复，执行中但无证据的记录保持 uncertain。GUI 只自动核对确切的已送达结果，或重新入队有明确“尚未启动”证据的原始消息；不盲目重放。
 

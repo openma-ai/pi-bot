@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { BotRuntime, type SessionFactory } from '../src/runtime.ts';
-import { Store, type Envelope, type Job, type Outbound } from '../src/store.ts';
+import { BotRuntime, type SessionFactory } from '../src/daemon/runtime.ts';
+import { Store, type Envelope, type Job, type Outbound } from '../src/daemon/store.ts';
 const deferred = () => {
     let resolve!: () => void;
     const promise = new Promise<void>(r => resolve = r);

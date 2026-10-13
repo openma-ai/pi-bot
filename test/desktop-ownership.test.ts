@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DesktopOwnership } from '../src/desktop-ownership.ts';
+import { DesktopOwnership } from '../src/daemon/desktop-ownership.ts';
 test('screen ownership is stable and foreign windows are rejected', () => {
     const r = new DesktopOwnership(2);
     const a = r.bind('a', 'target-a', 101), b = r.bind('b', 'target-b', 202);

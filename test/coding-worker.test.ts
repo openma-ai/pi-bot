@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { InMemoryCredentialStore, fauxProvider, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
-import { runCodingWorker } from '../src/coding-worker.ts';
+import { runCodingWorker } from '../src/pi/coding-worker.ts';
 test('isolated native coding worker executes write/read and shares request budget', async () => {
     mkdirSync('work/worker-tests', {
         recursive: true
@@ -60,9 +60,9 @@ test('coding worker refuses tools after task invalidation', async () => {
     }), /obsolete/);
     assert.equal(existsSync(join(dir, 'stale.txt')), false);
 });
-import { BotRuntime } from '../src/runtime.ts';
-import { piSessionFactory } from '../src/pi.ts';
-import type { Job } from '../src/store.ts';
+import { BotRuntime } from '../src/daemon/runtime.ts';
+import { piSessionFactory } from '../src/pi/session-factory.ts';
+import type { Job } from '../src/daemon/store.ts';
 test('bot subagent returns durable receipt, completes isolated coding job and deduplicates dispatch', async () => {
     const dir = mkdtempSync(resolve('work/worker-tests/case-'));
     const models = await ModelRuntime.create({

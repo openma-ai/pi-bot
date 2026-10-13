@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { ModelRuntime, ProjectedSessionEntry } from '@earendil-works/pi-coding-agent';
 import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai';
-import { ContextBudgetError, NonBlockingContextManager, estimateContextTokens, hasValidToolPairs, createContextExtension, type ContextOptions, type SummarySnapshot } from '../src/context.ts';
-import { createModelSummarizer } from '../src/pi.ts';
+import { ContextBudgetError, NonBlockingContextManager, estimateContextTokens, hasValidToolPairs, createContextExtension, type ContextOptions, type SummarySnapshot } from '../src/pi/context.ts';
+import { createModelSummarizer } from '../src/pi/session-factory.ts';
 const user = (content: string): AgentMessage => ({
     role: 'user', content, timestamp: 1
 });
