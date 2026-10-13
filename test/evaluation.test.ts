@@ -171,3 +171,11 @@ test('thinking evaluation: round timeout is distinct from behavioral outcome and
     assert.equal(SMOKE_CAP.requests * SMOKE_CAP.outputTokensPerRequest, 524288);
     assert.ok(Math.abs(SMOKE_CAP.estimatedUsd - (384000 * 0.30 + 524288 * 1.20) / 1000000) < 1e-10);
 });
+
+test('wire accounting reserves the provider messages and tools, not unsent nested diagnostic copies',()=>{
+    const budget=new RequestBudget({...SMOKE_CAP,inputTokenReservations:3000});
+    const body={model:'deepseek-v4-flash',messages:[{role:'user',content:'Task'},{role:'tool',tool_call_id:'x',content:'Complete output'}],tools:[],max_tokens:16384,thinking:{type:'enabled'},reasoning_effort:'high'};
+    assert.equal(typeof budget.reserveWire,'function');
+    budget.reserveWire(body);assert.equal(budget.requests,1);assert.ok(budget.inputReserved<3000);
+    assert.throws(()=>budget.reserveWire({...body,messages:[{role:'user',content:'x'.repeat(4000)}]}),/budget/);
+});

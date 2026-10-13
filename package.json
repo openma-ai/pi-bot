@@ -9,12 +9,18 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "node scripts/apply-pi-background-bridge.mjs && node --import tsx --test test/*.test.ts",
+    "prepare:background": "node scripts/apply-pi-background-bridge.mjs",
+    "test:background": "node scripts/apply-pi-background-bridge.mjs && node --import tsx --test test/background-*.test.ts test/pi-background-bridge.test.ts",
+    "smoke:background": "node --import tsx examples/background-smoke.ts",
     "demo": "node --import tsx src/demo.ts",
     "start": "node --import tsx src/cli.ts",
     "format": "node scripts/format.mjs",
     "evaluate": "node --import tsx src/evaluation-cli.ts",
-    "credential-entry": "node --import tsx src/credential-cli.ts"
+    "credential-entry": "node --import tsx src/credential-cli.ts",
+    "evaluate:behavior": "node --import tsx src/behavior-cli.ts",
+    "benchmark:proactive": "node --import tsx src/proactive-benchmark-cli.ts",
+    "messages:query": "node --import tsx src/channel-messages-cli.ts"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "1.1.0",

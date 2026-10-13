@@ -18,6 +18,8 @@ export interface ContextOptions {
     summarize?: (snapshot: SummarySnapshot) => Promise<string>;
     /** Explicitly disable background requests for a capped smoke evaluation. */
     backgroundEnabled?: boolean;
+    /** Host scheduling predicate; false never blocks or changes foreground history. */
+    canSummarize?:()=>boolean;
     summaryTimeoutMs?: number;
     summaryRetryMs?: number;
     summaryMaxAttempts?: number;
@@ -194,7 +196,7 @@ export class NonBlockingContextManager {
     /** Launch an immutable stable prefix only after the soft threshold is reached. */
     schedule(input: SummaryInput): void {
         this.enter(input.sessionId);
-        if (this.options.backgroundEnabled === false || !this.options.summarize || this.options.signal?.aborted || this.backgroundBusy || this.ready || Date.now() < this.retryAfter)
+        if (this.options.backgroundEnabled === false || this.options.canSummarize?.() === false || !this.options.summarize || this.options.signal?.aborted || this.backgroundBusy || this.ready || Date.now() < this.retryAfter)
             return;
         const { input: budget, threshold } = this.budget(input.contextWindow);
         const entries = visibleEntries(input.entries);

@@ -533,3 +533,15 @@ test('native compaction: summary becoming ready after idle waits for next safe n
         await h.close();
     }
 });
+
+test('background model summarizer reserves its actual request before dispatch and fails closed at host cap',async()=>{
+    let reservations=0,dispatches=0;
+    const model={contextWindow:128000,maxTokens:16384} as any;
+    const models={async completeSimple(){dispatches++;return fauxAssistantMessage('Stable requirements and pending task.');}} as any;
+    const beforeRequest=(context:unknown,max:number)=>{reservations++;assert.ok(JSON.stringify(context).includes('stablePrefix'));assert.equal(max,2048);};
+    const summarize=createModelSummarizer(models,model,{beforeRequest});
+    const snapshot={sessionId:'cap',messages:[user('Stable requirement')],state:{},signal:new AbortController().signal};
+    await summarize(snapshot);assert.equal(reservations,1);assert.equal(dispatches,1);
+    const capped=createModelSummarizer(models,model,{beforeRequest(){throw Error('request cap');}});
+    await assert.rejects(()=>capped(snapshot),/request cap/);assert.equal(dispatches,1);
+});

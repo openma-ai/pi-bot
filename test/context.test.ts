@@ -336,3 +336,11 @@ test('default model summarizer makes a separate tool-free request with the snaps
     assert.match(request[1].systemPrompt, /actually delivered/);
     assert.equal(request[2].maxTokens, 2048);
 });
+
+test('host summary eligibility defers background launch without changing or blocking foreground context',async()=>{
+    let eligible=false,calls=0;
+    const manager=new NonBlockingContextManager({...options,canSummarize:()=>eligible,summarize:async()=>{calls++;return 'Stable prefix facts.';}});
+    const foreground=manager.preserveContext(input(history));schedule(manager);await tick();assert.equal(calls,0);
+    assert.ok(JSON.stringify(foreground).includes('old request 0'));eligible=true;schedule(manager);await tick();await tick();assert.equal(calls,1);
+    manager.reset();
+});

@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { projectChannelMessage, redactChannelText } from './channel-messages.ts';
 export type Bot = {
     id: string;
     name: string;
@@ -13,6 +14,7 @@ export type Bot = {
 /** Host-bound chat routing. Models cannot select an outbound channel. */
 export type ChatRoute = {
     channelId: string;
+    conversationId?: string;
     threadId: string;
     senderId: string;
 };
@@ -20,7 +22,10 @@ export type Envelope = {
     id: string;
     from: string;
     to: string;
-    kind: 'user' | 'bot' | 'answer' | 'job';
+    kind: 'user' | 'bot' | 'answer' | 'job' | 'schedule' | 'monitor' | 'research' | 'memory';
+    peerPriority?: 'normal' | 'urgent';
+    deliveryTarget?: 'direct' | 'group';
+    triggerCancelled?: boolean;
     text: string;
     taskId: string;
     replyTo: string | null;
@@ -28,6 +33,10 @@ export type Envelope = {
     key: string;
     state: 'queued' | 'processing' | 'processed' | 'uncertain' | 'failed';
     createdAt: number;
+    admittedAt?: number;
+    consumedAt?: number;
+    resolvedAt?: number;
+    resolution?: { owner: string; evidence: string[]; note?: string };
     error?: string;
     route?: ChatRoute;
     taskControl?: 'replace' | 'cancel';
@@ -44,6 +53,11 @@ export type Job = {
     result?: string;
     error?: string;
     createdAt: number;
+    quiet?: boolean;
+    completedAt?: number;
+    generation?: string;
+    attempt?: number;
+    owner?: string;
 };
 export type Question = {
     id: string;
@@ -65,6 +79,7 @@ export type Outbound = {
     text: string;
     state: 'pending' | 'sending' | 'delivered' | 'uncertain' | 'superseded';
     createdAt: number;
+    deliveredAt?: number;
     route?: ChatRoute;
 };
 type Row = {
@@ -79,9 +94,12 @@ export class Store {
         });
         this.db = new DatabaseSync(path);
         this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
-        for (const t of ['bots', 'inbox', 'jobs', 'questions', 'outbox'])
+        for (const t of ['bots', 'inbox', 'jobs', 'questions', 'outbox', 'schedules', 'monitors', 'fires', 'proposals', 'memories'])
             this.db.exec(`CREATE TABLE IF NOT EXISTS ${t}(id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
+        this.db.exec('CREATE TABLE IF NOT EXISTS channel_messages(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,data TEXT NOT NULL,updated_seq INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS channel_message_events(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL,data TEXT NOT NULL); CREATE INDEX IF NOT EXISTS channel_message_channel ON channel_messages(json_extract(data,\'$.channelId\')); CREATE INDEX IF NOT EXISTS channel_event_channel ON channel_message_events(json_extract(data,\'$.channelId\'));');
         this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS inbox_dedupe ON inbox(json_extract(data,'$.from'),json_extract(data,'$.key')); CREATE UNIQUE INDEX IF NOT EXISTS job_dedupe ON jobs(json_extract(data,'$.botId'),json_extract(data,'$.key')); CREATE UNIQUE INDEX IF NOT EXISTS question_dedupe ON questions(json_extract(data,'$.botId'),json_extract(data,'$.key')); CREATE UNIQUE INDEX IF NOT EXISTS outbox_dedupe ON outbox(json_extract(data,'$.botId'),json_extract(data,'$.key'));");
+        // Backfill existing durable envelopes once; identical snapshots add no duplicate events.
+        this.transaction(() => { for (const table of ['inbox', 'outbox'] as const) for (const value of this.list<Envelope | Outbound>(table)) this.projectMessage(table, value); });
     }
     transaction<T>(f: () => T): T {
         this.db.exec('BEGIN IMMEDIATE');
@@ -98,7 +116,19 @@ export class Store {
     put<T extends {
         id: string;
     }>(table: string, v: T) {
-        this.db.prepare(`INSERT INTO ${this.table(table)}(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(v.id, JSON.stringify(v));
+        const write = () => {
+            const value = ['inbox', 'outbox'].includes(table) && typeof (v as any).text === 'string' ? { ...v, text: redactChannelText((v as any).text), ...(typeof (v as any).error === 'string' ? { error: redactChannelText((v as any).error) } : {}) } : v;
+            this.db.prepare(`INSERT INTO ${this.table(table)}(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(v.id, JSON.stringify(value));
+            if (table === 'inbox' || table === 'outbox') this.projectMessage(table, value as unknown as Envelope | Outbound);
+        };
+        if (['inbox', 'outbox'].includes(table) && !this.db.isTransaction) this.transaction(write); else write();
+    }
+    private projectMessage(table: 'inbox' | 'outbox', value: Envelope | Outbound) {
+        const id = `${table}:${value.id}`, data = JSON.stringify(projectChannelMessage(table, value));
+        const old = this.db.prepare('SELECT data FROM channel_messages WHERE id=?').get(id) as { data: string } | undefined;
+        if (old?.data === data) return;
+        const event = this.db.prepare('INSERT INTO channel_message_events(id,data) VALUES(?,?)').run(id, data);
+        this.db.prepare('INSERT INTO channel_messages(id,data,updated_seq) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_seq=excluded.updated_seq').run(id, data, Number(event.lastInsertRowid));
     }
     get<T>(table: string, id: string): T | undefined {
         const row = this.db.prepare(`SELECT * FROM ${this.table(table)} WHERE id=?`).get(id) as Row | undefined;
@@ -113,7 +143,7 @@ export class Store {
         return r ? JSON.parse(r.data) : undefined;
     }
     private table(t: string) {
-        if (!['bots', 'inbox', 'jobs', 'questions', 'outbox'].includes(t))
+        if (!['bots', 'inbox', 'jobs', 'questions', 'outbox', 'schedules', 'monitors', 'fires', 'proposals', 'memories'].includes(t))
             throw Error('Invalid table');
         return t;
     }
@@ -131,7 +161,7 @@ export class Store {
             for (const e of this.list<Envelope>('inbox'))
                 if (e.state === 'processing')
                     this.put('inbox', {
-                        ...e, state: 'uncertain', error: 'Process ended during model run; explicit review required'
+                        ...e, state: e.resolvedAt ? 'processed' : 'uncertain', error: e.resolvedAt ? undefined : 'Process ended during model run; explicit review required'
                     });
             for (const j of this.list<Job>('jobs'))
                 if (j.state === 'running')
@@ -153,8 +183,13 @@ export class Store {
         };
         return r.n;
     }
-    pending(botId: string): Envelope | undefined {
-        const r = this.db.prepare("SELECT * FROM inbox WHERE json_extract(data,'$.to')=? AND json_extract(data,'$.state')='queued' ORDER BY CASE WHEN json_extract(data,'$.kind') IN ('user','answer') THEN 0 ELSE 1 END, rowid LIMIT 1").get(botId) as Row | undefined;
+    pending(botId: string, backgroundOpportunity = false, activeUser?: boolean): Envelope | undefined {
+        if (backgroundOpportunity) {
+            const row = this.db.prepare("SELECT * FROM inbox WHERE json_extract(data,'$.to')=? AND json_extract(data,'$.state')='queued' AND json_extract(data,'$.kind') IN ('schedule','monitor','research','memory') ORDER BY rowid LIMIT 1").get(botId) as Row | undefined;
+            if (row) return JSON.parse(row.data);
+        }
+        const eligibility = activeUser === undefined ? '' : activeUser ? "AND json_extract(data,'$.kind') IN ('user','answer','job')" : "AND (json_extract(data,'$.kind') IN ('user','answer','job') OR (json_extract(data,'$.kind')='bot' AND json_extract(data,'$.peerPriority')='urgent' AND coalesce(json_extract(data,'$.deliveryTarget'),'direct')='direct'))";
+        const r = this.db.prepare(`SELECT * FROM inbox WHERE json_extract(data,'$.to')=? AND json_extract(data,'$.state')='queued' ${eligibility} ORDER BY CASE WHEN json_extract(data,'$.kind') IN ('user','answer') THEN 0 WHEN json_extract(data,'$.kind')='job' THEN 1 WHEN json_extract(data,'$.kind')='bot' AND json_extract(data,'$.peerPriority')='urgent' AND coalesce(json_extract(data,'$.deliveryTarget'),'direct')='direct' THEN 2 WHEN json_extract(data,'$.kind')='bot' THEN 3 ELSE 4 END, rowid LIMIT 1`).get(botId) as Row | undefined;
         return r ? JSON.parse(r.data) : undefined;
     }
     resultPage(botId: string, id: string, offset: number, limit: number) {
@@ -184,12 +219,15 @@ export class Store {
         };
         const jobs = select('jobs', 'botId', ['running', 'uncertain'], ['args', 'result']);
         const questions = select('questions', 'botId', ['pending'], []);
-        const inbox = select('inbox', 'to', ['queued', 'uncertain'], ['text']);
+        const inbox = select('inbox', 'to', ['queued', 'processing', 'uncertain'], ['text']);
         const outbox = select('outbox', 'botId', ['pending', 'sending', 'uncertain'], ['text']);
+        const schedules = select('schedules', 'botId', ['active'], ['prompt']);
+        const monitors = select('monitors', 'botId', ['active'], ['prompt', 'baseline', 'cursor']);
+        const proposals = select('proposals', 'botId', ['running', 'approved', 'uncertain'], ['candidate', 'evidenceRefs', 'review']);
         return {
             jobs: jobs.items, questions: questions.items, inbox: inbox.items, outbox: outbox.items, counts: {
                 jobs: jobs.count, questions: questions.count, inbox: inbox.count, outbox: outbox.count
-            }
+            }, proactive: { schedules: schedules.items, monitors: monitors.items, proposals: proposals.items, counts: { schedules: schedules.count, monitors: monitors.count, proposals: proposals.count } }
         };
     }
     close() {

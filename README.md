@@ -32,6 +32,7 @@ npm start
 - `/new 名称`：创建独立 bot
 - `/to BOT_ID 内容`：发给指定 bot
 - `/answer QUESTION_ID 内容`：回答异步问题
+- `/reconcile INBOX_ID DELIVERED_OUTBOX_ID`：用已确认的同源投递证据收敛 uncertain inbox
 - `/state`：查看 main bot 的待处理状态
 - `/quit`：等待现有运行与 job 完成后退出
 
@@ -39,11 +40,11 @@ CLI 的 outbox sink 仅输出本地 stdout；`delivered` 只表示该 sink 成�
 
 ## 两条硬约束
 
-### 1. 新输入不强行中断正在生成的 LLM
+### 1. 用户抢占采样，工具和后台工作保留
 
-每个 bot 只有一条模型执行 lane，不同 bot 可并行。新消息先提交 SQLite，再使用 Pi `streamingBehavior: 'steer'` 进入下一模型边界；所有排队消息一起注入，避免纠正指令被闲聊阻挡。默认 host user/answer 会取消当前 provider 请求的独立信号，丢弃过时工具调用并继续处理新输入。不会调用 session/agent abort，已经启动的工具、job 和后台摘要继续运行。`preemptInference: false` 可关闭推理抢占。忽略取消信号的 provider 必须结束后才能继续，保持单 bot 单前台请求。
+每个 bot 只有一条模型执行 lane，不同 bot 可并行。新消息先提交 SQLite。host user/answer 默认 preempt：只取消当前 provider 请求，丢弃过时采样，保留已启动工具、job/cell 和后台摘要。普通 peer queue 到整 run 结束；direct priority=true 只在非 user lane 使用 steer，在下一次 LLM call 前插入，不取消当前 call。user lane 保护，group 广播忽略 priority；继承群上下文的 direct 仍是 direct。`preemptInference: false` 可关闭用户推理抢占。忽略取消信号的 provider 必须结束后才能继续，保持单 bot 单前台请求。
 
-执行期间收到的消息归入 active wake batch。`processed` 仅代表承载该批消息的 Pi run 正常结束，不承诺模型逐条理解或完成任务。批内错误/进程崩溃归为 `uncertain`。工具的默认 task/reply 关联跟随最近一个已进入模型上下文的消息；精细多任务工具调用归属不做语义推断。
+准入消息归入 active wake batch；仅有 ledger 中的 ID 不算真实输入消费。成功 native final 步骤保存检查点，后续请求失败不撤销它；未决消息仍为 uncertain。`processed` 不证明用户任务完成，实际工具效果与 send_message 另行验收。多任务路由工具必须明确 source_message_id；宿主验证自身来源及继承分支，不能把最近闲聊作为旧任务来源。
 
 ### 2. 前台绝不等待摘要，包括 overflow
 
@@ -91,7 +92,8 @@ job receipt、执行完成、inbox processing、外部投递是不同状态。�
 - bot ID 与 Pi session ID 分离，重启复用会话文件
 - inbox 提交后才回 receipt；同 sender + key 幂等，参数冲突拒绝
 - job/question/outbox 使用 bot + key 幂等
-- 启动恢复 queued inbox；processing inbox、running job、sending outbox 改为 uncertain，不盲目重放副作用
+- 启动恢复 queued inbox；已检查点完成的 processing inbox 保留 processed，其余 processing inbox、running job、sending outbox 改为 uncertain，不盲目重放副作用
+- job generation/owner 防止晚到执行覆盖新状态；消息及状态变更与 inbox/outbox 同事务写入只读 GUI 投影
 - SQLite 和 Pi JSONL 没有跨文件原子事务；断电时 transcript 与收据可能只提交了一边，uncertain 表示需人工核对
 - 每个数据库只允许一个本机 host：PID 文件锁拒绝活进程，清理明确死亡 PID；不是跨机器/NFS 锁
 - 历史/结果保留在磁盘；没有自动删除或压缩归档策略，生产使用应添加保留策略与磁盘配额。原生 compaction 缩小活跃模型上下文，不逐请求裁剪；Pi session 仍保留并加载完整会话归档，因此不承诺无限长运行的总内存恒定
@@ -110,5 +112,20 @@ job receipt、执行完成、inbox processing、外部投递是不同状态。�
 `npm run evaluate -- --report docs/scripted-evaluation-result.json` 运行定时交错消息、
 真实隔离模拟频道、工具结果与路由判定；provider 决策为明确标注的脚本。
 `npm run credential-entry` 提供本地 TTY 隐藏输入并立即删除，不发起模型请求。
-真实模式只在模型/预算确认后，由用户亲自在终端启动并输入；详见
-[行为评估](docs/behavior-evaluation.md) 和 [凭据入口](docs/credential-form.md)。
+历史初始计划见 [行为评估](docs/behavior-evaluation.md)；实际真实 API 结果、现行有界 CLI 及限制见
+[后续评估](docs/behavior-followup-20261013.md)。凭据走明确配置的本机入口，不进入模型或报告；
+[凭据入口](docs/credential-form.md) 说明通用 broker 边界。
+
+## 定时、监控、后台工作与 GUI 查询
+
+`PI_BOT_PROACTIVE=1 npm start` 启用持久 runonce/interval schedule 和监控工具。
+`PI_BOT_WATCH_FILE` 可注册只读文件元数据 detector；dry-run 成功后才能 enable。
+`PI_BOT_BACKGROUND_WORK=1` 另行启用本地证据研究/记忆候选及独立模型审核，默认不启用。
+定时 fire 去重、misfire/overlap、取消晚到结果和版本校验均由宿主保存；不是 cloud cron 或联网研究服务。
+
+`npm run benchmark:proactive -- --output NEW_DIRECTORY` 校准四 bot、两群混合负载；
+使用原生 Pi 路径和实际工具/文件，模型决策为脚本，不能当真实 API 速度。
+`npm --silent run messages:query -- --db DATABASE --channel CHANNEL` 输出只读分页 JSON；
+`--changes --after CURSOR` 查询消息状态增量。也提供 `ChannelMessageReader` 给 Node/Electron GUI。
+默认不监听网络端口。详细 API、策略、测试与 Pi Durable/1.2 兼容性评估见
+[proactive runtime](docs/proactive-runtime.md)。

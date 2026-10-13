@@ -1,13 +1,15 @@
+import {createEvaluationDirectory} from './evaluation-directory.ts';
 import { Type } from 'typebox';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { ModelRuntime, type ToolDefinition } from '@earendil-works/pi-coding-agent';
+import { ModelRuntime, type ToolDefinition, type ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore, type Model, type Api, type TranscriptContext, type FauxResponseFactory } from '@earendil-works/pi-ai';
 import { BotRuntime } from './runtime.ts';
 import { piSessionFactory } from './pi.ts';
 import { SimulatedChat } from './chat.ts';
 import type { Envelope, Job, Outbound, Bot } from './store.ts';
+import { redactTraceValue, inboxIds, type EvaluationTrace } from './evaluation-trace.ts';
 export const SMOKE_CAP = {
     requests: 32, inputTokenReservations: 384000, outputTokensPerRequest: 16384, estimatedUsd: 0.7443456, approvedUsdNeeded: 0.80, deadlineMs: 3600000, requestTimeoutMs: 600000
 };
@@ -17,12 +19,25 @@ export class RequestBudget {
     outputReserved = 0;
     refused = 0;
     readonly limits: typeof SMOKE_CAP;
-    constructor(limits = SMOKE_CAP) {
+    readonly accounting: 'context'|'wire';
+    constructor(limits = SMOKE_CAP, accounting: 'context'|'wire' = 'context') {
+        this.accounting = accounting;
         if (![limits.requests, limits.inputTokenReservations, limits.outputTokensPerRequest, limits.deadlineMs, limits.requestTimeoutMs].every(n => Number.isSafeInteger(n) && n > 0))
             throw Error('Invalid evaluation budget');
         this.limits = Object.freeze({
             ...limits
         });
+    }
+    assertRequestAllowance(maxTokens: number) {
+        if (!Number.isSafeInteger(maxTokens) || maxTokens < 1 || maxTokens > this.limits.outputTokensPerRequest || this.requests >= this.limits.requests) {
+            this.refused++;throw Error('Evaluation request budget reached');
+        }
+    }
+    /** Runs before fetch: account for the exact serialized provider body, not SDK diagnostics never sent on the wire. */
+    reserveWire(body: {max_tokens?:number;max_completion_tokens?:number;[key:string]:unknown}) {
+        const output=body.max_tokens??body.max_completion_tokens;
+        if(!Number.isSafeInteger(output)) {this.refused++;throw Error('Evaluation request budget reached');}
+        this.reserve(body,output!);
     }
     reserve(context: unknown, maxTokens: number) {
         // Conservative byte reservation plus 1024 tokens for framing overhead.
@@ -68,6 +83,7 @@ export interface ScenarioResult {
     pendingEvents: number;
     runtimeErrors: number;
     transcriptPairsValid: boolean;
+    trace?: EvaluationTrace;
 }
 interface Incoming {
     atMs: number;
@@ -94,7 +110,7 @@ interface Scenario {
     cancelled: string[];
     noise: string[];
 }
-const taskText = (item: string, value: string, delegate = false) => `Task: record ${item}=${value} using commit_record via start_job (args message_id is this inbox messageId; item and value must match). ${delegate ? 'Delegate to your same-channel worker with send_to_bot first; the worker performs the record and final reply. ' : ''}Wait for native job completion; then use send_message exactly DONE ${item}=${value}, with source_message_id for this task. No receipt/acknowledgement message; no extra actions.`;
+const taskText = (item: string, value: string, delegate = false) => `Task: record ${item}=${value} using commit_record via start_job (the host supplies args message_id from source_message_id; item and value must match). ${delegate ? 'Delegate to your same-channel worker with send_to_bot first; the worker performs the record and final reply. ' : ''}Wait for native job completion; then use send_message exactly DONE ${item}=${value}, with source_message_id for this task. No receipt/acknowledgement message; no extra actions.`;
 export const scenarios: Scenario[] = [
     {
         id: 'overlap-isolation', events: [
@@ -211,11 +227,15 @@ export async function runEvaluation(options: {
     model?: Model<Api>;
     budget?: RequestBudget;
     deadlineMs?: number;
+    scenarioIds?: string[];
+    trace?: boolean;
 } = {}) {
     const mode = options.mode ?? 'scripted';
+    const selected = options.scenarioIds ? scenarios.filter(s => options.scenarioIds!.includes(s.id)) : scenarios;
+    if (!selected.length || options.scenarioIds?.some(id => !scenarios.some(s => s.id === id))) throw Error('Unknown evaluation scenario');
     if (mode === 'real' && (!options.modelRuntime || !options.model))
         throw Error('Real provider configuration required');
-    const root = await mkdtemp(join(tmpdir(), 'pi-bot-evaluation-'));
+    const root = await createEvaluationDirectory('pi-bot-evaluation-');
     const budget = options.budget ?? new RequestBudget();
     const results: ScenarioResult[] = [];
     let requestTimeouts = 0;
@@ -225,7 +245,9 @@ export async function runEvaluation(options: {
         credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(root, 'models.json'), refreshOnCreate: false, allowModelNetwork: false
     });
     try {
-        for (const scenario of scenarios) {
+        for (const scenario of selected) {
+            const trace: EvaluationTrace = { inbox: [], jobs: [], outbox: [], calls: [], results: [], boundaries: [] };
+            let traceOrder = 0;
             const effects: Effect[] = [];
             let runtime!: BotRuntime;
             let chat!: SimulatedChat;
@@ -320,9 +342,12 @@ export async function runEvaluation(options: {
                     }
                 }];
             runtime = new BotRuntime(join(root, `${scenario.id}.db`), async (bot, host) => piSessionFactory({
-                dir: join(root, scenario.id), modelRuntime, model: faux?.getModel() ?? options.model!, tools: toolsFor(bot), allowTools: ['commit_record'], extensions: faux ? [pi => pi.registerProvider(faux.provider)] : [], maxRequestsPerWake: 16, maxOutputTokens: SMOKE_CAP.outputTokensPerRequest, thinkingLevel: mode === 'real' ? 'high' : undefined, inferenceRequestTimeoutMs: SMOKE_CAP.requestTimeoutMs, onInferenceTimeout: () => {
+                dir: join(root, scenario.id), modelRuntime, model: faux?.getModel() ?? options.model!, tools: toolsFor(bot), allowTools: ['commit_record'], jobSourceArguments: { commit_record: 'message_id' }, modelNativeTools: ['send_message','send_to_bot','list_bots','start_job','job_result'], extensions: [...(faux ? [(pi: Parameters<ExtensionFactory>[0]) => pi.registerProvider(faux.provider)] : []), ...(options.trace ? [((pi: any) => {
+                    pi.on('tool_call', (event: any) => { trace.calls.push(redactTraceValue({ order: ++traceOrder, botId: bot.id, id: event.toolCallId, parentId: event.parentToolCallId, name: event.toolName, args: event.input })); });
+                    pi.on('tool_result', (event: any) => { trace.results.push(redactTraceValue({ order: ++traceOrder, botId: bot.id, id: event.toolCallId, parentId: event.parentToolCallId, name: event.toolName, isError: event.isError, content: event.content, details: event.details })); });
+                })] : [])], maxRequestsPerWake: 16, maxOutputTokens: SMOKE_CAP.outputTokensPerRequest, thinkingLevel: mode === 'real' ? 'high' : undefined, inferenceRequestTimeoutMs: SMOKE_CAP.requestTimeoutMs, onInferenceTimeout: () => {
                     requestTimeouts++;
-                }, inferenceSignal: lifetime.signal, beforeProviderRequest: (ctx, max) => budget.reserve(ctx, max), context: {
+                }, inferenceSignal: lifetime.signal, beforeProviderRequest: (ctx, max) => { if(budget.accounting==='wire')budget.assertRequestAllowance(max);else budget.reserve(ctx, max); if (options.trace) trace.boundaries.push({ order: ++traceOrder, botId: bot.id, inboxIds: inboxIds(ctx) }); }, context: {
                     backgroundEnabled: false, maxContextTokens: 256000, outputReserveTokens: SMOKE_CAP.outputTokensPerRequest
                 }
             })(bot, host));
@@ -349,7 +374,7 @@ export async function runEvaluation(options: {
                 const { hasValidToolPairs } = await import('./context.ts');
                 const pairValidity = runtime.listBots().filter(b => b.sessionFile).every(b => hasValidToolPairs(SessionManager.open(b.sessionFile!, join(root, scenario.id)).buildSessionProjection().messages));
                 results.push({
-                    id: scenario.id, mode, score: gradeScenario(scenario, effects, chat.deliveries), effects, routes: chat.deliveries.map(o => ({
+                    id: scenario.id, mode, ...(options.trace ? { trace: redactTraceValue({ ...trace, inbox: runtime.store.list<Envelope>('inbox'), jobs: runtime.store.list<Job>('jobs'), outbox: runtime.store.list<Outbound>('outbox') }) } : {}), score: gradeScenario(scenario, effects, chat.deliveries), effects, routes: chat.deliveries.map(o => ({
                         channel: o.route!.channelId, thread: o.route!.threadId, sender: o.route!.senderId, task: o.taskId
                     })), pendingEvents: inbox.filter(e => e.state !== 'processed').length, runtimeErrors: runtime.errors.length, transcriptPairsValid: pairValidity
                 });
