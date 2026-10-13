@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { loadPiConfiguration } from '../src/pi-config.ts';
+import { loadPiConfiguration } from '../src/pi/config.ts';
 function fixture() {
     mkdirSync('work/auth-tests', {
         recursive: true

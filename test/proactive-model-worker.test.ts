@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createModelBackgroundWorker } from '../src/proactive-model-worker.ts';
-import type { Envelope } from '../src/store.ts';
+import { createModelBackgroundWorker } from '../src/daemon/proactive-model-worker.ts';
+import type { Envelope } from '../src/daemon/store.ts';
 const evidence = [{
         id: 'source', from: 'user', to: 'bot', kind: 'user', text: 'Notify me only when builds change', taskId: 't', replyTo: null, hop: 0, key: 'e', state: 'processed', createdAt: 1
     }] satisfies Envelope[];

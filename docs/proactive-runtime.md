@@ -151,7 +151,7 @@ not arbitrary-secret detection; callers must use the separate credential broker.
 Node/Electron GUI:
 
 ```ts
-import { ChannelMessageReader } from './src/channel-messages.ts';
+import { ChannelMessageReader } from './src/daemon/channel-messages.ts';
 const reader = new ChannelMessageReader('/absolute/.pi-bot/runtime.db', {
   channels: ['alpha'], // explicit host-selected scope
 });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { runProactiveBenchmark } from '../src/proactive-benchmark.ts';
+import { runProactiveBenchmark } from '../src/evals/proactive-benchmark.ts';
 test('bounded native Pi mixed-load benchmark delivers real tool results and preserves silence', {
     timeout: 20000
 }, async () => {

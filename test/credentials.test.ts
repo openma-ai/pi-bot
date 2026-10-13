@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CredentialBroker } from '../src/credentials.ts';
+import { CredentialBroker } from '../src/daemon/credentials.ts';
 const scope = {
     botId: 'bot-a', taskId: 'task-a', tool: 'synthetic-tool'
 };

@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { Type } from 'typebox';
 import { ModelRuntime, type ExtensionFactory, type ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore, type FauxResponseStep } from '@earendil-works/pi-ai';
-import { BotRuntime } from '../src/runtime.ts';
-import { piSessionFactory, type PiOptions } from '../src/pi.ts';
-import type { Envelope, Job, Outbound, Question } from '../src/store.ts';
+import { BotRuntime } from '../src/daemon/runtime.ts';
+import { piSessionFactory, type PiOptions } from '../src/pi/session-factory.ts';
+import type { Envelope, Job, Outbound, Question } from '../src/daemon/store.ts';
 const deferred = () => {
     let resolve!: () => void;
     const promise = new Promise<void>(r => resolve = r);
@@ -725,7 +725,7 @@ test('compaction under job-result flood: prefix summary survives inference preem
     const first = deferred(), releaseFirst = deferred(), second = deferred(), releaseSecond = deferred();
     let finishSummary!: (value: string) => void;
     const summary = new Promise<string>(r => finishSummary = r);
-    let snapshot: import('../src/context.ts').SummarySnapshot | undefined;
+    let snapshot: import('../src/pi/context.ts').SummarySnapshot | undefined;
     let finalContext = '';
     const h = await setup([
         async () => {

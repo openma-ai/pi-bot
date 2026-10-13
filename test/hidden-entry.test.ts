@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import type { ReadStream, WriteStream } from 'node:tty';
-import { readHidden } from '../src/hidden-entry.ts';
+import { readHidden } from '../src/daemon/hidden-entry.ts';
 function tty() {
     const input = new PassThrough();
     const output = new PassThrough();

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreResponseBenchmark } from '../src/response-benchmark.ts';
-import type { Envelope, Outbound } from '../src/store.ts';
+import { scoreResponseBenchmark } from '../src/evals/response-benchmark.ts';
+import type { Envelope, Outbound } from '../src/daemon/store.ts';
 const e = {
     id: 'task', from: 'user', to: 'bot', kind: 'user', text: 'compute', taskId: 't', replyTo: null, hop: 0, key: 't', state: 'processed', createdAt: 100, admittedAt: 120, consumedAt: 130, resolvedAt: 180, route: {
         channelId: 'a', threadId: 'x', senderId: 'alice'

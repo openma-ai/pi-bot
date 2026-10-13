@@ -5,7 +5,7 @@ import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { configureSmokeProvider, SMOKE_PROVIDER } from '../src/smoke-provider.ts';
+import { configureSmokeProvider, SMOKE_PROVIDER } from '../src/evals/smoke-provider.ts';
 test('official Flash wire: fixed endpoint, explicit thinking mode and bounded output; fetch is mocked', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'pi-smoke-wire-'));
     const runtime = await ModelRuntime.create({
@@ -137,10 +137,10 @@ test('thinking wire: streamed reasoning survives two sequential tool calls and l
     }
 });
 test('native Pi thinking: paired ordinary tools, send_message and next-user replay retain all reasoning', async () => {
-    const { BotRuntime } = await import('../src/runtime.ts');
-    const { piSessionFactory } = await import('../src/pi.ts');
-    const { RequestBudget } = await import('../src/evaluation.ts');
-    const { hasValidToolPairs } = await import('../src/context.ts');
+    const { BotRuntime } = await import('../src/daemon/runtime.ts');
+    const { piSessionFactory } = await import('../src/pi/session-factory.ts');
+    const { RequestBudget } = await import('../src/evals/evaluation.ts');
+    const { hasValidToolPairs } = await import('../src/pi/context.ts');
     const { SessionManager } = await import('@earendil-works/pi-coding-agent');
     const dir = await mkdtemp(join(tmpdir(), 'pi-native-thinking-'));
     const models = await ModelRuntime.create({

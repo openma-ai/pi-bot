@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { BotRuntime } from '../src/runtime.ts';
-import { SimulatedChat } from '../src/chat.ts';
-import { runEvaluation, gradeScenario, scenarios, RequestBudget, SMOKE_CAP } from '../src/evaluation.ts';
+import { BotRuntime } from '../src/daemon/runtime.ts';
+import { SimulatedChat } from '../src/evals/chat.ts';
+import { runEvaluation, gradeScenario, scenarios, RequestBudget, SMOKE_CAP } from '../src/evals/evaluation.ts';
 test('simulated transport: same actor/task/key isolated by channel; members and cross-channel handoffs enforced', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'pi-route-test-'));
     const runtime = new BotRuntime(join(dir, 'bot.db'), async () => ({

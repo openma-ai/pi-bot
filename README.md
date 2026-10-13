@@ -78,12 +78,22 @@ job receipt、执行完成、inbox processing、外部投递是不同状态。�
 
 ## 结构与扩展
 
-- `src/store.ts`：SQLite WAL + FULL sync；bot、inbox、job、question、outbox
-- `src/runtime.ts`：调度、关联 ID、幂等键、预算、恢复、sink
-- `src/pi.ts`：Pi 会话、native tools、extension permission chain
-- `src/context.ts`：阈值触发的后台摘要与 Pi 原生 compaction
-- `src/cli.ts`：持久交互 host
-- `src/demo.ts`、`test/`：无需 key 的真实 SDK 验证
+代码按四层组织，依赖只能自上而下（`test/layers.test.ts` 强制检查）：
+
+```
+gui ──► sdk ──(type-only)──► pi ◄── daemon ──(type-only)──► sdk
+evals ──► 任意层（层外评测工具）
+```
+
+| 层 | 目录 | 职责 |
+|---|---|---|
+| ① 核心 Pi 插件层 | `src/pi/` | `session-factory.ts`（Pi 会话、native tools、extension permission chain）、`context.ts`（后台摘要与原生 compaction）、`background-codemode.ts`、`coding-worker.ts`、`proactive-extension.ts`；`types.ts` 是领域记录，`host.ts` 是宿主端口（`BotHost`/`ProactivePort`/`CredentialPort`/`SessionFactory`）。只依赖 Pi SDK，不引用任何宿主代码 |
+| ② daemon 层 | `src/daemon/` | `runtime.ts`（调度、关联 ID、幂等键、预算、恢复；`BotRuntime implements BotHost`）、`store.ts`（SQLite WAL + FULL sync）、`proactive*.ts`、`openmatter-trigger.ts`、`credentials.ts`、`server.ts`（loopback HTTP API + 静态 GUI）、`cli.ts`（终端 host） |
+| ③ SDK 层 | `src/sdk/` | `protocol.ts`（HTTP 线协议类型）+ `client.ts`（`PiBotClient`），浏览器/Node 通用，无 `node:` 依赖 |
+| ④ GUI 层 | `src/gui/` | React + Radix 前端，只通过 `PiBotClient` 访问 daemon |
+| 层外 | `src/evals/` | evaluation、benchmark、`demo.ts`、smoke provider |
+
+常用入口：`npm start`（终端 host，进程内运行 runtime，不需要 server）、`npm run daemon`（HTTP daemon）、`npm run gui`（构建 `dist/gui` 并启动 daemon）。
 
 `piSessionFactory({ modelRuntime, model, dir, tools, allowTools, extensions, context })` 是扩展入口。传入可信 Pi `ToolDefinition`/`ExtensionFactory`，不绕开其 `tool_call` 拒绝 hooks。普通耗时工具对模型隐藏；唯一入口是 `start_job`。`BotRuntime` 的 host `permission` callback 可额外做授权判断。底层 tool 会收到 Pi 原生 parent tool-call 关联。
 

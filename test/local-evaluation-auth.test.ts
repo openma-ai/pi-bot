@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 test('explicit DSH host auth reads only the selected scalar and returns fixed errors for ambiguous metadata', async () => {
-    const module = await import('../src/local-evaluation-auth.ts').catch(() => null);
+    const module = await import('../src/evals/local-evaluation-auth.ts').catch(() => null);
     assert.ok(module, 'local auth adapter must exist');
     const dir = await mkdtemp(join(tmpdir(), 'pi-auth-fixture-'));
     const file = join(dir, 'credentials.yaml');

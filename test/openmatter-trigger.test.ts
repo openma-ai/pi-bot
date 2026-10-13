@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, mkdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { OpenMatterTrigger } from '../src/openmatter-trigger.ts';
-import type { Envelope } from '../src/store.ts';
+import { OpenMatterTrigger } from '../src/daemon/openmatter-trigger.ts';
+import type { Envelope } from '../src/daemon/store.ts';
 test('real OpenMatter SQLite leases dedupe handoff and retain a failed activation', async () => {
     await mkdir(resolve('work/trigger-tests'), {
         recursive: true
@@ -50,7 +50,7 @@ test('real OpenMatter SQLite leases dedupe handoff and retain a failed activatio
         });
     }
 });
-import { Store } from '../src/store.ts';
+import { Store } from '../src/daemon/store.ts';
 test('host group mentions rank above ordinary group messages without changing bot-peer priority', async () => {
     const dir = await mkdtemp(resolve('work/trigger-tests/priority-'));
     const store = new Store(join(dir, 'runtime.db'));
@@ -71,7 +71,7 @@ test('host group mentions rank above ordinary group messages without changing bo
         });
     }
 });
-import { BotRuntime, InferenceYieldError } from '../src/runtime.ts';
+import { BotRuntime, InferenceYieldError } from '../src/daemon/runtime.ts';
 test('foreign user scope yields inference and resumes group work without replaying its job', async () => {
     const dir = await mkdtemp(resolve('work/trigger-tests/yield-'));
     let interrupt: (e: Error) => void = () => {
@@ -131,7 +131,7 @@ test('foreign user scope yields inference and resumes group work without replayi
 });
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage as msg, fauxToolCall as call, InMemoryCredentialStore } from '@earendil-works/pi-ai';
-import { piSessionFactory } from '../src/pi.ts';
+import { piSessionFactory } from '../src/pi/session-factory.ts';
 test('native Pi aborts only foreign-scope inference, keeps transcripts private, then resumes', {
     timeout: 10000
 }, async () => {
@@ -199,7 +199,7 @@ test('native Pi aborts only foreign-scope inference, keeps transcripts private, 
         await runtime.idle();
         assert.equal(signal?.aborted, true);
         assert.equal(runtime.errors.length, 0);
-        const out = runtime.store.list<import('../src/store.ts').Outbound>('outbox');
+        const out = runtime.store.list<import('../src/daemon/store.ts').Outbound>('outbox');
         assert.deepEqual(out.map(o => o.text), ['private result', 'group result']);
         assert.equal(runtime.store.get<Envelope>('inbox', groupId)?.state, 'processed');
     }

@@ -1,21 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 test('TaskChain oracle runs independent executable checks and rejects a placeholder', async () => {
-    const module = await import('../src/taskchain-evaluation.ts').catch(() => null);
+    const module = await import('../src/evals/taskchain-evaluation.ts').catch(() => null);
     assert.ok(module, 'real-work adapter must exist');
     const result = await module!.gradeTaskChain('class TaskChain:\n    pass\n');
     assert.equal(result.pass, false);
     assert.ok(result.failed.length > 0);
 });
 test('CSV report oracle checks computed completion counts, not file presence or a DONE claim', async () => {
-    const module = await import('../src/taskchain-evaluation.ts').catch(() => null);
+    const module = await import('../src/evals/taskchain-evaluation.ts').catch(() => null);
     assert.ok(module, 'real-work adapter must exist');
     assert.equal(module!.gradeProgressCsv('owner,total,completed,completion_rate\nalice,2,1,0.5\nbob,3,2,0.666667\n'), true);
     assert.equal(module!.gradeProgressCsv('owner,total,completed,completion_rate\nalice,2,2,1.0\nbob,3,2,0.666667\n'), false);
     assert.equal(module!.gradeProgressCsv('DONE'), false);
 });
 test('TaskChain oracle accepts a functional implementation and rejects a stale notification contract', async () => {
-    const module = await import('../src/taskchain-evaluation.ts').catch(() => null);
+    const module = await import('../src/evals/taskchain-evaluation.ts').catch(() => null);
     assert.ok(module);
     const { readFile } = await import('node:fs/promises');
     const code = await readFile(new URL('../fixtures/marble-taskchain/reference.py', import.meta.url), 'utf8');
@@ -27,7 +27,7 @@ test('TaskChain oracle accepts a functional implementation and rejects a stale n
     assert.ok(stale.failed.includes('notification-contract'));
 });
 test('real-work adapter validates code and computed CSV through native jobs under corrected/cancelled inbox traffic', async () => {
-    const module = await import('../src/taskchain-evaluation.ts');
+    const module = await import('../src/evals/taskchain-evaluation.ts');
     assert.equal(typeof module.runTaskChainEvaluation, 'function', 'native real-work runner must exist');
     const report = await module.runTaskChainEvaluation({
         mode: 'scripted'
@@ -42,7 +42,7 @@ test('real-work adapter validates code and computed CSV through native jobs unde
     assert.ok(report.trace.calls.some(e => e.name === 'submit_progress_csv' && e.parentId));
 });
 test('TaskChain background execution retains native cells, observes grading progress and runs each Python process once', async () => {
-    const { runTaskChainEvaluation } = await import('../src/taskchain-evaluation.ts');
+    const { runTaskChainEvaluation } = await import('../src/evals/taskchain-evaluation.ts');
     const report = await runTaskChainEvaluation({
         mode: 'scripted', backgroundExecution: true
     });
@@ -61,7 +61,7 @@ test('TaskChain background execution retains native cells, observes grading prog
     // Full-result observation remains mandatory for non-cancelled task suites.
 });
 test('executable oracle exposes started/finished observations for one real Python PID', async () => {
-    const { gradeTaskChain } = await import('../src/taskchain-evaluation.ts');
+    const { gradeTaskChain } = await import('../src/evals/taskchain-evaluation.ts');
     const { readFile } = await import('node:fs/promises');
     const code = await readFile(new URL('../fixtures/marble-taskchain/reference.py', import.meta.url), 'utf8');
     const events: {
@@ -78,7 +78,7 @@ test('executable oracle exposes started/finished observations for one real Pytho
     assert.equal(events[0]!.pid, events[1]!.pid);
 });
 test('oracle failure diagnostics identify wrong exception contracts without dumping program exceptions', async () => {
-    const { gradeTaskChain } = await import('../src/taskchain-evaluation.ts');
+    const { gradeTaskChain } = await import('../src/evals/taskchain-evaluation.ts');
     const { readFile } = await import('node:fs/promises');
     const reference = await readFile(new URL('../fixtures/marble-taskchain/reference.py', import.meta.url), 'utf8');
     const result = await gradeTaskChain('class CustomError(Exception):\n    pass\n' + reference.replaceAll('raise ValueError', 'raise CustomError'));
@@ -86,7 +86,7 @@ test('oracle failure diagnostics identify wrong exception contracts without dump
     assert.ok(result.failureReasons?.['dependency-start']?.includes('ValueError or KeyError'));
 });
 test('full-result oracle accepts a complete native wait result and rejects READY claims or partial pages', async () => {
-    const module = await import('../src/observed-taskchain-evaluation.ts');
+    const module = await import('../src/evals/observed-taskchain-evaluation.ts');
     assert.equal(typeof module.hasFullValidationObservation, 'function');
     const grade = {
         pass: true, passed: ['empty', 'dependency-start', 'dependency-order', 'complete-before-start', 'duplicate-id', 'unknown-dependency', 'unknown-task', 'duplicate-complete', 'multiple-dependencies', 'collaboration-comments', 'notification-contract', 'reports-and-diagram'], failed: []
@@ -117,8 +117,8 @@ test('full-result oracle accepts a complete native wait result and rejects READY
     }), false);
 });
 test('background compaction overlaps native foreground, excludes late correction from its snapshot and adopts at a safe boundary', async () => {
-    const { runTaskChainEvaluation } = await import('../src/taskchain-evaluation.ts');
-    const { RequestBudget, SMOKE_CAP } = await import('../src/evaluation.ts');
+    const { runTaskChainEvaluation } = await import('../src/evals/taskchain-evaluation.ts');
+    const { RequestBudget, SMOKE_CAP } = await import('../src/evals/evaluation.ts');
     const report = await runTaskChainEvaluation({
         mode: 'scripted', backgroundExecution: true, backgroundSummary: true, budget: new RequestBudget({
             ...SMOKE_CAP, inputTokenReservations: 1000000
@@ -135,7 +135,7 @@ test('background compaction overlaps native foreground, excludes late correction
     assert.ok(report.compaction!.blockedStaleActions > 0);
 });
 test('release-tag oracle verifies the real generated module value for the late task revision', async () => {
-    const { gradeTaskChain } = await import('../src/taskchain-evaluation.ts');
+    const { gradeTaskChain } = await import('../src/evals/taskchain-evaluation.ts');
     const { readFile } = await import('node:fs/promises');
     const code = await readFile(new URL('../fixtures/marble-taskchain/reference.py', import.meta.url), 'utf8');
     assert.equal((await gradeTaskChain(code, {
@@ -148,7 +148,7 @@ test('release-tag oracle verifies the real generated module value for the late t
     assert.ok(result.passed.includes('release-tag'));
 });
 test('cancellation during the real Python execution preserves its process and blocks the later native artifact commit', async () => {
-    const { runTaskChainEvaluation } = await import('../src/taskchain-evaluation.ts');
+    const { runTaskChainEvaluation } = await import('../src/evals/taskchain-evaluation.ts');
     const report = await runTaskChainEvaluation({
         mode: 'scripted', backgroundExecution: true, cancelDuringExecution: true
     });

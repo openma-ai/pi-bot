@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { runEvaluation } from '../src/evaluation.ts';
+import { runEvaluation } from '../src/evals/evaluation.ts';
 test('evaluation retains native inbox, tool call/results and delivered send_message without reasoning', async () => {
     const report = await runEvaluation({
         scenarioIds: ['handoff'], trace: true
@@ -19,7 +19,7 @@ test('evaluation retains native inbox, tool call/results and delivered send_mess
     assert.ok(!JSON.stringify(trace).includes('thinking'));
 });
 test('trace redaction removes credential fields, bearer/key strings and thinking while retaining task evidence', async () => {
-    const module = await import('../src/evaluation-trace.ts').catch(() => null);
+    const module = await import('../src/evals/evaluation-trace.ts').catch(() => null);
     assert.ok(module, 'trace redactor must exist');
     const safe = module!.redactTraceValue({
         apiKey: 'synthetic-value', thinking: 'PRIVATE_REASONING', text: 'Authorization: Bearer private-token; key sk-abcdef0123456789', taskId: 'task-1', content: [{

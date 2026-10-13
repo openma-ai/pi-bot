@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { BotRuntime } from '../src/runtime.ts';
-import { ProactiveService } from '../src/proactive.ts';
-import type { Envelope } from '../src/store.ts';
+import { BotRuntime } from '../src/daemon/runtime.ts';
+import { ProactiveService } from '../src/daemon/proactive.ts';
+import type { Envelope } from '../src/daemon/store.ts';
 async function fixture(run?: (e: Envelope) => Promise<void>) {
     await mkdir(resolve('work/proactive-tests'), {
         recursive: true

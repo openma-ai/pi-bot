@@ -34,6 +34,6 @@ CLI 使用同样的 native Pi 配置与 subagent；CLI 没有 GUI 整轮共享�
 
 ## 固定版本的适配边界
 
-依赖 `pi-subagents: 0.77.0` 及 lockfile，源码 gitHead `1ac9b964eb9cda1662507c52f5277764637daccc`。调用其包内 execution/child-session 模块，这是内部接口，升级必须跑兼容回归。`src/coding-worker.ts` 是宿主桥，不复制社区实现；保留 SDK 请求包装用于预算、超时和脱敏错误，保留工具 guard 用于权限/任务状态。权限拒绝即使模型随后声称成功，也将 job 标为失败。
+依赖 `pi-subagents: 0.77.0` 及 lockfile，源码 gitHead `1ac9b964eb9cda1662507c52f5277764637daccc`。调用其包内 execution/child-session 模块，这是内部接口，升级必须跑兼容回归。`src/pi/coding-worker.ts` 是宿主桥，不复制社区实现；保留 SDK 请求包装用于预算、超时和脱敏错误，保留工具 guard 用于权限/任务状态。权限拒绝即使模型随后声称成功，也将 job 标为失败。
 
 本轮社区真实执行内核的离线原生工具验收覆盖 write/read、结果返回、重复 key、父 bot 继续回复、失效写入拦截、共享请求预算耗尽不重放文件写入及权限拒绝不能伪报成功。暂不证明 detached runner 跨进程存活、社区全部工作流或真实 API。当前无需 fork；若未来需要稳定公开 factory hook，可以把这个小接口作为上游改动或维护固定 fork。

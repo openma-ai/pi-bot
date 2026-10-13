@@ -7,8 +7,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const execute = promisify(execFile);
 test('new behavior CLI dry-run declares real-work caps and performs no auth or provider request', async () => {
-    assert.equal(await access('src/behavior-cli.ts').then(() => true, () => false), true, 'behavior CLI must exist');
-    const { stdout } = await execute(process.execPath, ['--import', 'tsx', 'src/behavior-cli.ts', '--dry-run', '--real', '--suite', 'taskchain', '--auth-source', 'dsh']);
+    assert.equal(await access('src/evals/behavior-cli.ts').then(() => true, () => false), true, 'behavior CLI must exist');
+    const { stdout } = await execute(process.execPath, ['--import', 'tsx', 'src/evals/behavior-cli.ts', '--dry-run', '--real', '--suite', 'taskchain', '--auth-source', 'dsh']);
     const result = JSON.parse(stdout);
     assert.equal(result.paidRequests, 0);
     assert.equal(result.suite, 'taskchain');
@@ -18,12 +18,12 @@ test('new behavior CLI dry-run declares real-work caps and performs no auth or p
     assert.equal(result.backgroundSummary, false);
 });
 test('behavior CLI refuses to overwrite a report before authentication', async () => {
-    assert.equal(await access('src/behavior-cli.ts').then(() => true, () => false), true);
+    assert.equal(await access('src/evals/behavior-cli.ts').then(() => true, () => false), true);
     const dir = await mkdtemp(join(tmpdir(), 'pi-cli-test-'));
     const file = join(dir, 'report.json');
     try {
         await writeFile(file, 'EXISTING_REPORT');
-        await assert.rejects(() => execute(process.execPath, ['--import', 'tsx', 'src/behavior-cli.ts', '--real', '--auth-source', 'dsh', '--report', file]));
+        await assert.rejects(() => execute(process.execPath, ['--import', 'tsx', 'src/evals/behavior-cli.ts', '--real', '--auth-source', 'dsh', '--report', file]));
         assert.equal(await readFile(file, 'utf8'), 'EXISTING_REPORT');
     }
     finally {
@@ -33,7 +33,7 @@ test('behavior CLI refuses to overwrite a report before authentication', async (
     }
 });
 test('behavior CLI declares bounded background execution without imposing the cancelled USD ceiling', async () => {
-    const { stdout } = await execute(process.execPath, ['--import', 'tsx', 'src/behavior-cli.ts', '--dry-run', '--real', '--suite', 'taskchain', '--background-execution', '--auth-source', 'dsh']).catch(() => ({
+    const { stdout } = await execute(process.execPath, ['--import', 'tsx', 'src/evals/behavior-cli.ts', '--dry-run', '--real', '--suite', 'taskchain', '--background-execution', '--auth-source', 'dsh']).catch(() => ({
         stdout: '{}'
     }));
     const result = JSON.parse(stdout);

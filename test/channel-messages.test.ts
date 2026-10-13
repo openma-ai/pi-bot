@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { Store, type Envelope } from '../src/store.ts';
-import { ChannelMessageReader, redactChannelText } from '../src/channel-messages.ts';
+import { Store, type Envelope } from '../src/daemon/store.ts';
+import { ChannelMessageReader, redactChannelText } from '../src/daemon/channel-messages.ts';
 test('GUI reader persists both directions, paginates and incrementally reports delivery failure', async () => {
     await mkdir(resolve('work/proactive-tests'), {
         recursive: true

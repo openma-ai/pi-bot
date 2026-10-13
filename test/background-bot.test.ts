@@ -5,9 +5,9 @@ import { join, resolve } from 'node:path';
 import { Type } from 'typebox';
 import { ModelRuntime, type ToolDefinition, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore } from '@earendil-works/pi-ai';
-import { BotRuntime } from '../src/runtime.ts';
-import { piSessionFactory } from '../src/pi.ts';
-import type { Envelope, Job, Outbound } from '../src/store.ts';
+import { BotRuntime } from '../src/daemon/runtime.ts';
+import { piSessionFactory } from '../src/pi/session-factory.ts';
+import type { Envelope, Job, Outbound } from '../src/daemon/store.ts';
 for (const variant of ['reply', 'nested', 'cancel', 'peer'])
     test(`background cell uses durable bot jobs/inbox: ${variant}`, {
         timeout: 15000

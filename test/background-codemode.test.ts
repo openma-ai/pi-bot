@@ -6,8 +6,8 @@ import { join, resolve } from 'node:path';
 import { Type } from 'typebox';
 import { createAgentSession, createBashTool, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager, type ToolDefinition, type ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore } from '@earendil-works/pi-ai';
-import { createBackgroundCodemodeExtension, type BackgroundCodemodeOptions } from '../src/background-codemode.ts';
-import { hasValidToolPairs } from '../src/context.ts';
+import { createBackgroundCodemodeExtension, type BackgroundCodemodeOptions } from '../src/pi/background-codemode.ts';
+import { hasValidToolPairs } from '../src/pi/context.ts';
 const deferred = <T = void>() => {
     let resolve!: (v: T) => void;
     const promise = new Promise<T>(r => resolve = r);
