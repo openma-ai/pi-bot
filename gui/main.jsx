@@ -175,8 +175,9 @@ function App() {
         setSelected(g.memberIds[0]);
         setView('group');
     }}><Avatar fallback="群" radius="full" color="gray"/><div><Text size="2" as="div">{g.name}</Text><Text size="1" color="gray">{g.memberIds.length} 个 bot</Text></div></button>)}</nav>
- <div className="mode"><Badge color="gray">{data.mode || '连接中'}</Badge><Text size="1" color="gray">{error || '本地工作区'}</Text></div></aside>
+ <div className="mode"><Badge color="gray">{data.mode || '连接中'}</Badge><Text size="1" color="gray">{error || data.configuration?.message || '本地工作区'}</Text></div></aside>
  <main className="main"><header className="header"><Heading size="4">{title || 'Pi Bot'}</Heading>{routineView ? <Button onClick={() => openRoutine(kind)}>新建{kind === 'schedule' ? '定时任务' : '监控'}</Button> : <Button variant="ghost" color="gray" onClick={() => setDetails(true)}>详情</Button>}</header>
+ {data.configuration?.setupRequired && <Callout.Root color="amber" m="3"><Callout.Text>{data.configuration.message}</Callout.Text></Callout.Root>}
  {data.trigger?.halted && <Callout.Root color="red" m="3"><Callout.Text>触发投递需要核查，已停止自动处理。</Callout.Text></Callout.Root>}{data.errors?.length > 0 && <Callout.Root color="red" m="3"><Callout.Text>{data.errors.at(-1)}</Callout.Text></Callout.Root>}{notice && <Callout.Root m="3"><Callout.Text>{notice}</Callout.Text><Button variant="ghost" onClick={() => setNotice('')}>关闭</Button></Callout.Root>}
  {routineView ? <section className="routine-page"><Text size="2" color="gray">{kind === 'schedule' ? '所有 bot 的定时任务，时间按上海时区显示。' : '所有 bot 的文件变化监控，先试运行再启用。'}</Text><div className="routine-list">{routineRows.length ? routineRows.map(r => routineCard(kind, r)) : <div className="empty"><Heading size="4">暂无{kind === 'schedule' ? '定时任务' : '监控'}</Heading><Button onClick={() => openRoutine(kind)}>创建第一个{kind === 'schedule' ? '定时任务' : '监控'}</Button></div>}</div></section> : <>
  {view === 'group' && <div className="view-toolbar group-toolbar"><Text size="2" color="gray">{groupBots.map(b => b.name).join('、')}</Text>{data.messages.some(m => m.channelId === groupId && m.sourceKind === 'bot' && m.direction === 'inbound' && m.deliveryTarget === 'direct') && <Button variant="ghost" color="gray" size="1" onClick={() => {
@@ -221,7 +222,7 @@ function App() {
                 e.preventDefault();
                 send();
             }
-        }}/><Button disabled={busy || !draft.trim() || !!error} onClick={send}>{busy ? '发送中' : view === 'peers' ? '发起协作' : '发送'}</Button></div></div></>}
+        }}/><Button disabled={busy || !draft.trim() || !!error || data.configuration?.setupRequired} onClick={send}>{busy ? '发送中' : view === 'peers' ? '发起协作' : '发送'}</Button></div></div></>}
  </main>{!routineView && view === 'chat' && <aside className="inspector">{inspector}</aside>}
  <Dialog.Root open={!!routineKind} onOpenChange={v => {
         if (!v)

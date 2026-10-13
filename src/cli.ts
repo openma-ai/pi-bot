@@ -5,8 +5,7 @@ import { mkdirSync } from 'node:fs';
 import { ProactiveService } from './proactive.ts';
 import { createFileChangeDetector } from './proactive-detectors.ts';
 import { createModelBackgroundWorker } from './proactive-model-worker.ts';
-import { ModelRuntime } from '@earendil-works/pi-coding-agent';
-import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
+import { loadPiConfiguration } from './pi-config.ts';
 import { OpenMatterTrigger } from './openmatter-trigger.ts';
 import { BotRuntime } from './runtime.ts';
 import { piSessionFactory } from './pi.ts';
@@ -15,19 +14,9 @@ const dir = resolve(process.env.PI_BOT_DIR ?? '.pi-bot');
 mkdirSync(dir, {
     recursive: true
 });
-const provider = process.env.PI_BOT_PROVIDER;
-const modelId = process.env.PI_BOT_MODEL;
-if (!provider || !modelId) {
-    console.error('Set PI_BOT_PROVIDER and PI_BOT_MODEL plus the provider API key environment variable. For an offline demo: npm run demo');
-    process.exitCode = 1;
-}
-else {
-    const models = await ModelRuntime.create({
-        credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(dir, 'models.json'), refreshOnCreate: false
-    });
-    const model = models.getModel(provider, modelId);
-    if (!model)
-        throw Error('Unknown model; select an installed Pi model ID');
+{
+    const configuration = await loadPiConfiguration();
+    const { models, model } = configuration;
     let proactive: ProactiveService | undefined;
     const proactiveOptions: ConstructorParameters<typeof ProactiveService>[1] = {
         detectors: process.env.PI_BOT_WATCH_FILE ? {
@@ -40,7 +29,7 @@ else {
     };
     const trigger = new OpenMatterTrigger(join(dir, 'triggers.db'));
     const runtime = new BotRuntime(join(dir, 'runtime.db'), piSessionFactory({
-        dir: join(dir, 'sessions'), modelRuntime: models, model,
+        codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model,
         ...(process.env.PI_BOT_PROACTIVE === '1' ? {
             proactive: (host: BotRuntime) => proactive ??= new ProactiveService(host, proactiveOptions)
         } : {}),

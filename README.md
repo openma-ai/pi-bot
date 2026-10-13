@@ -22,13 +22,11 @@ Demo 使用真实 Pi SDK + faux provider，并实际执行安全延迟工具：�
 ## 真实模型 CLI
 
 ```sh
-export PI_BOT_PROVIDER=anthropic
-export PI_BOT_MODEL='<你的 Pi 支持的模型 ID>'
-export ANTHROPIC_API_KEY='<由你在本机设置>'
+# 先在 Pi 中 /login 完成认证，并用 /model 选择默认模型
 npm start
 ```
 
-模型 ID 由本地 Pi catalog 验证；其他 provider 使用对应的 API key 环境变量。CLI 不保存凭证。默认没有 shell/文件/网络工具，也不自动加载当前目录的第三方扩展。
+GUI 与 CLI 读取 Pi 原生 settings.json、models.json、auth.json；凭据解析与 OAuth 刷新由 Pi SDK 负责。不再使用 PI_BOT_PROVIDER / PI_BOT_MODEL，也不自动读取 DSH key。每个 bot 提供异步 subagent extension，可把重活派给独立的原生 Pi coding session，通过持久 jobs 回传结果。子会话提供 Pi coding tools（包括 shell/文件），不加载第三方扩展、不递归派发，也不能直接回复用户。详见 [Pi 认证与重活派发](docs/pi-auth-workers.md)。
 
 默认状态目录 `.pi-bot/`，用 `PI_BOT_DIR` 更改。每行普通文本发给 main bot；无需等待模型完成即可继续输入：
 

@@ -1,6 +1,8 @@
 # Local Pi GUI
 
-React + Radix Themes. Start with `npm run gui`, open http://127.0.0.1:4317. There is no demo fallback: startup requires an available real DeepSeek credential. The existing explicitly authorized host-only DSH credential reader loads the key into Pi memory, never into the UI or a file. `DEEPSEEK_API_KEY` may override that source. Uses official `deepseek-v4-flash`, thinking high, 16,384 output token cap including reasoning, zero provider retries, 10-minute request timeout.
+React + Radix Themes. Start with `npm run gui`, open http://127.0.0.1:4317. Model and authentication use native Pi settings/model catalog/auth storage. There are no custom model/auth environment overrides and no automatic DSH credential fallback. Authenticate with Pi `/login`, select a default with `/model`, then restart the GUI. Pi handles credential lookup and OAuth refresh; secrets never enter GUI state, chat or tool traces. Missing configuration keeps history readable and blocks task submission with a configuration message. See [Pi authentication and independent coding workers](pi-auth-workers.md).
+
+GUI request protections remain: 16,384 output token maximum, zero provider retries, 10-minute request timeout, a shared finite budget. Native model limits can lower the output cap.
 
 Default runtime directory remains `work/gui/demo` solely to preserve existing interactive bot IDs and message records. Its old demonstration messages remain visibly labeled in their original text; new tasks use real Pi. `PI_BOT_DIR` selects another existing runtime directory. Never use a directory owned by another live process: the runtime's exclusive lock prevents this. Evaluation fixtures are not imported as production history. Native sessions and durable SQLite inbox/outbox/jobs are reused across restarts. Delivery means publication to this local GUI, not remote IM.
 

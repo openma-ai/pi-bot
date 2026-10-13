@@ -10,7 +10,7 @@ import { createFileChangeDetector } from './proactive-detectors.ts';
 import { OpenMatterTrigger } from './openmatter-trigger.ts';
 import { guiPiFactory } from './gui-live.ts';
 import type { Envelope, Outbound, Job } from './store.ts';
-function modelUsage(directory: string) {
+function modelUsage(directory: string, modelId?: string) {
     const usage = {
         responses: 0, input: 0, output: 0, cacheRead: 0, reasoning: 0, totalTokens: 0, estimatedUsd: 0
     };
@@ -23,7 +23,7 @@ function modelUsage(directory: string) {
                 try {
                     const v = JSON.parse(line);
                     const u = v.message?.role === 'assistant' ? v.message.usage : undefined;
-                    if (!u || v.message.model !== 'deepseek-v4-flash' || !(Number(u.totalTokens) > 0))
+                    if (!u || (modelId && v.message.model !== modelId) || !(Number(u.totalTokens) > 0))
                         continue;
                     usage.responses++;
                     for (const key of ['input', 'output', 'cacheRead', 'reasoning', 'totalTokens'] as const)
@@ -110,7 +110,7 @@ export async function startGui(options: {
                     }, 403);
                 if (req.method === 'GET' && url.pathname === '/api/state')
                     return json({
-                        mode: live ? '真实 Pi · DeepSeek Flash' : '测试 runtime', budget: live?.budget, usage: modelUsage(dir), watchFile: resolve(process.env.PI_BOT_WATCH_FILE ?? 'README.md'), token, bots: runtime.listBots(), trigger: {
+                        mode: live ? `真实 Pi · ${live.model}` : '测试 runtime', configuration: live?.configuration, budget: live?.budget, usage: modelUsage(dir, live?.model), watchFile: resolve(process.env.PI_BOT_WATCH_FILE ?? 'README.md'), token, bots: runtime.listBots(), trigger: {
                             implementation: 'OpenMatter SQLite DurableInbox', halted: trigger.halted, queued: trigger.inspect().filter(r => r.state !== 'completed').length
                         }, groups: runtime.listGroups(), groupMessages: runtime.store.list('group_messages'), messages: [...runtime.store.list<Envelope>('inbox').map(e => projectChannelMessage('inbox', e)), ...runtime.store.list<Outbound>('outbox').filter(e => e.state === 'delivered').map(e => projectChannelMessage('outbox', e))].sort((a, b) => a.receivedAt - b.receivedAt), errors: runtime.errors.map(() => 'Pi 执行未完成，请检查任务状态；不会自动重放'), jobs: runtime.store.list<Job>('jobs').map(j => ({
                             id: j.id, botId: j.botId, tool: j.tool, state: j.state, error: j.error ? redactChannelText(j.error) : undefined
@@ -132,7 +132,11 @@ export async function startGui(options: {
                 }
                 const data = JSON.parse(body);
                 if (url.pathname === '/api/message') {
-                    if (live && (Date.now() >= live.budget.expiresAt || live.budget.requests >= live.budget.maxRequests || live.budget.inputReserved >= live.budget.maxInput))
+                    if (live?.configuration && 'setupRequired' in live.configuration && live.configuration.setupRequired)
+                        return json({
+                            error: live.configuration.message
+                        }, 409);
+                    if (live?.budget && (Date.now() >= live.budget.expiresAt || live.budget.requests >= live.budget.maxRequests || live.budget.inputReserved >= live.budget.maxInput))
                         throw Error('本轮请求或时间额度已用完；任务不会被自动重放');
                     const input = validateGuiMessage(data, runtime.listBots().map(b => b.id));
                     const bot = runtime.listBots().find(b => b.id === input.to)!;
