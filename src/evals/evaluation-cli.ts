@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
 import { enterCredential } from '../daemon/hidden-entry.ts';
-import { CredentialBroker } from '../daemon/credentials.ts';
+import { CredentialBroker } from '../daemon/runtime/credentials.ts';
 import { runEvaluation, SMOKE_CAP, scenarios } from './evaluation.ts';
 import { configureSmokeProvider } from './smoke-provider.ts';
 const args = process.argv.slice(2);

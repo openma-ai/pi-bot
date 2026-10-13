@@ -1,6 +1,6 @@
 # pi-bot daemon：App Server 化详细设计
 
-状态：提案 v2 · 2026-10-13 · 前置：`refactor/layers` 四层分层已完成（`src/pi` / `src/daemon` / `src/sdk` / `src/gui`）
+状态：提案 v2（实现及验收见 [2026-10-14 交接](app-server-implementation-20261014.md)） · 2026-10-13 · 前置：`refactor/layers` 四层分层已完成（`src/pi` / `src/daemon` / `src/sdk` / `src/gui`）
 
 参考：[Codex app-server README](https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/app-server/README.md)
 

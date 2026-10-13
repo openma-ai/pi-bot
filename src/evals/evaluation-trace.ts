@@ -1,4 +1,4 @@
-import type { Envelope, Job, Outbound } from '../daemon/store.ts';
+import type { Envelope, Job, Outbound } from '../daemon/runtime/store.ts';
 /** Evaluation-only evidence: never captures HTTP headers, raw provider errors or reasoning. */
 export interface EvaluationTrace {
     inbox: Envelope[];

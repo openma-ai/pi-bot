@@ -5,9 +5,9 @@ import { join, resolve } from 'node:path';
 import { Type } from 'typebox';
 import { ModelRuntime, type ToolDefinition, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore } from '@earendil-works/pi-ai';
-import { BotRuntime } from '../src/daemon/runtime.ts';
+import { BotRuntime } from '../src/daemon/runtime/runtime.ts';
 import { piSessionFactory } from '../src/pi/session-factory.ts';
-import type { Envelope, Job, Outbound } from '../src/daemon/store.ts';
+import type { Envelope, Job, Outbound } from '../src/daemon/runtime/store.ts';
 for (const variant of ['reply', 'nested', 'cancel', 'peer'])
     test(`background cell uses durable bot jobs/inbox: ${variant}`, {
         timeout: 15000
@@ -97,18 +97,27 @@ for (const variant of ['reply', 'nested', 'cancel', 'peer'])
             const route = {
                 channelId: 'alpha', threadId: 'work', senderId: 'alice'
             };
-            const parent: Envelope = { id: 'peer-parent', to: bot.id, from: 'alice', kind: 'user', taskId: 'work', route, text: 'complete work', key: 'parent', state: 'processed', replyTo: null, hop: 0, createdAt: Date.now() };
-            if (variant === 'peer') runtime.store.put('inbox', parent);
+            const parent: Envelope = {
+                id: 'peer-parent', to: bot.id, from: 'alice', kind: 'user', taskId: 'work', route, text: 'complete work', key: 'parent', state: 'processed', replyTo: null, hop: 0, createdAt: Date.now()
+            };
+            if (variant === 'peer')
+                runtime.store.put('inbox', parent);
             source = runtime.accept({
-                to: bot.id, from: variant === 'peer' ? 'schedule:host' : 'alice', kind: variant === 'peer' ? 'schedule' : 'user', taskId: 'work', route, text: 'complete work', key: 'work', ...(variant === 'peer' ? { replyTo: parent.id } : {})
+                to: bot.id, from: variant === 'peer' ? 'schedule:host' : 'alice', kind: variant === 'peer' ? 'schedule' : 'user', taskId: 'work', route, text: 'complete work', key: 'work', ...(variant === 'peer' ? {
+                    replyTo: parent.id
+                } : {})
             }).id;
             assert.equal(await until(() => started === 1), true, 'codemode must call a real native tool');
-            if (variant === 'peer') runtime.sendToBot(parent, bot.id, 'Priority observation only; no reply', 'late', { priority: true });
-            else runtime.accept({
-                to: bot.id, from: cancel ? 'alice' : 'bob', kind: 'user', taskId: cancel ? 'work' : 'noise', route: cancel ? route : {
-                    channelId: 'alpha', threadId: 'lounge', senderId: 'bob'
-                }, taskControl: cancel ? 'cancel' : undefined, text: cancel ? 'cancel work' : 'Incidental chatter, no reply', key: 'late'
-            });
+            if (variant === 'peer')
+                runtime.sendToBot(parent, bot.id, 'Priority observation only; no reply', 'late', {
+                    priority: true
+                });
+            else
+                runtime.accept({
+                    to: bot.id, from: cancel ? 'alice' : 'bob', kind: 'user', taskId: cancel ? 'work' : 'noise', route: cancel ? route : {
+                        channelId: 'alpha', threadId: 'lounge', senderId: 'bob'
+                    }, taskControl: cancel ? 'cancel' : undefined, text: cancel ? 'cancel work' : 'Incidental chatter, no reply', key: 'late'
+                });
             assert.equal(await until(() => contexts.some(s => s.includes('Script running with cell ID'))), true);
             assert.equal(signal?.aborted, false);
             assert.equal(runtime.store.list<Job>('jobs').length, 1);

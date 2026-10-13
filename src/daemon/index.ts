@@ -1,11 +1,12 @@
 /** Layer ② daemon: durable multi-bot host for the Pi plugin layer. */
-export { BotRuntime } from './runtime.ts';
-export { Store } from './store.ts';
-export { ProactiveService, type Detector, type BackgroundWorker } from './proactive.ts';
-export { createFileChangeDetector } from './proactive-detectors.ts';
-export { createModelBackgroundWorker } from './proactive-model-worker.ts';
-export { OpenMatterTrigger } from './openmatter-trigger.ts';
-export { CredentialBroker } from './credentials.ts';
-export { ChannelMessageReader, projectChannelMessage } from './channel-messages.ts';
+export { BotRuntime } from './runtime/runtime.ts';
+export { Store } from './runtime/store.ts';
+export { ProactiveService, type Detector, type BackgroundWorker } from './runtime/proactive.ts';
+export { createFileChangeDetector } from './runtime/proactive-detectors.ts';
+export { createModelBackgroundWorker } from './runtime/proactive-model-worker.ts';
+export { OpenMatterTrigger } from './runtime/openmatter-trigger.ts';
+export { CredentialBroker } from './runtime/credentials.ts';
+export { ChannelMessageReader, projectChannelMessage } from './runtime/channel-messages.ts';
 export { livePiFactory } from './live-pi.ts';
-export { startDaemon, validateMessageInput } from './server.ts';
+export { PiBotDaemon } from './core/daemon.ts';
+export { listenHttp } from './transports/http.ts';

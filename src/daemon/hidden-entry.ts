@@ -1,5 +1,5 @@
 import type { ReadStream, WriteStream } from 'node:tty';
-import { CredentialBroker, type CredentialScope } from './credentials.ts';
+import { CredentialBroker, type CredentialScope } from './runtime/credentials.ts';
 /** Direct local terminal input. Raw mode disables echo. No readline/history,
  * argv/env/file value, masks, or pasted chat credentials are accepted. */
 export async function readHidden(label: string, input: ReadStream = process.stdin, output: WriteStream = process.stderr): Promise<string> {

@@ -1,4 +1,5 @@
 import { createDesktopExtension, desktopToolNames, type DesktopClient } from './desktop-client.ts';
+import { redactChannelText } from './redact.ts';
 import { runCodingWorker } from './coding-worker.ts';
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -8,7 +9,7 @@ import { Type } from 'typebox';
 import { createAgentSession, createBashTool, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager, type ExtensionFactory, type ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { createAssistantMessageEventStream, type AssistantMessage, type Model, type Api } from '@earendil-works/pi-ai';
 import { createContextExtension, estimateContextTokens, type ContextOptions, type SummarySnapshot } from './context.ts';
-import { InferenceYieldError, JobExecutionError, type SessionFactory, type BotHost, type ProactivePort, type CredentialPort } from './host.ts';
+import { authorize, ProviderRequestGuardError, InferenceYieldError, JobExecutionError, type SessionFactory, type BotHost, type ProactivePort, type CredentialPort } from './host.ts';
 import { createProactiveExtension, proactiveToolNames } from './proactive-extension.ts';
 import { inboxIds } from './inbox-identity.ts';
 import type { Envelope, Job, Question, Outbound, Bot } from './types.ts';
@@ -40,7 +41,7 @@ export interface PiOptions {
     /** Host budget/deadline applies to foreground inference only. */
     inferenceSignal?: AbortSignal;
     maxOutputTokens?: number;
-    thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high';
+    thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
     inferenceRequestTimeoutMs?: number;
     onInferenceTimeout?: () => void;
     beforeProviderRequest?: (context: unknown, maxTokens: number) => void;
@@ -322,7 +323,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                     origins.set(event.toolCallId, origin);
                     try {
                         runtime.assertTaskCurrent(origin.source);
-                        if (runtime.options.permission && !await runtime.options.permission({
+                        if ((runtime.options.permission || runtime.approvals) && !await authorize(runtime, {
                             botId: bot.id, taskId: origin.source.taskId, tool: event.toolName, args: event.input
                         }))
                             return {
@@ -422,7 +423,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                 name: 'send_message', label: 'Message user', description: 'Enqueue a message to the user in the host outbox. Pending is not delivered. No arbitrary destination. For interleaved tasks, set source_message_id to the inbox event being answered; without a source, multiple visible tasks are rejected. An original parent task ID resolves only to an unambiguous verified own inherited branch.', parameters: Type.Object({
                     text: Type.String(), key, source_message_id: Type.Optional(Type.String())
                 }), async execute(_id, p) {
-                    return result(runtime.sendMessage(own(p.source_message_id, true), p.text, p.key));
+                    return result(runtime.sendMessage(own(p.source_message_id, true), p.text, p.key, _id));
                 }
             });
             pi.registerTool({
@@ -453,7 +454,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                 }
             });
             if (options.desktop)
-                createDesktopExtension(options.desktop, bot.id, sourceId => runtime.assertTaskCurrent(own(sourceId, true)), async (tool, args, sourceId) => !runtime.options.permission || await runtime.options.permission({
+                createDesktopExtension(options.desktop, bot.id, sourceId => runtime.assertTaskCurrent(own(sourceId, true)), async (tool, args, sourceId) => await authorize(runtime, {
                     botId: bot.id, taskId: own(sourceId, true).taskId, tool, args
                 }))(pi);
             if (options.codingWorkers)
@@ -477,7 +478,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                             task: p.task
                         }, p.key, () => runCodingWorker({
                             ...options, extensions: [...(options.extensions ?? []), ...(options.desktop ? [createDesktopExtension(options.desktop, bot.id, () => runtime.assertTaskCurrent(source))] : [])], dir: workerDir, assertCurrent: () => runtime.assertTaskCurrent(source),
-                            permission: async (tool, args) => !runtime.options.permission || await runtime.options.permission({
+                            permission: async (tool, args) => await authorize(runtime, {
                                 botId: bot.id, taskId: source.taskId, tool, args
                             })
                         }, p.task, original));
@@ -528,7 +529,12 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
         });
         const loader = new DefaultResourceLoader({
             cwd: dir, agentDir: dir, settingsManager: settings, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, extensionFactories: [...(options.extensions ?? []), ...(background ? [background] : []), extension, createContextExtension({
-                    ...options.context, signal: contextLifetime.signal, summarize: options.context?.summarize ?? createModelSummarizer(options.modelRuntime, options.model),
+                    ...options.context, onCompaction: info => {
+                        runtime.events?.emit(bot.id, {
+                            type: 'compaction', ...info
+                        });
+                        options.context?.onCompaction?.(info);
+                    }, signal: contextLifetime.signal, summarize: options.context?.summarize ?? createModelSummarizer(options.modelRuntime, options.model),
                     getState: scopedState, onSummaryError: options.context?.onSummaryError ?? (error => runtime.errors.push(error)), onError: error => {
                         wakeError = error;
                         runtime.errors.push(error);
@@ -613,20 +619,79 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                 })();
                 return output;
             }
-            catch {
+            catch (error) {
                 clearDeadline();
                 if (inference === controller)
                     inference = undefined;
                 if (scopeYielded)
                     throw new InferenceYieldError();
+                if (error instanceof ProviderRequestGuardError) {
+                    wakeError = error;
+                    throw Error('Model request blocked by host guard');
+                }
                 throw Error('Provider request refused or failed before streaming');
             }
         };
+        const replyPrefixes = new Map<string, string>();
+        let internalPrefix = '';
         session.subscribe(event => {
+            if (event.type === 'message_start')
+                internalPrefix = '';
+            if (event.type === 'tool_execution_start' && event.toolName !== 'send_message')
+                runtime.events?.emit(bot.id, {
+                    type: 'toolStarted', toolCallId: event.toolCallId, tool: event.toolName, args: event.args
+                });
+            if (event.type === 'tool_execution_update' && event.toolName !== 'send_message')
+                runtime.events?.emit(bot.id, {
+                    type: 'toolDelta', toolCallId: event.toolCallId, partial: (event.partialResult?.content ?? []).filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n').slice(0, 4096)
+                });
+            if (event.type === 'tool_execution_end' && event.toolName !== 'send_message')
+                runtime.events?.emit(bot.id, {
+                    type: 'toolCompleted', toolCallId: event.toolCallId, result: event.result, isError: event.isError
+                });
+            if (event.type === 'message_update') {
+                const partial = event.message;
+                if (partial.role === 'assistant') {
+                    const text = partial.content.filter(part => part.type === 'text').map(part => part.text).join('');
+                    const safe = redactChannelText(text);
+                    const prefix = safe.slice(0, Math.max(0, safe.length - 128));
+                    if (prefix.startsWith(internalPrefix) && prefix.length > internalPrefix.length) {
+                        runtime.events?.emit(bot.id, {
+                            type: 'internalDelta', textDelta: prefix.slice(internalPrefix.length)
+                        });
+                        internalPrefix = prefix;
+                    }
+                }
+                if (partial.role === 'assistant')
+                    for (const call of partial.content)
+                        if (call.type === 'toolCall' && call.name === 'send_message' && typeof call.arguments?.text === 'string') {
+                            const safe = redactChannelText(call.arguments.text);
+                            const prefix = safe.slice(0, Math.max(0, safe.length - 128));
+                            const old = replyPrefixes.get(call.id) ?? '';
+                            if (prefix.startsWith(old) && prefix.length > old.length) {
+                                try {
+                                    runtime.assertTaskCurrent(own(typeof call.arguments.source_message_id === 'string' ? call.arguments.source_message_id : undefined, true));
+                                }
+                                catch {
+                                    continue;
+                                }
+                                runtime.events?.emit(bot.id, {
+                                    type: 'replyDelta', toolCallId: call.id, textDelta: prefix.slice(old.length)
+                                });
+                                replyPrefixes.set(call.id, prefix);
+                            }
+                        }
+            }
+            if (event.type === 'message_end' && event.message.role === 'assistant') {
+                const usage = event.message.usage;
+                runtime.events?.emit(bot.id, {
+                    type: 'usage', input: usage.input, output: usage.output, cacheRead: usage.cacheRead, reasoning: Number((usage as any).reasoning ?? 0), totalTokens: usage.totalTokens, costUsd: usage.cost.total
+                });
+            }
             if (event.type === 'message_end' && event.message.role === 'assistant')
                 inference = undefined;
             if (event.type === 'message_end' && event.message.role === 'assistant' && (event.message.stopReason === 'error' || event.message.stopReason === 'aborted') && !scopeYielded && !(preempted && event.message.stopReason === 'aborted'))
-                wakeError = Error(event.message.errorMessage ?? `Model ${event.message.stopReason}`);
+                wakeError ??= Error(event.message.errorMessage ?? `Model ${event.message.stopReason}`);
         });
         session.setAutoCompactionEnabled(false);
         await session.bindExtensions({

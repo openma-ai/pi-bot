@@ -91,13 +91,13 @@ import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { ModelRuntime, SessionManager, type ToolDefinition, type ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore, type Model, type Api, type TranscriptContext } from '@earendil-works/pi-ai';
-import { BotRuntime } from '../daemon/runtime.ts';
+import { BotRuntime } from '../daemon/runtime/runtime.ts';
 import { piSessionFactory } from '../pi/session-factory.ts';
 import { SimulatedChat } from './chat.ts';
 import { RequestBudget, SMOKE_CAP } from './evaluation.ts';
 import { hasValidToolPairs } from '../pi/context.ts';
 import { redactTraceValue, inboxIds, observeEvaluationTools, type EvaluationTrace } from './evaluation-trace.ts';
-import type { Bot, Envelope, Job, Outbound } from '../daemon/store.ts';
+import type { Bot, Envelope, Job, Outbound } from '../daemon/runtime/store.ts';
 export const TASKCHAIN_SPEC = `Implement a runnable headless TaskChain prototype in Python (adapted from MARBLE coding task 46). No imports, network, filesystem access or main block. Define class TaskChain with:
 add_task(task_id, dependencies=None): unique IDs; dependencies must already exist; initially pending. Invalid IDs/dependencies raise ValueError/KeyError without mutation.
 start(task_id): pending -> in_progress only when all dependencies completed; otherwise ValueError/KeyError.

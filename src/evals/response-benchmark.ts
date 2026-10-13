@@ -1,5 +1,5 @@
-import type { Envelope, Outbound, Job } from '../daemon/store.ts';
-import type { Fire } from '../daemon/proactive.ts';
+import type { Envelope, Outbound, Job } from '../daemon/runtime/store.ts';
+import type { Fire } from '../daemon/runtime/proactive.ts';
 export type ResponseExpectation = {
     inboxId: string;
     finalText?: string;

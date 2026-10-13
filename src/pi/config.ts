@@ -9,7 +9,7 @@ export async function loadPiConfiguration(options: {
     const settings = SettingsManager.create(options.cwd ?? process.cwd(), agentDir);
     const provider = settings.getDefaultProvider(), id = settings.getDefaultModel();
     if (!provider && !id)
-        throw Error('Pi 尚未选择模型：请在 Pi 中使用 /login 和 /model，然后重启 GUI');
+        throw Error('Pi 尚未选择模型：请在 GUI 的「Pi 登录与模型」中登录并选择模型');
     if (!provider || !id)
         throw Error('Pi defaultProvider and defaultModel must be configured together');
     let models: ModelRuntime;
@@ -34,8 +34,8 @@ export async function loadPiConfiguration(options: {
     if (!authenticated)
         throw Error('Pi 尚未认证，请在 Pi 中完成 /login');
     return {
-        models, model, source: 'pi' as const, public: {
-            provider, model: id, auth: 'Pi native', agentDir
+        models, model, thinkingLevel: settings.getDefaultThinkingLevel() ?? 'high', source: 'pi' as const, public: {
+            provider, model: id, thinkingLevel: settings.getDefaultThinkingLevel() ?? 'high', auth: 'Pi native', agentDir
         }, dispose: () => {
         }
     };

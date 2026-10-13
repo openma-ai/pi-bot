@@ -3,10 +3,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage as msg, fauxToolCall as call, InMemoryCredentialStore } from '@earendil-works/pi-ai';
-import { BotRuntime } from '../daemon/runtime.ts';
+import { BotRuntime } from '../daemon/runtime/runtime.ts';
 import { piSessionFactory } from '../pi/session-factory.ts';
 import { delayTool } from '../../examples/safe-tools.ts';
-import type { Question, Job } from '../daemon/store.ts';
+import type { Question, Job } from '../daemon/runtime/store.ts';
 const dir = await mkdtemp(join(tmpdir(), 'pi-bot-demo-'));
 const models = await ModelRuntime.create({
     credentials: new InMemoryCredentialStore(), modelsPath: null, modelsStorePath: join(dir, 'models.json'), refreshOnCreate: false

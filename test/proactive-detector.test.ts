@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { createFileChangeDetector } from '../src/daemon/proactive-detectors.ts';
+import { createFileChangeDetector } from '../src/daemon/runtime/proactive-detectors.ts';
 test('allowlisted file monitor observes metadata changes without reading contents', async () => {
     await mkdir(resolve('work/proactive-tests'), {
         recursive: true

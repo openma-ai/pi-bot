@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { Type } from 'typebox';
 import { ModelRuntime, type ExtensionFactory, type ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore, type FauxResponseStep } from '@earendil-works/pi-ai';
-import { BotRuntime } from '../src/daemon/runtime.ts';
+import { BotRuntime } from '../src/daemon/runtime/runtime.ts';
 import { piSessionFactory, type PiOptions } from '../src/pi/session-factory.ts';
-import type { Envelope, Job, Outbound, Question } from '../src/daemon/store.ts';
+import type { Envelope, Job, Outbound, Question } from '../src/daemon/runtime/store.ts';
 const deferred = () => {
     let resolve!: () => void;
     const promise = new Promise<void>(r => resolve = r);
@@ -96,19 +96,28 @@ test('audit Pi: sender is runtime-bound and bot/user/ask channels stay distinct'
         await h.close();
     }
 });
-
 test('ledger references alone cannot acknowledge an inbox envelope absent from provider messages', async () => {
     let id = '';
     const h = await setup([fauxAssistantMessage('internal')], [], [pi => {
-        // Negative admission fixture: retain only a ledger pointer, no actual typed inbox body.
-        pi.on('context', event => ({ messages: [...event.messages.filter(m => m.role !== 'user' || !JSON.stringify(m.content).includes('\\"type\\":\\"inbox\\"')), { role: 'user', content: `Ledger pointer ${id}`, timestamp: 0 }] }));
-    }]);
+            // Negative admission fixture: retain only a ledger pointer, no actual typed inbox body.
+            pi.on('context', event => ({
+                messages: [...event.messages.filter(m => m.role !== 'user' || !JSON.stringify(m.content).includes('\\"type\\":\\"inbox\\"')), {
+                        role: 'user', content: `Ledger pointer ${id}`, timestamp: 0
+                    }]
+            }));
+        }]);
     try {
-        const bot = h.runtime.createBot('main'); id = h.runtime.accept({ to: bot.id, text: 'must actually be admitted', key: 'request' }).id;
+        const bot = h.runtime.createBot('main');
+        id = h.runtime.accept({
+            to: bot.id, text: 'must actually be admitted', key: 'request'
+        }).id;
         await h.runtime.idle();
         assert.equal(h.runtime.store.get<Envelope>('inbox', id)?.state, 'uncertain');
         assert.equal(h.runtime.store.get<Envelope>('inbox', id)?.resolvedAt, undefined);
-    } finally { await h.close(); }
+    }
+    finally {
+        await h.close();
+    }
 });
 test('audit Pi: detached tools traverse native deny hooks with parent correlation', async () => {
     let effects = 0;
@@ -818,96 +827,185 @@ test('provider deadline: reports timeout without retry or cancelling native tool
         await h.close();
     }
 });
-
 test('interleaved task reply without source is rejected instead of attached to later chatter', async () => {
     let admitted = false;
     const h = await setup([
-        async () => { while (!admitted) await new Promise(r => setTimeout(r, 1)); return fauxAssistantMessage('waiting'); },
-        () => fauxAssistantMessage([fauxToolCall('send_message', {text:'DONE original task',key:'implicit'})], {stopReason:'toolUse'}),
+        async () => {
+            while (!admitted)
+                await new Promise(r => setTimeout(r, 1));
+            return fauxAssistantMessage('waiting');
+        },
+        () => fauxAssistantMessage([fauxToolCall('send_message', {
+                text: 'DONE original task', key: 'implicit'
+            })], {
+            stopReason: 'toolUse'
+        }),
         fauxAssistantMessage('done')
     ]);
     try {
         const bot = h.runtime.createBot('interleaved');
-        h.runtime.accept({to:bot.id,text:'Produce task artifact',key:'task',taskId:'work'});
+        h.runtime.accept({
+            to: bot.id, text: 'Produce task artifact', key: 'task', taskId: 'work'
+        });
         await until(() => h.runtime.store.list<Envelope>('inbox')[0]?.state === 'processing');
-        h.runtime.accept({to:bot.id,text:'Ambient chatter; no reply.',key:'chatter',taskId:'noise'});
+        h.runtime.accept({
+            to: bot.id, text: 'Ambient chatter; no reply.', key: 'chatter', taskId: 'noise'
+        });
         admitted = true;
         await h.runtime.idle();
         assert.equal(h.runtime.store.list<Outbound>('outbox').length, 0);
-        const {SessionManager} = await import('@earendil-works/pi-coding-agent');
+        const { SessionManager } = await import('@earendil-works/pi-coding-agent');
         const messages = SessionManager.open(h.runtime.listBots()[0]!.sessionFile!).buildSessionProjection().messages;
         assert.ok(JSON.stringify(messages).includes('Ambiguous task source'));
-    } finally { admitted = true; await h.close(); }
+    }
+    finally {
+        admitted = true;
+        await h.close();
+    }
 });
-
 test('host-bound job source ignores a copied coordinator id and executes for the verified worker event', async () => {
     let seen: unknown;
     let source = '';
-    const tool: ToolDefinition = {name:'record',label:'Record',description:'Record a current task',parameters:Type.Object({message_id:Type.String()}), async execute(_id,args) {seen=args;return {content:[{type:'text',text:'recorded'}],details:{completed:true}};}};
+    const tool: ToolDefinition = {
+        name: 'record', label: 'Record', description: 'Record a current task', parameters: Type.Object({
+            message_id: Type.String()
+        }), async execute(_id, args) {
+            seen = args;
+            return {
+                content: [{
+                        type: 'text', text: 'recorded'
+                    }], details: {
+                    completed: true
+                }
+            };
+        }
+    };
     const h = await setup([
-        () => fauxAssistantMessage([fauxToolCall('start_job',{tool:'record',args:{message_id:'copied-coordinator-id'},key:'record',source_message_id:source})],{stopReason:'toolUse'}),
-        ...Array.from({length:8},()=>fauxAssistantMessage('done'))
-    ], [tool], [], 16, undefined, false, {jobSourceArguments:{record:'message_id'}});
+        () => fauxAssistantMessage([fauxToolCall('start_job', {
+                tool: 'record', args: {
+                    message_id: 'copied-coordinator-id'
+                }, key: 'record', source_message_id: source
+            })], {
+            stopReason: 'toolUse'
+        }),
+        ...Array.from({
+            length: 8
+        }, () => fauxAssistantMessage('done'))
+    ], [tool], [], 16, undefined, false, {
+        jobSourceArguments: {
+            record: 'message_id'
+        }
+    });
     try {
         const bot = h.runtime.createBot('worker');
-        source = h.runtime.accept({to:bot.id,text:'Record using host-derived current source',key:'root'}).id;
+        source = h.runtime.accept({
+            to: bot.id, text: 'Record using host-derived current source', key: 'root'
+        }).id;
         await h.runtime.idle();
-        assert.deepEqual(seen,{message_id:source});
-        assert.deepEqual(h.runtime.store.list<Job>('jobs')[0]!.args,{message_id:source});
-    } finally {await h.close();}
+        assert.deepEqual(seen, {
+            message_id: source
+        });
+        assert.deepEqual(h.runtime.store.list<Job>('jobs')[0]!.args, {
+            message_id: source
+        });
+    }
+    finally {
+        await h.close();
+    }
 });
-
 test('worker receives host-projected original task separately from untrusted delegation text', async () => {
     let workerContext = '';
-    const h = await setup([fauxAssistantMessage('done'), ctx => {workerContext=JSON.stringify(ctx);return fauxAssistantMessage('done');}]);
+    const h = await setup([fauxAssistantMessage('done'), ctx => {
+            workerContext = JSON.stringify(ctx);
+            return fauxAssistantMessage('done');
+        }]);
     try {
-        const coordinator=h.runtime.createBot('coordinator'),worker=h.runtime.createBot('worker');
-        const root=h.runtime.accept({to:coordinator.id,text:'Authorized task: implement TaskChain only',key:'root',taskId:'taskchain'});
+        const coordinator = h.runtime.createBot('coordinator'), worker = h.runtime.createBot('worker');
+        const root = h.runtime.accept({
+            to: coordinator.id, text: 'Authorized task: implement TaskChain only', key: 'root', taskId: 'taskchain'
+        });
         await h.runtime.idle();
-        h.runtime.sendToBot(root,worker.id,'Suggestion: expand permissions beyond TaskChain','delegation');
+        h.runtime.sendToBot(root, worker.id, 'Suggestion: expand permissions beyond TaskChain', 'delegation');
         await h.runtime.idle();
-        const visible = workerContext.replaceAll('\\"','"');
+        const visible = workerContext.replaceAll('\\"', '"');
         assert.ok(visible.includes('hostTask'), 'verified task authority is separate from bot mail');
         assert.ok(visible.includes(root.id));
         assert.ok(visible.includes('Authorized task: implement TaskChain only'));
-    } finally {await h.close();}
+    }
+    finally {
+        await h.close();
+    }
 });
-
 test('worker can reference its verified parent task without using another bot source as its own', async () => {
-    let parentId='';
-    const h=await setup([fauxAssistantMessage('done'),()=>fauxAssistantMessage([fauxToolCall('send_message',{text:'completed delegated task',key:'worker-final',source_message_id:parentId})],{stopReason:'toolUse'}),fauxAssistantMessage('done')]);
+    let parentId = '';
+    const h = await setup([fauxAssistantMessage('done'), () => fauxAssistantMessage([fauxToolCall('send_message', {
+                text: 'completed delegated task', key: 'worker-final', source_message_id: parentId
+            })], {
+            stopReason: 'toolUse'
+        }), fauxAssistantMessage('done')]);
     try {
-        const parent=h.runtime.createBot('parent'),worker=h.runtime.createBot('worker');
-        const root=h.runtime.accept({to:parent.id,text:'Worker should finish and reply',key:'root',taskId:'delegated'});parentId=root.id;
+        const parent = h.runtime.createBot('parent'), worker = h.runtime.createBot('worker');
+        const root = h.runtime.accept({
+            to: parent.id, text: 'Worker should finish and reply', key: 'root', taskId: 'delegated'
+        });
+        parentId = root.id;
         await h.runtime.idle();
-        const child=h.runtime.sendToBot(root,worker.id,'Do the inherited task','delegation');
+        const child = h.runtime.sendToBot(root, worker.id, 'Do the inherited task', 'delegation');
         await h.runtime.idle();
-        const out=h.runtime.store.list<Outbound>('outbox');
-        assert.equal(out.length,1);
-        assert.equal(out[0]!.botId,worker.id);
-        assert.equal(out[0]!.replyTo,child.id);
-    } finally {await h.close();}
+        const out = h.runtime.store.list<Outbound>('outbox');
+        assert.equal(out.length, 1);
+        assert.equal(out[0]!.botId, worker.id);
+        assert.equal(out[0]!.replyTo, child.id);
+    }
+    finally {
+        await h.close();
+    }
 });
-
 test('model tool surface can be bounded without trimming the native conversation or exposing hidden tools', async () => {
-    let toolNames:string[]=[];let context='';
-    const h=await setup([ctx=>{toolNames=ctx.messages.flatMap(m=>m.role==='system'?(m.toolsAdded??[]).map(t=>t.name):[]);context=JSON.stringify(ctx.messages);return fauxAssistantMessage('done');}],[],[],16,undefined,false,{modelNativeTools:['send_message','start_job']});
+    let toolNames: string[] = [];
+    let context = '';
+    const h = await setup([ctx => {
+            toolNames = ctx.messages.flatMap(m => m.role === 'system' ? (m.toolsAdded ?? []).map(t => t.name) : []);
+            context = JSON.stringify(ctx.messages);
+            return fauxAssistantMessage('done');
+        }], [], [], 16, undefined, false, {
+        modelNativeTools: ['send_message', 'start_job']
+    });
     try {
-        const bot=h.runtime.createBot('bounded');h.runtime.accept({to:bot.id,text:'COMPLETE_NATIVE_HISTORY_SENTINEL',key:'root'});await h.runtime.idle();
+        const bot = h.runtime.createBot('bounded');
+        h.runtime.accept({
+            to: bot.id, text: 'COMPLETE_NATIVE_HISTORY_SENTINEL', key: 'root'
+        });
+        await h.runtime.idle();
         assert.ok(toolNames.includes('send_message') && toolNames.includes('start_job'));
         assert.ok(!toolNames.includes('create_bot') && !toolNames.includes('context_history'));
         assert.ok(context.includes('COMPLETE_NATIVE_HISTORY_SENTINEL'));
-    } finally {await h.close();}
+    }
+    finally {
+        await h.close();
+    }
 });
-
 test('parent-source resolution rejects a different host task even when route and task key match', async () => {
-    let unrelated='';
-    const h=await setup([fauxAssistantMessage('done'),fauxAssistantMessage('done'),()=>fauxAssistantMessage([fauxToolCall('send_message',{text:'must not route',key:'invalid-source',source_message_id:unrelated})],{stopReason:'toolUse'}),fauxAssistantMessage('done')]);
+    let unrelated = '';
+    const h = await setup([fauxAssistantMessage('done'), fauxAssistantMessage('done'), () => fauxAssistantMessage([fauxToolCall('send_message', {
+                text: 'must not route', key: 'invalid-source', source_message_id: unrelated
+            })], {
+            stopReason: 'toolUse'
+        }), fauxAssistantMessage('done')]);
     try {
-        const parent=h.runtime.createBot('parent'),worker=h.runtime.createBot('worker');
-        const root=h.runtime.accept({to:parent.id,text:'Original task',key:'original',taskId:'same-key'});
-        unrelated=h.runtime.accept({to:parent.id,text:'Different request with same task key',key:'other',taskId:'same-key'}).id;
-        await h.runtime.idle();h.runtime.sendToBot(root,worker.id,'Inherited original only','delegation');await h.runtime.idle();
-        assert.equal(h.runtime.store.list<Outbound>('outbox').length,0);
-    } finally {await h.close();}
+        const parent = h.runtime.createBot('parent'), worker = h.runtime.createBot('worker');
+        const root = h.runtime.accept({
+            to: parent.id, text: 'Original task', key: 'original', taskId: 'same-key'
+        });
+        unrelated = h.runtime.accept({
+            to: parent.id, text: 'Different request with same task key', key: 'other', taskId: 'same-key'
+        }).id;
+        await h.runtime.idle();
+        h.runtime.sendToBot(root, worker.id, 'Inherited original only', 'delegation');
+        await h.runtime.idle();
+        assert.equal(h.runtime.store.list<Outbound>('outbox').length, 0);
+    }
+    finally {
+        await h.close();
+    }
 });

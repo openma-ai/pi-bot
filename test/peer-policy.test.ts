@@ -5,9 +5,9 @@ import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore } from '@earendil-works/pi-ai';
-import { BotRuntime } from '../src/daemon/runtime.ts';
+import { BotRuntime } from '../src/daemon/runtime/runtime.ts';
 import { piSessionFactory } from '../src/pi/session-factory.ts';
-import type { Envelope } from '../src/daemon/store.ts';
+import type { Envelope } from '../src/daemon/runtime/store.ts';
 for (const variant of ['ordinary-background', 'priority-background', 'priority-user', 'priority-group'] as const)
     test(`Pi peer queue/steer policy: ${variant}`, {
         timeout: 10000

@@ -1,0 +1,5990 @@
+{
+  "version": "2026-10-13",
+  "methods": {
+    "initialize": {
+      "params": {
+        "type": "object",
+        "required": [
+          "clientInfo",
+          "protocolVersion"
+        ],
+        "properties": {
+          "clientInfo": {
+            "type": "object",
+            "required": [
+              "name",
+              "version"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "title": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "additionalProperties": false
+          },
+          "protocolVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "experimentalApi": {
+                "type": "boolean"
+              },
+              "streamingReplies": {
+                "type": "boolean"
+              },
+              "debugInternal": {
+                "type": "boolean"
+              },
+              "serverRequests": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "approval",
+                    "question",
+                    "credential"
+                  ]
+                }
+              },
+              "optOutNotifications": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "serverInfo",
+          "protocolVersion",
+          "capabilities",
+          "connectionId",
+          "daemon"
+        ],
+        "properties": {
+          "serverInfo": {
+            "type": "object",
+            "required": [
+              "name",
+              "version"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "version": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "additionalProperties": false
+          },
+          "protocolVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "capabilities": {
+            "type": "object",
+            "required": [
+              "transports",
+              "requestKinds",
+              "experimental"
+            ],
+            "properties": {
+              "transports": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              },
+              "requestKinds": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "approval",
+                    "question",
+                    "credential"
+                  ]
+                }
+              },
+              "experimental": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "connectionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "daemon": {
+            "type": "object",
+            "required": [
+              "status",
+              "dataDir"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "starting",
+                  "recovering",
+                  "ready",
+                  "draining",
+                  "stopped"
+                ]
+              },
+              "dataDir": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "daemon/status": {
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "patternProperties": {
+          "^.*$": {}
+        }
+      }
+    },
+    "daemon/snapshot": {
+      "params": {
+        "type": "object",
+        "properties": {
+          "botIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "seq",
+          "bots",
+          "groups",
+          "threads",
+          "turns",
+          "activeTurns",
+          "items",
+          "pendingRequests",
+          "requests",
+          "routines",
+          "jobs",
+          "usage",
+          "status"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "description",
+                "createdAt",
+                "sessionFile"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "sessionFile": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sessionFiles": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "channelId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "groupIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                }
+              }
+            }
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "memberIds",
+                "createdAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "name": {
+                  "type": "string"
+                },
+                "memberIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "threads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "botId",
+                "scope",
+                "scopeKey",
+                "status",
+                "activeTurnId",
+                "lastActivityAt",
+                "createdAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "scope": {
+                  "type": "object",
+                  "required": [
+                    "channelId",
+                    "conversationId",
+                    "threadId"
+                  ],
+                  "properties": {
+                    "channelId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "conversationId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "threadId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "scopeKey": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "stored",
+                    "loaded",
+                    "archived"
+                  ]
+                },
+                "activeTurnId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "lastActivityAt": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "threadId",
+                "botId",
+                "trigger",
+                "status",
+                "primaryInputId",
+                "inputIds",
+                "taskId",
+                "startedAt",
+                "endedAt",
+                "usage",
+                "error"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "threadId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "trigger": {
+                  "enum": [
+                    "user",
+                    "answer",
+                    "bot",
+                    "job",
+                    "schedule",
+                    "monitor",
+                    "research",
+                    "memory"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "completed",
+                    "yielded",
+                    "interrupted",
+                    "uncertain",
+                    "failed"
+                  ]
+                },
+                "primaryInputId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "inputIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "taskId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "startedAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "endedAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "usage": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "input",
+                        "output",
+                        "cacheRead",
+                        "reasoning",
+                        "totalTokens",
+                        "costUsd"
+                      ],
+                      "properties": {
+                        "input": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "output": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "cacheRead": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "reasoning": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "totalTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "costUsd": {
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "patternProperties": {
+                        "^.*$": {}
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "activeTurns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "threadId",
+                "botId",
+                "trigger",
+                "status",
+                "primaryInputId",
+                "inputIds",
+                "taskId",
+                "startedAt",
+                "endedAt",
+                "usage",
+                "error"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "threadId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "trigger": {
+                  "enum": [
+                    "user",
+                    "answer",
+                    "bot",
+                    "job",
+                    "schedule",
+                    "monitor",
+                    "research",
+                    "memory"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "completed",
+                    "yielded",
+                    "interrupted",
+                    "uncertain",
+                    "failed"
+                  ]
+                },
+                "primaryInputId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "inputIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "taskId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "startedAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "endedAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "usage": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "input",
+                        "output",
+                        "cacheRead",
+                        "reasoning",
+                        "totalTokens",
+                        "costUsd"
+                      ],
+                      "properties": {
+                        "input": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "output": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "cacheRead": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "reasoning": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "totalTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "costUsd": {
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "patternProperties": {
+                        "^.*$": {}
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "type",
+                "threadId",
+                "turnId",
+                "status"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "type": {
+                  "enum": [
+                    "inputMessage",
+                    "agentMessage",
+                    "peerMessage",
+                    "toolCall",
+                    "job",
+                    "request",
+                    "compaction",
+                    "internalNote"
+                  ]
+                },
+                "threadId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "turnId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "inProgress",
+                    "completed"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                },
+                "toolCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "message": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {}
+                  }
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "pendingRequests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "kind",
+                "botId",
+                "threadId",
+                "turnId",
+                "params",
+                "status",
+                "createdAt",
+                "expiresAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "kind": {
+                  "enum": [
+                    "approval",
+                    "question",
+                    "credential"
+                  ]
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "threadId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "turnId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {}
+                  }
+                },
+                "status": {
+                  "enum": [
+                    "pending",
+                    "resolved",
+                    "expired",
+                    "cancelled"
+                  ]
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "response": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {}
+                  }
+                },
+                "resolvedBy": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "resolvedAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "requests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "kind",
+                "botId",
+                "threadId",
+                "turnId",
+                "params",
+                "status",
+                "createdAt",
+                "expiresAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "kind": {
+                  "enum": [
+                    "approval",
+                    "question",
+                    "credential"
+                  ]
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "threadId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "turnId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {}
+                  }
+                },
+                "status": {
+                  "enum": [
+                    "pending",
+                    "resolved",
+                    "expired",
+                    "cancelled"
+                  ]
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "response": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {}
+                  }
+                },
+                "resolvedBy": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "resolvedAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "routines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "botId",
+                "kind",
+                "state",
+                "prompt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "kind": {
+                  "enum": [
+                    "schedule",
+                    "monitor"
+                  ]
+                },
+                "state": {
+                  "type": "string"
+                },
+                "prompt": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "jobs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "botId",
+                "tool",
+                "state",
+                "taskId",
+                "messageId"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "tool": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "state": {
+                  "type": "string"
+                },
+                "taskId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "messageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "error": {
+                  "type": "string"
+                },
+                "threadId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "budget": {
+            "type": "object",
+            "patternProperties": {
+              "^.*$": {}
+            }
+          },
+          "usage": {
+            "type": "object",
+            "required": [
+              "input",
+              "output",
+              "cacheRead",
+              "reasoning",
+              "totalTokens",
+              "costUsd"
+            ],
+            "properties": {
+              "input": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "output": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "cacheRead": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reasoning": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "totalTokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "costUsd": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "status": {
+            "enum": [
+              "starting",
+              "recovering",
+              "ready",
+              "draining",
+              "stopped"
+            ]
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "daemon/shutdown": {
+      "params": {
+        "type": "object",
+        "properties": {
+          "drainTimeoutMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 600000
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "events/subscribe": {
+      "params": {
+        "type": "object",
+        "required": [
+          "after"
+        ],
+        "properties": {
+          "after": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "filter": {
+            "type": "object",
+            "properties": {
+              "botIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              },
+              "threadIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              },
+              "methods": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "subscriptionId",
+          "replayedThrough"
+        ],
+        "properties": {
+          "subscriptionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "replayedThrough": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "events/unsubscribe": {
+      "params": {
+        "type": "object",
+        "required": [
+          "subscriptionId"
+        ],
+        "properties": {
+          "subscriptionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "events/ack": {
+      "params": {
+        "type": "object",
+        "required": [
+          "seq"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "bot/list": {
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "bots"
+        ],
+        "properties": {
+          "bots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "description",
+                "createdAt",
+                "sessionFile"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "sessionFile": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sessionFiles": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "channelId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "groupIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "bot/read": {
+      "params": {
+        "type": "object",
+        "required": [
+          "botId"
+        ],
+        "properties": {
+          "botId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "bot",
+          "threads",
+          "state"
+        ],
+        "properties": {
+          "bot": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "description",
+              "createdAt",
+              "sessionFile"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sessionFile": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sessionFiles": {
+                "type": "object",
+                "patternProperties": {
+                  "^.*$": {
+                    "type": "string"
+                  }
+                }
+              },
+              "channelId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "groupIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              }
+            }
+          },
+          "threads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "botId",
+                "scope",
+                "scopeKey",
+                "status",
+                "activeTurnId",
+                "lastActivityAt",
+                "createdAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "scope": {
+                  "type": "object",
+                  "required": [
+                    "channelId",
+                    "conversationId",
+                    "threadId"
+                  ],
+                  "properties": {
+                    "channelId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "conversationId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "threadId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "scopeKey": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "stored",
+                    "loaded",
+                    "archived"
+                  ]
+                },
+                "activeTurnId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "lastActivityAt": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "state": {
+            "type": "object",
+            "patternProperties": {
+              "^.*$": {}
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "bot/create": {
+      "params": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "\\S"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "channelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "bot"
+        ],
+        "properties": {
+          "bot": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "description",
+              "createdAt",
+              "sessionFile"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sessionFile": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sessionFiles": {
+                "type": "object",
+                "patternProperties": {
+                  "^.*$": {
+                    "type": "string"
+                  }
+                }
+              },
+              "channelId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "groupIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "bot/update": {
+      "params": {
+        "type": "object",
+        "required": [
+          "botId"
+        ],
+        "properties": {
+          "botId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "\\S"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "bot"
+        ],
+        "properties": {
+          "bot": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "description",
+              "createdAt",
+              "sessionFile"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sessionFile": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sessionFiles": {
+                "type": "object",
+                "patternProperties": {
+                  "^.*$": {
+                    "type": "string"
+                  }
+                }
+              },
+              "channelId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "groupIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "group/list": {
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "groups"
+        ],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "memberIds",
+                "createdAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "name": {
+                  "type": "string"
+                },
+                "memberIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "group/create": {
+      "params": {
+        "type": "object",
+        "required": [
+          "name",
+          "memberIds"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "\\S"
+          },
+          "memberIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "minItems": 2,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "group"
+        ],
+        "properties": {
+          "group": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "memberIds",
+              "createdAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "name": {
+                "type": "string"
+              },
+              "memberIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "group/update": {
+      "params": {
+        "type": "object",
+        "required": [
+          "groupId"
+        ],
+        "properties": {
+          "groupId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "\\S"
+          },
+          "addMemberIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "uniqueItems": true
+          },
+          "removeMemberIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "group"
+        ],
+        "properties": {
+          "group": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "memberIds",
+              "createdAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "name": {
+                "type": "string"
+              },
+              "memberIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "thread/list": {
+      "params": {
+        "type": "object",
+        "properties": {
+          "botId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "status": {
+            "enum": [
+              "stored",
+              "loaded",
+              "archived"
+            ]
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "threads",
+          "nextCursor"
+        ],
+        "properties": {
+          "threads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "botId",
+                "scope",
+                "scopeKey",
+                "status",
+                "activeTurnId",
+                "lastActivityAt",
+                "createdAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "scope": {
+                  "type": "object",
+                  "required": [
+                    "channelId",
+                    "conversationId",
+                    "threadId"
+                  ],
+                  "properties": {
+                    "channelId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "conversationId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "threadId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "scopeKey": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "stored",
+                    "loaded",
+                    "archived"
+                  ]
+                },
+                "activeTurnId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "lastActivityAt": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "thread/read": {
+      "params": {
+        "type": "object",
+        "required": [
+          "threadId"
+        ],
+        "properties": {
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "thread",
+          "turns",
+          "items",
+          "seq",
+          "nextCursor"
+        ],
+        "properties": {
+          "thread": {
+            "type": "object",
+            "required": [
+              "id",
+              "botId",
+              "scope",
+              "scopeKey",
+              "status",
+              "activeTurnId",
+              "lastActivityAt",
+              "createdAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "scope": {
+                "type": "object",
+                "required": [
+                  "channelId",
+                  "conversationId",
+                  "threadId"
+                ],
+                "properties": {
+                  "channelId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "conversationId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "threadId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              },
+              "scopeKey": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "stored",
+                  "loaded",
+                  "archived"
+                ]
+              },
+              "activeTurnId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lastActivityAt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "threadId",
+                "botId",
+                "trigger",
+                "status",
+                "primaryInputId",
+                "inputIds",
+                "taskId",
+                "startedAt",
+                "endedAt",
+                "usage",
+                "error"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "threadId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "trigger": {
+                  "enum": [
+                    "user",
+                    "answer",
+                    "bot",
+                    "job",
+                    "schedule",
+                    "monitor",
+                    "research",
+                    "memory"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "completed",
+                    "yielded",
+                    "interrupted",
+                    "uncertain",
+                    "failed"
+                  ]
+                },
+                "primaryInputId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "inputIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "taskId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "startedAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "endedAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "usage": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "input",
+                        "output",
+                        "cacheRead",
+                        "reasoning",
+                        "totalTokens",
+                        "costUsd"
+                      ],
+                      "properties": {
+                        "input": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "output": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "cacheRead": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "reasoning": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "totalTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "costUsd": {
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "patternProperties": {
+                        "^.*$": {}
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "type",
+                "threadId",
+                "turnId",
+                "status"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "type": {
+                  "enum": [
+                    "inputMessage",
+                    "agentMessage",
+                    "peerMessage",
+                    "toolCall",
+                    "job",
+                    "request",
+                    "compaction",
+                    "internalNote"
+                  ]
+                },
+                "threadId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "turnId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "inProgress",
+                    "completed"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                },
+                "toolCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "message": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {}
+                  }
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "thread/archive": {
+      "params": {
+        "type": "object",
+        "required": [
+          "threadId"
+        ],
+        "properties": {
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "thread"
+        ],
+        "properties": {
+          "thread": {
+            "type": "object",
+            "required": [
+              "id",
+              "botId",
+              "scope",
+              "scopeKey",
+              "status",
+              "activeTurnId",
+              "lastActivityAt",
+              "createdAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "scope": {
+                "type": "object",
+                "required": [
+                  "channelId",
+                  "conversationId",
+                  "threadId"
+                ],
+                "properties": {
+                  "channelId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "conversationId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "threadId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              },
+              "scopeKey": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "stored",
+                  "loaded",
+                  "archived"
+                ]
+              },
+              "activeTurnId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lastActivityAt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "thread/unarchive": {
+      "params": {
+        "type": "object",
+        "required": [
+          "threadId"
+        ],
+        "properties": {
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "thread"
+        ],
+        "properties": {
+          "thread": {
+            "type": "object",
+            "required": [
+              "id",
+              "botId",
+              "scope",
+              "scopeKey",
+              "status",
+              "activeTurnId",
+              "lastActivityAt",
+              "createdAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "scope": {
+                "type": "object",
+                "required": [
+                  "channelId",
+                  "conversationId",
+                  "threadId"
+                ],
+                "properties": {
+                  "channelId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "conversationId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "threadId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              },
+              "scopeKey": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "stored",
+                  "loaded",
+                  "archived"
+                ]
+              },
+              "activeTurnId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lastActivityAt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "thread/unload": {
+      "params": {
+        "type": "object",
+        "required": [
+          "threadId"
+        ],
+        "properties": {
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "unloaded"
+        ],
+        "properties": {
+          "unloaded": {
+            "type": "boolean"
+          },
+          "blockedBy": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "turn/start": {
+      "params": {
+        "type": "object",
+        "required": [
+          "botId",
+          "text",
+          "key"
+        ],
+        "properties": {
+          "botId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64000,
+            "pattern": "\\S"
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "groupId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "inputId",
+          "threadId",
+          "status"
+        ],
+        "properties": {
+          "inputId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "status": {
+            "type": "string",
+            "const": "queued"
+          },
+          "inputIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "turn/steer": {
+      "params": {
+        "type": "object",
+        "required": [
+          "threadId",
+          "text",
+          "key"
+        ],
+        "properties": {
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64000
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "inputId",
+          "threadId",
+          "status"
+        ],
+        "properties": {
+          "inputId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "status": {
+            "type": "string",
+            "const": "queued"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "turn/interrupt": {
+      "params": {
+        "type": "object",
+        "required": [
+          "threadId",
+          "key"
+        ],
+        "properties": {
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "inputId"
+        ],
+        "properties": {
+          "inputId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "turn/list": {
+      "params": {
+        "type": "object",
+        "required": [
+          "threadId"
+        ],
+        "properties": {
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "turns",
+          "nextCursor"
+        ],
+        "properties": {
+          "turns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "threadId",
+                "botId",
+                "trigger",
+                "status",
+                "primaryInputId",
+                "inputIds",
+                "taskId",
+                "startedAt",
+                "endedAt",
+                "usage",
+                "error"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "threadId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "trigger": {
+                  "enum": [
+                    "user",
+                    "answer",
+                    "bot",
+                    "job",
+                    "schedule",
+                    "monitor",
+                    "research",
+                    "memory"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "completed",
+                    "yielded",
+                    "interrupted",
+                    "uncertain",
+                    "failed"
+                  ]
+                },
+                "primaryInputId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "inputIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "taskId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "startedAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "endedAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "usage": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "input",
+                        "output",
+                        "cacheRead",
+                        "reasoning",
+                        "totalTokens",
+                        "costUsd"
+                      ],
+                      "properties": {
+                        "input": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "output": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "cacheRead": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "reasoning": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "totalTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "costUsd": {
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "patternProperties": {
+                        "^.*$": {}
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "routine/list": {
+      "params": {
+        "type": "object",
+        "properties": {
+          "botId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "schedule"
+              },
+              {
+                "type": "string",
+                "const": "monitor"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "routines"
+        ],
+        "properties": {
+          "routines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "botId",
+                "kind",
+                "state",
+                "prompt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "kind": {
+                  "enum": [
+                    "schedule",
+                    "monitor"
+                  ]
+                },
+                "state": {
+                  "type": "string"
+                },
+                "prompt": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "routine/create": {
+      "params": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "botId",
+              "prompt",
+              "at",
+              "timezone"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "schedule"
+              },
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "prompt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000
+              },
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "at": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "timezone": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "intervalMs": {
+                "type": "integer",
+                "minimum": 1000
+              },
+              "groupId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "botId",
+              "prompt",
+              "intervalMs",
+              "deadline"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "monitor"
+              },
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "prompt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000
+              },
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "filePath": {
+                "type": "string"
+              },
+              "intervalMs": {
+                "type": "integer",
+                "minimum": 1000
+              },
+              "deadline": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "groupId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "routine"
+        ],
+        "properties": {
+          "routine": {
+            "type": "object",
+            "required": [
+              "id",
+              "botId",
+              "kind",
+              "state",
+              "prompt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "kind": {
+                "enum": [
+                  "schedule",
+                  "monitor"
+                ]
+              },
+              "state": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "routine/pause": {
+      "params": {
+        "type": "object",
+        "required": [
+          "routineId"
+        ],
+        "properties": {
+          "routineId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "routine"
+        ],
+        "properties": {
+          "routine": {
+            "type": "object",
+            "required": [
+              "id",
+              "botId",
+              "kind",
+              "state",
+              "prompt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "kind": {
+                "enum": [
+                  "schedule",
+                  "monitor"
+                ]
+              },
+              "state": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "routine/resume": {
+      "params": {
+        "type": "object",
+        "required": [
+          "routineId"
+        ],
+        "properties": {
+          "routineId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "routine"
+        ],
+        "properties": {
+          "routine": {
+            "type": "object",
+            "required": [
+              "id",
+              "botId",
+              "kind",
+              "state",
+              "prompt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "kind": {
+                "enum": [
+                  "schedule",
+                  "monitor"
+                ]
+              },
+              "state": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "routine/cancel": {
+      "params": {
+        "type": "object",
+        "required": [
+          "routineId"
+        ],
+        "properties": {
+          "routineId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "routine"
+        ],
+        "properties": {
+          "routine": {
+            "type": "object",
+            "required": [
+              "id",
+              "botId",
+              "kind",
+              "state",
+              "prompt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "kind": {
+                "enum": [
+                  "schedule",
+                  "monitor"
+                ]
+              },
+              "state": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "routine/enable": {
+      "params": {
+        "type": "object",
+        "required": [
+          "routineId"
+        ],
+        "properties": {
+          "routineId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "routine"
+        ],
+        "properties": {
+          "routine": {
+            "type": "object",
+            "required": [
+              "id",
+              "botId",
+              "kind",
+              "state",
+              "prompt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "kind": {
+                "enum": [
+                  "schedule",
+                  "monitor"
+                ]
+              },
+              "state": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "routine/dryRun": {
+      "params": {
+        "type": "object",
+        "required": [
+          "routineId"
+        ],
+        "properties": {
+          "routineId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "enum": [
+              "silent",
+              "wake",
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "job/list": {
+      "params": {
+        "type": "object",
+        "properties": {
+          "botId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "jobs"
+        ],
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "botId",
+                "tool",
+                "state",
+                "taskId",
+                "messageId"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "tool": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "state": {
+                  "type": "string"
+                },
+                "taskId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "messageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "error": {
+                  "type": "string"
+                },
+                "threadId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "job/read": {
+      "params": {
+        "type": "object",
+        "required": [
+          "jobId"
+        ],
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8000
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "patternProperties": {
+          "^.*$": {}
+        }
+      }
+    },
+    "request/list": {
+      "params": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "pending"
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "requests"
+        ],
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "kind",
+                "botId",
+                "threadId",
+                "turnId",
+                "params",
+                "status",
+                "createdAt",
+                "expiresAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "kind": {
+                  "enum": [
+                    "approval",
+                    "question",
+                    "credential"
+                  ]
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "threadId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "turnId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {}
+                  }
+                },
+                "status": {
+                  "enum": [
+                    "pending",
+                    "resolved",
+                    "expired",
+                    "cancelled"
+                  ]
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "expiresAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "response": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {}
+                  }
+                },
+                "resolvedBy": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "resolvedAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "request/resolve": {
+      "params": {
+        "type": "object",
+        "required": [
+          "requestId",
+          "response"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "response": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "decision"
+                ],
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approve",
+                      "deny"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "submitted"
+                ],
+                "properties": {
+                  "submitted": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "request"
+        ],
+        "properties": {
+          "request": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "botId",
+              "threadId",
+              "turnId",
+              "params",
+              "status",
+              "createdAt",
+              "expiresAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "kind": {
+                "enum": [
+                  "approval",
+                  "question",
+                  "credential"
+                ]
+              },
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "threadId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "turnId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "params": {
+                "type": "object",
+                "patternProperties": {
+                  "^.*$": {}
+                }
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "resolved",
+                  "expired",
+                  "cancelled"
+                ]
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expiresAt": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "response": {
+                "type": "object",
+                "patternProperties": {
+                  "^.*$": {}
+                }
+              },
+              "resolvedBy": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "resolvedAt": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "task/reconcile": {
+      "params": {
+        "type": "object",
+        "required": [
+          "inputId"
+        ],
+        "properties": {
+          "inputId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "processed"
+              },
+              {
+                "type": "string",
+                "const": "queued"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "desktop/bind": {
+      "params": {
+        "type": "object",
+        "required": [
+          "botId"
+        ],
+        "properties": {
+          "botId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "patternProperties": {
+          "^.*$": {}
+        }
+      }
+    },
+    "desktop/control": {
+      "params": {
+        "type": "object",
+        "required": [
+          "botId",
+          "take"
+        ],
+        "properties": {
+          "botId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "take": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": [
+              "botId",
+              "expiresAt"
+            ],
+            "properties": {
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "expiresAt": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    }
+  },
+  "notifications": {
+    "daemon/configurationChanged": {
+      "type": "object",
+      "required": [
+        "mode",
+        "configuration"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "configuration": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {}
+          }
+        },
+        "budget": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {}
+          }
+        }
+      }
+    },
+    "daemon/budgetUpdated": {
+      "type": "object",
+      "required": [
+        "budget"
+      ],
+      "properties": {
+        "budget": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {}
+          }
+        }
+      }
+    },
+    "daemon/migrated": {
+      "type": "object",
+      "required": [
+        "fromVersion",
+        "toVersion"
+      ],
+      "properties": {
+        "fromVersion": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toVersion": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "group/messageUpdated": {
+      "type": "object",
+      "required": [
+        "message"
+      ],
+      "properties": {
+        "message": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {}
+          }
+        }
+      }
+    },
+    "daemon/statusChanged": {
+      "type": "object",
+      "required": [
+        "from",
+        "to",
+        "at"
+      ],
+      "properties": {
+        "from": {
+          "enum": [
+            "starting",
+            "recovering",
+            "ready",
+            "draining",
+            "stopped"
+          ]
+        },
+        "to": {
+          "enum": [
+            "starting",
+            "recovering",
+            "ready",
+            "draining",
+            "stopped"
+          ]
+        },
+        "at": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "events/watermark": {
+      "type": "object",
+      "required": [
+        "seq"
+      ],
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "bot/created": {
+      "type": "object",
+      "required": [
+        "bot"
+      ],
+      "properties": {
+        "bot": {
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "description",
+            "createdAt",
+            "sessionFile"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sessionFile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sessionFiles": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "type": "string"
+                }
+              }
+            },
+            "channelId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "groupIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            }
+          }
+        }
+      }
+    },
+    "bot/updated": {
+      "type": "object",
+      "required": [
+        "bot"
+      ],
+      "properties": {
+        "bot": {
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "description",
+            "createdAt",
+            "sessionFile"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sessionFile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sessionFiles": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "type": "string"
+                }
+              }
+            },
+            "channelId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "groupIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            }
+          }
+        }
+      }
+    },
+    "group/created": {
+      "type": "object",
+      "required": [
+        "group"
+      ],
+      "properties": {
+        "group": {
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "memberIds",
+            "createdAt"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "name": {
+              "type": "string"
+            },
+            "memberIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "createdAt": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "group/updated": {
+      "type": "object",
+      "required": [
+        "group"
+      ],
+      "properties": {
+        "group": {
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "memberIds",
+            "createdAt"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "name": {
+              "type": "string"
+            },
+            "memberIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "createdAt": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "turn/queued": {
+      "type": "object",
+      "required": [
+        "inputId",
+        "threadId",
+        "trigger"
+      ],
+      "properties": {
+        "inputId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "trigger": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "turn/started": {
+      "type": "object",
+      "required": [
+        "turn"
+      ],
+      "properties": {
+        "turn": {
+          "type": "object",
+          "required": [
+            "id",
+            "threadId",
+            "botId",
+            "trigger",
+            "status",
+            "primaryInputId",
+            "inputIds",
+            "taskId",
+            "startedAt",
+            "endedAt",
+            "usage",
+            "error"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "threadId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "trigger": {
+              "enum": [
+                "user",
+                "answer",
+                "bot",
+                "job",
+                "schedule",
+                "monitor",
+                "research",
+                "memory"
+              ]
+            },
+            "status": {
+              "enum": [
+                "queued",
+                "running",
+                "completed",
+                "yielded",
+                "interrupted",
+                "uncertain",
+                "failed"
+              ]
+            },
+            "primaryInputId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "inputIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "taskId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "startedAt": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "endedAt": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "input",
+                    "output",
+                    "cacheRead",
+                    "reasoning",
+                    "totalTokens",
+                    "costUsd"
+                  ],
+                  "properties": {
+                    "input": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "cacheRead": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "reasoning": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "totalTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "costUsd": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {}
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "turn/completed": {
+      "type": "object",
+      "required": [
+        "turn"
+      ],
+      "properties": {
+        "turn": {
+          "type": "object",
+          "required": [
+            "id",
+            "threadId",
+            "botId",
+            "trigger",
+            "status",
+            "primaryInputId",
+            "inputIds",
+            "taskId",
+            "startedAt",
+            "endedAt",
+            "usage",
+            "error"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "threadId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "trigger": {
+              "enum": [
+                "user",
+                "answer",
+                "bot",
+                "job",
+                "schedule",
+                "monitor",
+                "research",
+                "memory"
+              ]
+            },
+            "status": {
+              "enum": [
+                "queued",
+                "running",
+                "completed",
+                "yielded",
+                "interrupted",
+                "uncertain",
+                "failed"
+              ]
+            },
+            "primaryInputId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "inputIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "taskId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "startedAt": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "endedAt": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "input",
+                    "output",
+                    "cacheRead",
+                    "reasoning",
+                    "totalTokens",
+                    "costUsd"
+                  ],
+                  "properties": {
+                    "input": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "cacheRead": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "reasoning": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "totalTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "costUsd": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {}
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "item/started": {
+      "type": "object",
+      "required": [
+        "item"
+      ],
+      "properties": {
+        "item": {
+          "type": "object",
+          "required": [
+            "id",
+            "type",
+            "threadId",
+            "turnId",
+            "status"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "type": {
+              "enum": [
+                "inputMessage",
+                "agentMessage",
+                "peerMessage",
+                "toolCall",
+                "job",
+                "request",
+                "compaction",
+                "internalNote"
+              ]
+            },
+            "threadId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "turnId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "enum": [
+                "inProgress",
+                "completed"
+              ]
+            },
+            "text": {
+              "type": "string"
+            },
+            "toolCallId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "message": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {}
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "item/updated": {
+      "type": "object",
+      "required": [
+        "item"
+      ],
+      "properties": {
+        "item": {
+          "type": "object",
+          "required": [
+            "id",
+            "type",
+            "threadId",
+            "turnId",
+            "status"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "type": {
+              "enum": [
+                "inputMessage",
+                "agentMessage",
+                "peerMessage",
+                "toolCall",
+                "job",
+                "request",
+                "compaction",
+                "internalNote"
+              ]
+            },
+            "threadId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "turnId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "enum": [
+                "inProgress",
+                "completed"
+              ]
+            },
+            "text": {
+              "type": "string"
+            },
+            "toolCallId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "message": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {}
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "item/completed": {
+      "type": "object",
+      "required": [
+        "item"
+      ],
+      "properties": {
+        "item": {
+          "type": "object",
+          "required": [
+            "id",
+            "type",
+            "threadId",
+            "turnId",
+            "status"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "type": {
+              "enum": [
+                "inputMessage",
+                "agentMessage",
+                "peerMessage",
+                "toolCall",
+                "job",
+                "request",
+                "compaction",
+                "internalNote"
+              ]
+            },
+            "threadId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "turnId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "enum": [
+                "inProgress",
+                "completed"
+              ]
+            },
+            "text": {
+              "type": "string"
+            },
+            "toolCallId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "message": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {}
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "request/created": {
+      "type": "object",
+      "required": [
+        "request"
+      ],
+      "properties": {
+        "request": {
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "botId",
+            "threadId",
+            "turnId",
+            "params",
+            "status",
+            "createdAt",
+            "expiresAt"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "kind": {
+              "enum": [
+                "approval",
+                "question",
+                "credential"
+              ]
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "threadId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "turnId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "params": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {}
+              }
+            },
+            "status": {
+              "enum": [
+                "pending",
+                "resolved",
+                "expired",
+                "cancelled"
+              ]
+            },
+            "createdAt": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "expiresAt": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "response": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {}
+              }
+            },
+            "resolvedBy": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "resolvedAt": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "request/resolved": {
+      "type": "object",
+      "required": [
+        "request"
+      ],
+      "properties": {
+        "request": {
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "botId",
+            "threadId",
+            "turnId",
+            "params",
+            "status",
+            "createdAt",
+            "expiresAt"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "kind": {
+              "enum": [
+                "approval",
+                "question",
+                "credential"
+              ]
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "threadId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "turnId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "params": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {}
+              }
+            },
+            "status": {
+              "enum": [
+                "pending",
+                "resolved",
+                "expired",
+                "cancelled"
+              ]
+            },
+            "createdAt": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "expiresAt": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "response": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {}
+              }
+            },
+            "resolvedBy": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "resolvedAt": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "routine/updated": {
+      "type": "object",
+      "required": [
+        "routine"
+      ],
+      "properties": {
+        "routine": {
+          "type": "object",
+          "required": [
+            "id",
+            "botId",
+            "kind",
+            "state",
+            "prompt"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "kind": {
+              "enum": [
+                "schedule",
+                "monitor"
+              ]
+            },
+            "state": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "routine/fired": {
+      "type": "object",
+      "required": [
+        "routineId",
+        "fireId",
+        "inputId"
+      ],
+      "properties": {
+        "routineId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "fireId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "inputId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "job/updated": {
+      "type": "object",
+      "required": [
+        "job"
+      ],
+      "properties": {
+        "job": {
+          "type": "object",
+          "required": [
+            "id",
+            "botId",
+            "tool",
+            "state",
+            "taskId",
+            "messageId"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "tool": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "state": {
+              "type": "string"
+            },
+            "taskId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "error": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "task/reviewRequired": {
+      "type": "object",
+      "required": [
+        "inputId",
+        "threadId"
+      ],
+      "properties": {
+        "inputId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "task/reconciled": {
+      "type": "object",
+      "required": [
+        "inputId",
+        "outcome",
+        "evidence"
+      ],
+      "properties": {
+        "inputId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "outcome": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        }
+      }
+    },
+    "proposal/updated": {
+      "type": "object",
+      "required": [
+        "proposal"
+      ],
+      "properties": {
+        "proposal": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {}
+          }
+        }
+      }
+    },
+    "memory/updated": {
+      "type": "object",
+      "required": [
+        "memory"
+      ],
+      "properties": {
+        "memory": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {}
+          }
+        }
+      }
+    },
+    "item/agentMessage/delta": {
+      "type": "object",
+      "required": [
+        "threadId",
+        "turnId",
+        "itemId",
+        "toolCallId",
+        "textDelta"
+      ],
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "turnId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "itemId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "toolCallId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "textDelta": {
+          "type": "string"
+        }
+      }
+    },
+    "item/toolCall/delta": {
+      "type": "object",
+      "required": [
+        "threadId",
+        "turnId",
+        "itemId",
+        "partial"
+      ],
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "turnId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "itemId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "partial": {
+          "type": "string"
+        }
+      }
+    },
+    "item/internal/delta": {
+      "type": "object",
+      "required": [
+        "threadId",
+        "turnId",
+        "textDelta"
+      ],
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "turnId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "textDelta": {
+          "type": "string"
+        }
+      }
+    },
+    "thread/started": {
+      "type": "object",
+      "required": [
+        "thread"
+      ],
+      "properties": {
+        "thread": {
+          "type": "object",
+          "required": [
+            "id",
+            "botId",
+            "scope",
+            "scopeKey",
+            "status",
+            "activeTurnId",
+            "lastActivityAt",
+            "createdAt"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "scope": {
+              "type": "object",
+              "required": [
+                "channelId",
+                "conversationId",
+                "threadId"
+              ],
+              "properties": {
+                "channelId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "conversationId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "threadId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "scopeKey": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "stored",
+                "loaded",
+                "archived"
+              ]
+            },
+            "activeTurnId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "lastActivityAt": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "createdAt": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "thread/loaded": {
+      "type": "object",
+      "required": [
+        "thread"
+      ],
+      "properties": {
+        "thread": {
+          "type": "object",
+          "required": [
+            "id",
+            "botId",
+            "scope",
+            "scopeKey",
+            "status",
+            "activeTurnId",
+            "lastActivityAt",
+            "createdAt"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "scope": {
+              "type": "object",
+              "required": [
+                "channelId",
+                "conversationId",
+                "threadId"
+              ],
+              "properties": {
+                "channelId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "conversationId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "threadId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "scopeKey": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "stored",
+                "loaded",
+                "archived"
+              ]
+            },
+            "activeTurnId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "lastActivityAt": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "createdAt": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "thread/unloaded": {
+      "type": "object",
+      "required": [
+        "thread"
+      ],
+      "properties": {
+        "thread": {
+          "type": "object",
+          "required": [
+            "id",
+            "botId",
+            "scope",
+            "scopeKey",
+            "status",
+            "activeTurnId",
+            "lastActivityAt",
+            "createdAt"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "scope": {
+              "type": "object",
+              "required": [
+                "channelId",
+                "conversationId",
+                "threadId"
+              ],
+              "properties": {
+                "channelId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "conversationId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "threadId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "scopeKey": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "stored",
+                "loaded",
+                "archived"
+              ]
+            },
+            "activeTurnId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "lastActivityAt": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "createdAt": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "thread/archived": {
+      "type": "object",
+      "required": [
+        "thread"
+      ],
+      "properties": {
+        "thread": {
+          "type": "object",
+          "required": [
+            "id",
+            "botId",
+            "scope",
+            "scopeKey",
+            "status",
+            "activeTurnId",
+            "lastActivityAt",
+            "createdAt"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "scope": {
+              "type": "object",
+              "required": [
+                "channelId",
+                "conversationId",
+                "threadId"
+              ],
+              "properties": {
+                "channelId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "conversationId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "threadId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "scopeKey": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "stored",
+                "loaded",
+                "archived"
+              ]
+            },
+            "activeTurnId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "lastActivityAt": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "createdAt": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

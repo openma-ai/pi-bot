@@ -8,9 +8,9 @@
 
 移除本项目 `PI_BOT_PROVIDER` / `PI_BOT_MODEL` 选择，以及 GUI 的 `DEEPSEEK_API_KEY` 优先覆盖和自动 DSH 凭据兜底。Pi 自身支持的标准配置行为仍由 Pi 管理。运行目录、监听端口、有限评估预算相关设置保留；这是运行配置，不是另建认证系统。
 
-先在正常 Pi 交互界面 `/login` 认证、`/model` 选模型，再启动/重启 `npm run gui` 或 `npm start`。未配置时 GUI 仍能查看现有 bot 和消息，提交任务明确返回配置错误。配置错误不会触发备用 provider，也不会要求在聊天中发送 key。GUI 当前复用已有认证，不提供自己的 OAuth 登录界面。
+现在可直接在 GUI「Pi 登录与模型」中通过原生 Pi 登录、选择默认模型及思考强度；保存后等待已有工作空闲自动应用。也可在 Pi 交互界面使用 `/login` 与 `/model`。未配置时 GUI 仍能查看现有 bot 和消息，提交任务明确返回配置错误。配置错误不会触发备用 provider，也不会要求在聊天中发送 key。GUI 连接原生 AuthInteraction，展示 provider 的 OAuth URL/device code/选项/manual code，秘密输入走独立私有 HTTP 表单，绝不经过 RPC 或事件。
 
-本机只检查了 SDK 配置元数据：`~/.pi/agent` 存在 auth/settings 文件，但没有默认 provider/model，SDK 未列出保存的 credential。因此新功能没有真实 API 成绩；没有迁移、写入或输出本机凭据。
+历史检查（配置前）：本机只检查了 SDK 配置元数据：`~/.pi/agent` 存在 auth/settings 文件，但没有默认 provider/model，SDK 未列出保存的 credential。因此新功能没有真实 API 成绩；没有迁移、写入或输出本机凭据。
 
 ## 重活派发
 
@@ -37,3 +37,7 @@ CLI 使用同样的 native Pi 配置与 subagent；CLI 没有 GUI 整轮共享�
 依赖 `pi-subagents: 0.77.0` 及 lockfile，源码 gitHead `1ac9b964eb9cda1662507c52f5277764637daccc`。调用其包内 execution/child-session 模块，这是内部接口，升级必须跑兼容回归。`src/pi/coding-worker.ts` 是宿主桥，不复制社区实现；保留 SDK 请求包装用于预算、超时和脱敏错误，保留工具 guard 用于权限/任务状态。权限拒绝即使模型随后声称成功，也将 job 标为失败。
 
 本轮社区真实执行内核的离线原生工具验收覆盖 write/read、结果返回、重复 key、父 bot 继续回复、失效写入拦截、共享请求预算耗尽不重放文件写入及权限拒绝不能伪报成功。暂不证明 detached runner 跨进程存活、社区全部工作流或真实 API。当前无需 fork；若未来需要稳定公开 factory hook，可以把这个小接口作为上游改动或维护固定 fork。
+
+2026-10-14：已按用户明确授权通过 Pi 原生认证保存已有本地 DeepSeek key，设置官方 Flash 别名和 high thinking。真实 GUI、恢复、定时、监控、群聊与交接的 36 个实际请求及诊断记录见 [新交接](design/app-server-implementation-20261014.md)。没有产品级自动 DSH 回退；上面的 172 项测试与“缺少认证”描述是当时状态。
+
+2026-10-14 追加真实社区 worker 验收：pi-subagents@0.77.0 独立原生会话计算并写入/读回 527，单一 job 和用户结果送达通过。详见 design/app-server-implementation-20261014.md。正常 GUI 已移除累计请求、输入、费用和一小时限制；保留单次超时和防循环保护。

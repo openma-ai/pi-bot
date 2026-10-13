@@ -19,7 +19,7 @@ export interface ContextOptions {
     /** Explicitly disable background requests for a capped smoke evaluation. */
     backgroundEnabled?: boolean;
     /** Host scheduling predicate; false never blocks or changes foreground history. */
-    canSummarize?:()=>boolean;
+    canSummarize?: () => boolean;
     summaryTimeoutMs?: number;
     summaryRetryMs?: number;
     summaryMaxAttempts?: number;
@@ -29,6 +29,10 @@ export interface ContextOptions {
     onError?: (error: Error) => void;
     /** Observational only: a background failure must never fail a foreground wake. */
     onSummaryError?: (error: Error) => void;
+    onCompaction?: (info: {
+        tokensBefore: number;
+        tokensAfter: number;
+    }) => void;
 }
 export class ContextBudgetError extends Error {
     constructor(message: string) {
@@ -360,10 +364,19 @@ export function createContextExtension(options: ContextOptions): ExtensionFactor
             };
         }, ctx: ExtensionContext): BoundaryResult | undefined => {
             const ready = manager.adoptReady(ctx.sessionManager.getSessionId(), event.context.contextEntries);
-            if (ready)
+            if (ready) {
+                const before = visibleEntries(event.context.contextEntries).flatMap(entry => entry.messages);
+                try {
+                    options.onCompaction?.({
+                        tokensBefore: estimateContextTokens(before), tokensAfter: Math.ceil(JSON.stringify(ready).length / 4)
+                    });
+                }
+                catch { /* observer only */
+                }
                 return {
                     entries: [...event.entries, ready]
                 };
+            }
             schedule(ctx);
         };
         pi.on('turn_end', (event, ctx) => boundary(event, ctx));

@@ -22,13 +22,13 @@ Demo 使用真实 Pi SDK + faux provider，并实际执行安全延迟工具：�
 ## 真实模型 CLI
 
 ```sh
-# 先在 Pi 中 /login 完成认证，并用 /model 选择默认模型
+# 可在 GUI 的「Pi 登录与模型」配置，或在 Pi 中 /login 和 /model
 npm start
 ```
 
 GUI 与 CLI 读取 Pi 原生 settings.json、models.json、auth.json；凭据解析与 OAuth 刷新由 Pi SDK 负责。不再使用 PI_BOT_PROVIDER / PI_BOT_MODEL，也不自动读取 DSH key。每个 bot 提供基于社区 pi-subagents 0.77.0 的异步 subagent extension，可把重活派给独立的原生 Pi coding session，通过持久 jobs 回传结果。子会话提供 Pi coding tools（包括 shell/文件），不加载第三方扩展、不递归派发，也不能直接回复用户。详见 [Pi 认证与重活派发](docs/pi-auth-workers.md)。
 
-默认状态目录 `.pi-bot/`，用 `PI_BOT_DIR` 更改。每行普通文本发给 main bot；无需等待模型完成即可继续输入：
+默认共享状态目录 `work/gui/demo/`，用 `PI_BOT_DIR` 更改。每行普通文本发给 main bot；无需等待模型完成即可继续输入：
 
 - `/bots`：列出 bot
 - `/new 名称`：创建独立 bot
@@ -88,12 +88,14 @@ evals ──► 任意层（层外评测工具）
 | 层 | 目录 | 职责 |
 |---|---|---|
 | ① 核心 Pi 插件层 | `src/pi/` | `session-factory.ts`（Pi 会话、native tools、extension permission chain）、`context.ts`（后台摘要与原生 compaction）、`background-codemode.ts`、`coding-worker.ts`、`proactive-extension.ts`；`types.ts` 是领域记录，`host.ts` 是宿主端口（`BotHost`/`ProactivePort`/`CredentialPort`/`SessionFactory`）。只依赖 Pi SDK，不引用任何宿主代码 |
-| ② daemon 层 | `src/daemon/` | `runtime.ts`（调度、关联 ID、幂等键、预算、恢复；`BotRuntime implements BotHost`）、`store.ts`（SQLite WAL + FULL sync）、`proactive*.ts`、`openmatter-trigger.ts`、`credentials.ts`、`server.ts`（loopback HTTP API + 静态 GUI）、`cli.ts`（终端 host） |
-| ③ SDK 层 | `src/sdk/` | `protocol.ts`（HTTP 线协议类型）+ `client.ts`（`PiBotClient`），浏览器/Node 通用，无 `node:` 依赖 |
+| ② daemon 层 | `src/daemon/` | `runtime/`（调度、SQLite、OpenMatter、proactive、credentials）；`core/`、`handlers/`、`events/`、`requests/`、`transports/` 组成 app-server；`main.ts` 负责宿主入口 |
+| ③ SDK 层 | `src/sdk/` | `protocol/`（TypeBox JSON-RPC 定义）+ `client.ts`（命名空间 API）、`state/` reducer 和 `transports/`，浏览器/Node 通用，无 `node:` 依赖 |
 | ④ GUI 层 | `src/gui/` | React + Radix 前端，只通过 `PiBotClient` 访问 daemon |
 | 层外 | `src/evals/` | evaluation、benchmark、`demo.ts`、smoke provider |
 
-常用入口：`npm start`（终端 host，进程内运行 runtime，不需要 server）、`npm run daemon`（HTTP daemon）、`npm run gui`（构建 `dist/gui` 并启动 daemon）。
+常用入口：`npm start`（SDK 附着现有 daemon，没有宿主才嵌入）、`npm run daemon`（app-server）、`npm run gui`（构建 GUI 并启动 daemon）。GUI 支持 Pi 原生登录和默认模型选择；定时任务、监控按 bot 绑定管理。GUI/CLI 的正常操作只走协议。
+
+实现、迁移、36 次真实 API 调用及验证边界见 [app-server 交接](docs/design/app-server-implementation-20261014.md)。协议表见 [docs/protocol.md](docs/protocol.md)。
 
 `piSessionFactory({ modelRuntime, model, dir, tools, allowTools, extensions, context })` 是扩展入口。传入可信 Pi `ToolDefinition`/`ExtensionFactory`，不绕开其 `tool_call` 拒绝 hooks。普通耗时工具对模型隐藏；唯一入口是 `start_job`。`BotRuntime` 的 host `permission` callback 可额外做授权判断。底层 tool 会收到 Pi 原生 parent tool-call 关联。
 

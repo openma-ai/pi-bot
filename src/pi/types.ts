@@ -87,6 +87,7 @@ export type Question = {
     createdAt: number;
 };
 export type Outbound = {
+    toolCallId?: string;
     id: string;
     botId: string;
     taskId: string;
@@ -195,12 +196,21 @@ export type BotStateSnapshot = {
     questions: any[];
     inbox: any[];
     outbox: any[];
-    counts: { jobs: number; questions: number; inbox: number; outbox: number };
+    counts: {
+        jobs: number;
+        questions: number;
+        inbox: number;
+        outbox: number;
+    };
     proactive: {
         schedules: any[];
         monitors: any[];
         proposals: any[];
-        counts: { schedules: number; monitors: number; proposals: number };
+        counts: {
+            schedules: number;
+            monitors: number;
+            proposals: number;
+        };
     };
 };
 /** One page of a durable job result. */

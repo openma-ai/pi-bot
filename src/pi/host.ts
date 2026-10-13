@@ -6,7 +6,6 @@
  * module free of host imports so the dependency arrow always points into `pi`.
  */
 import type { Bot, BotStateSnapshot, Envelope, Job, JobResultPage, MemoryRecord, Monitor, Outbound, Proposal, Question, Schedule } from './types.ts';
-
 /** Thrown by a tool whose durable job failed; carries the native outcome. */
 export class JobExecutionError extends Error {
     constructor(message: string, readonly outcome: unknown) {
@@ -19,7 +18,13 @@ export class InferenceYieldError extends Error {
         super('Inference yielded to host input');
     }
 }
-
+/** A trusted host refusal, distinct from a provider transport failure. */
+export class ProviderRequestGuardError extends Error {
+    constructor(readonly reason: 'budgetExhausted' | 'taskCancelled', message: string) {
+        super(message);
+        this.name = 'ProviderRequestGuardError';
+    }
+}
 /** One live Pi conversation for a bot (optionally per routing scope). */
 export interface BotSession {
     run(e: Envelope): Promise<void>;
@@ -31,34 +36,39 @@ export interface BotSession {
     resolved?(e: Envelope): boolean;
     close(): Promise<void>;
 }
-
 export type Permission = (request: {
     botId: string;
     tool: string;
     args: unknown;
     taskId: string;
 }) => Promise<boolean> | boolean;
-
 /** Durable record store, as seen by the plugin. */
 export interface HostStore {
     get<T>(table: string, id: string): T | undefined;
     list<T>(table: string): T[];
     find<T>(table: string, owner: string, key: string): T | undefined;
-    put<T extends { id: string }>(table: string, value: T): void;
+    put<T extends {
+        id: string;
+    }>(table: string, value: T): void;
     transaction<T>(f: () => T): T;
     state(botId: string): BotStateSnapshot;
 }
-
 /** Durable, non-preemptive bot runtime services exposed to Pi tools. */
 export interface BotHost {
     readonly store: HostStore;
+    readonly events?: EventSink;
+    readonly approvals?: ApprovalPort;
     readonly errors: unknown[];
-    readonly options: { readonly permission?: Permission };
+    readonly options: {
+        readonly permission?: Permission;
+    };
     createBot(name: string, description?: string, channelId?: string): Bot;
     channelBots(channelId?: string): Bot[];
-    sendToBot(source: Envelope, to: string, text: string, key: string, options?: Envelope['peerPriority'] | { priority?: boolean }): Envelope;
+    sendToBot(source: Envelope, to: string, text: string, key: string, options?: Envelope['peerPriority'] | {
+        priority?: boolean;
+    }): Envelope;
     sendToGroup(source: Envelope, text: string, key: string, priority?: boolean): Envelope[];
-    sendMessage(e: Envelope, text: string, key: string): Outbound;
+    sendMessage(e: Envelope, text: string, key: string, toolCallId?: string): Outbound;
     askUser(e: Envelope, text: string, key: string): Question;
     startJob(e: Envelope, tool: string, args: unknown, key: string, execute: () => Promise<unknown>, options?: {
         quiet?: boolean;
@@ -69,10 +79,8 @@ export interface BotHost {
     jobResult(botId: string, id: string, offset?: number, limit?: number): JobResultPage;
     checkpointInbox(ids: Iterable<string>, stage: 'consumed' | 'resolved'): void;
 }
-
 /** Creates the Pi session backing one bot (and optional routing scope). */
 export type SessionFactory = (bot: Bot, host: BotHost, scope?: string) => Promise<BotSession>;
-
 /** Host-owned proactive scheduling/monitoring/background-work service. */
 export interface ProactivePort {
     createSchedule(source: Envelope, input: {
@@ -108,7 +116,6 @@ export interface ProactivePort {
     applyMemory(botId: string, id: string): MemoryRecord;
     getMemory(botId: string, key: string): MemoryRecord | undefined;
 }
-
 export interface CredentialScope {
     botId: string;
     taskId: string;
@@ -129,4 +136,56 @@ export interface CredentialForm {
 export interface CredentialPort {
     request(scope: CredentialScope, label: string): CredentialForm;
     revoke(requestId: string): void;
+}
+/** The host owns persistence, correlation and client capabilities. Pi only reports events. */
+export type PluginEvent = {
+    type: 'toolStarted';
+    toolCallId: string;
+    tool: string;
+    args: unknown;
+} | {
+    type: 'toolDelta';
+    toolCallId: string;
+    partial: string;
+} | {
+    type: 'toolCompleted';
+    toolCallId: string;
+    result: unknown;
+    isError: boolean;
+} | {
+    type: 'replyDelta';
+    toolCallId: string;
+    textDelta: string;
+} | {
+    type: 'internalDelta';
+    textDelta: string;
+} | {
+    type: 'usage';
+    input: number;
+    output: number;
+    cacheRead: number;
+    reasoning: number;
+    totalTokens: number;
+    costUsd: number;
+} | {
+    type: 'compaction';
+    tokensBefore: number;
+    tokensAfter: number;
+};
+export interface EventSink {
+    emit(botId: string, event: PluginEvent): void;
+}
+export interface ApprovalPort {
+    request(params: {
+        botId: string;
+        taskId: string;
+        tool: string;
+        args: unknown;
+        reason?: string;
+    }): Promise<boolean>;
+}
+export async function authorize(host: BotHost, params: Parameters<Permission>[0]) {
+    if (host.options.permission && !await host.options.permission(params))
+        return false;
+    return !host.approvals || await host.approvals.request(params);
 }
