@@ -6,4 +6,4 @@ await build({configFile:false,root:root+'src/gui',plugins:[tailwindcss(),{
   name:'native-client-boundary',transform(code,id){ if(id===root+'src/gui/main.jsx') return 'import "./native-bridge.js";\n'+code; }
 }],
   resolve:{alias:{'@tauri-apps/api':fileURLToPath(new URL('../node_modules/@tauri-apps/api',import.meta.url))}},
-  build:{outDir:root+'clients/tauri/dist',emptyOutDir:true}});
+  build:{outDir:root+'clients/tauri/dist',emptyOutDir:true,rolldownOptions:{input:{main:root+'src/gui/index.html',credential:root+'src/gui/credential.html'}}}});

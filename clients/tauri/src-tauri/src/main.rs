@@ -11,6 +11,7 @@ struct State {
     active: Option<(String, Profile, Arc<Endpoint>)>,
     file: PathBuf,
     streams: HashMap<String, tauri::async_runtime::JoinHandle<()>>,
+    forms: HashMap<String, (Arc<Endpoint>, String)>,
 }
 impl State {
     fn status(&self) -> Value {
@@ -22,6 +23,7 @@ impl State {
         }
         // Dropping the endpoint terminates only the SSH forward owned by this client.
         self.active = None;
+        self.forms.clear();
     }
     fn persist(&self) -> Result<(), String> {
         let parent = self.file.parent().ok_or("Invalid profile location")?;
@@ -64,10 +66,12 @@ fn runtime_install() -> Result<(), String> {
 
 #[tauri::command]
 async fn runtime_control(
+    window: tauri::Window,
     state: tauri::State<'_, Shared>,
     method: String,
     params: Value,
 ) -> Result<Value, String> {
+    main_window(&window)?;
     match method.as_str() {
         "runtime/status" => Ok(state.lock().await.status()),
         "runtime/disconnect" => {
@@ -145,12 +149,14 @@ struct Reply {
 }
 #[tauri::command]
 async fn runtime_request(
+    window: tauri::Window,
     state: tauri::State<'_, Shared>,
     path: String,
     method: String,
     body: String,
     connection: String,
 ) -> Result<Reply, String> {
+    main_window(&window)?;
     if body.len() > 1024 * 1024 {
         return Err("Request too large".into());
     }
@@ -184,12 +190,14 @@ async fn runtime_request(
 }
 #[tauri::command]
 async fn stream_open(
+    window: tauri::Window,
     app: tauri::AppHandle,
     state: tauri::State<'_, Shared>,
     id: String,
     path: String,
     connection: String,
 ) -> Result<(), String> {
+    main_window(&window)?;
     use futures_util::StreamExt;
     let (endpoint, suffix) = state.lock().await.route(&path)?;
     if !suffix.starts_with("/events") {
@@ -232,9 +240,94 @@ async fn stream_open(
     Ok(())
 }
 #[tauri::command]
-async fn stream_close(state: tauri::State<'_, Shared>, id: String) -> Result<(), String> {
+async fn stream_close(
+    window: tauri::Window,
+    state: tauri::State<'_, Shared>,
+    id: String,
+) -> Result<(), String> {
+    main_window(&window)?;
     if let Some(task) = state.lock().await.streams.remove(&id) {
         task.abort();
+    }
+    Ok(())
+}
+
+fn main_window(window: &tauri::Window) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("This command belongs to the conversation window".into());
+    }
+    Ok(())
+}
+fn valid_form(path: &str) -> bool {
+    path.strip_prefix("/credential/").is_some_and(|id| {
+        !id.is_empty()
+            && id.len() <= 256
+            && id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "_-".contains(c))
+    })
+}
+#[tauri::command]
+async fn credential_window(
+    window: tauri::Window,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Shared>,
+    path: String,
+) -> Result<(), String> {
+    main_window(&window)?;
+    if !valid_form(&path) {
+        return Err("Invalid secure credential form".into());
+    }
+    let mut s = state.lock().await;
+    s.forms
+        .retain(|label, _| app.get_webview_window(label).is_some());
+    if s.forms.len() >= 8 {
+        return Err("请先关闭已有安全窗口".into());
+    }
+    let endpoint = s
+        .active
+        .as_ref()
+        .ok_or("Runtime changed; reopen the request")?
+        .2
+        .clone();
+    let response = endpoint.request(&path, "GET", "", "").await?;
+    if !response.status().is_success() {
+        return Err("安全表单已失效，请检查请求状态".into());
+    }
+    let label = format!("credential-{}", uuid::Uuid::new_v4());
+    // Neither runtime auth nor form data is placed in the window URL or renderer state.
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        &label,
+        tauri::WebviewUrl::App("credential.html".into()),
+    )
+    .title("安全输入凭据")
+    .inner_size(420.0, 300.0)
+    .resizable(false)
+    .build()
+    .map_err(|_| "Cannot open secure input window")?;
+    s.forms.insert(label, (endpoint, path));
+    Ok(())
+}
+#[tauri::command]
+async fn credential_submit(
+    window: tauri::Window,
+    state: tauri::State<'_, Shared>,
+    secret: String,
+) -> Result<(), String> {
+    if !window.label().starts_with("credential-") || secret.is_empty() || secret.len() > 16000 {
+        return Err("Invalid secure form submission".into());
+    }
+    let (endpoint, path) = state
+        .lock()
+        .await
+        .forms
+        .remove(window.label())
+        .ok_or("Form is no longer active; reopen it from the conversation")?;
+    let body = json!({"secret":secret}).to_string();
+    let response = endpoint.request(&path, "POST", &body, "").await?;
+    if !response.status().is_success() {
+        return Err("Credential submission not confirmed".into());
     }
     Ok(())
 }
@@ -261,6 +354,7 @@ fn main() {
                 active: None,
                 file,
                 streams: HashMap::new(),
+                forms: HashMap::new(),
             }));
             Ok(())
         })
@@ -270,7 +364,9 @@ fn main() {
             runtime_control,
             runtime_request,
             stream_open,
-            stream_close
+            stream_close,
+            credential_window,
+            credential_submit
         ])
         .build(tauri::generate_context!())
         .expect("Cannot build desktop application")

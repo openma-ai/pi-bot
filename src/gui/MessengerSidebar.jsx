@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, Search, Settings2, Inbox } from "lucide-react";
+import { Plus, Search, Settings2 } from "lucide-react";
 import { DropdownMenu, ScrollArea } from "@radix-ui/themes";
 import {
   Sidebar,
@@ -15,6 +15,7 @@ import { Button } from "./ui/button.jsx";
 import { RuntimePicker } from "./SettingsPage.jsx";
 import { BotAvatar, GroupAvatar } from "./BotAvatar.jsx";
 import { botActivity, conversationList } from "./presentation.ts";
+import { requestsForConversation } from "./conversation-requests.js";
 
 export function MessengerSidebar({
   data,
@@ -27,16 +28,12 @@ export function MessengerSidebar({
   onSelect,
   onNewBot,
   onNewGroup,
-  onRequests,
   onSettings,
   runtime,
   error,
 }) {
   const { setOpenMobile } = useSidebar();
-  const rows = conversationList(data);
-  const pending = (data.requests || []).filter(
-    (r) => r.status === "pending",
-  ).length;
+  const rows = conversationList(data).map((row) => ({ ...row, pending: requestsForConversation(data, row.kind, row.id).length }));
   const compact = width < 156;
   return (
     <Sidebar
@@ -104,7 +101,7 @@ export function MessengerSidebar({
                       ? "page"
                       : undefined
                   }
-                  aria-label={row.name}
+                  aria-label={row.name + (row.pending ? ` · ${row.pending} 项需要你处理的请求` : "")}
                   title={compact ? row.name : undefined}
                   onClick={() => {
                     onSelect(row);
@@ -126,6 +123,7 @@ export function MessengerSidebar({
                   )}
                   <span className="bot-label">
                     <span className="contact-name">{row.name}</span>
+                    {row.pending > 0 && <span className="pending-count">需处理 {row.pending}</span>}
                     <span className="preview">{row.preview}</span>
                   </span>
                 </SidebarMenuButton>
@@ -139,20 +137,6 @@ export function MessengerSidebar({
       </SidebarContent>
       <SidebarFooter className="messenger-sidebar-footer">
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              onClick={() => {
-                onRequests();
-                setOpenMobile(false);
-              }}
-              aria-label="待处理问题"
-              title="待处理问题"
-            >
-              <Inbox size={16} />
-              <span>待处理</span>
-              {pending > 0 && <span className="pending-count">{pending}</span>}
-            </SidebarMenuButton>
-          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={onSettings}

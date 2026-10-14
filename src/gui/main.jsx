@@ -3,7 +3,7 @@ import { ErrorBoundary } from "./ErrorBoundary.jsx";
 import { useConversationDraft } from "./hooks/use-conversation-draft.js";
 import { Notification, ServiceNotice } from "./Notification.jsx";
 import { TaskFailure } from "./TaskFailure.jsx";
-import { DecisionCard } from "./DecisionCard.jsx";
+import { ConversationRequests } from "./ConversationRequests.jsx";
 import { SearchDialog } from "./SearchDialog.jsx";
 import { MessengerSidebar } from "./MessengerSidebar.jsx";
 import { SidebarProvider, SidebarTrigger } from "./ui/sidebar.jsx";
@@ -847,7 +847,6 @@ function App({ runtime, setPiSettingsOpen }) {
             setMembers([]);
             setNewGroup(true);
           }}
-          onRequests={() => setView("requests")}
           onSettings={() => setPiSettingsOpen(true)}
           runtime={runtime}
         />
@@ -1134,6 +1133,7 @@ function App({ runtime, setPiSettingsOpen }) {
                   setAtBottom(bottom);
                 }}
               >
+                <ConversationRequests data={data} kind={view === "group" ? "group" : "bot"} id={view === "group" ? groupId : selected} api={api} baseUrl={activeRuntime?.baseUrl || ""} />
                 {messages.length ? (
                   messages.map((m, i) => (
                     <React.Fragment key={m.direction + m.messageId}>
@@ -1180,33 +1180,7 @@ function App({ runtime, setPiSettingsOpen }) {
                               },
                             )}
                           </div>
-                          {(() => {
-                            let question;
-                            try {
-                              question = JSON.parse(m.text);
-                            } catch {}
-                            const request =
-                              question?.questionId &&
-                              (data.requests || []).find(
-                                (r) =>
-                                  r.kind === "question" &&
-                                  r.params.questionId === question.questionId &&
-                                  r.status === "pending",
-                              );
-                            return request ? (
-                              <DecisionCard
-                                request={request}
-                                onAnswer={(text) =>
-                                  api.request.resolve({
-                                    requestId: request.id,
-                                    response: { text },
-                                  })
-                                }
-                              />
-                            ) : (
-                              <MessageBody text={displayText(m)} />
-                            );
-                          })()}
+                          <MessageBody text={displayText(m)} />
                           {["queued", "processing"].includes(m.status) && (
                             <Text size="1" className="status">
                               {labels[m.status] || m.status}

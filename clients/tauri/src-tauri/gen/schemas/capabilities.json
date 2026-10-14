@@ -1,1 +1,1 @@
-{"main":{"identifier":"main","description":"","local":true,"windows":["main"],"permissions":["core:default"]}}
+{"main":{"identifier":"main","description":"","local":true,"windows":["main","credential-*"],"permissions":["core:default"]}}

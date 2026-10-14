@@ -1007,6 +1007,19 @@ button:disabled {
 .settings-pane-heading { display:flex; flex-direction:column; gap:8px; }
 .settings-pane-heading p { margin:0; line-height:1.65; }
 .native-runtime-download { padding:14px; border:1px solid var(--gray-5); border-radius:10px; min-width:0; }
+.conversation-requests { flex-shrink:0; min-width:0; margin-bottom:12px; }
+.conversation-requests .decision-card { margin:0 0 8px; }
+.conversation-requests .decision-card { padding:20px; border-radius:24px; background:#1c1c1c; }
+.decision-options button span { flex:1; min-width:0; overflow-wrap:anywhere; }
+.decision-options button:disabled { cursor:default; }
+.decision-options button[data-selected="true"] { background:#222; color:#aaa; }
+.decision-options button svg { flex-shrink:0; color:#aaa; }
+.request-outcome { color:#999; font-size:12px; overflow-wrap:anywhere; }
+.approval-targets { font-size:12px; margin:12px 0; }
+.approval-targets dt { color:#999; margin-top:8px; }
+.approval-targets dd { margin:3px 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+.decision-card details { margin:12px 0; font-size:12px; color:#aaa; }
+.decision-card pre { max-height:140px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
 .native-runtime-download p { font-size:12px; line-height:1.6; color:var(--gray-11); overflow-wrap:anywhere; }
 .native-runtime-download button { padding:7px 10px; border:1px solid var(--gray-6); border-radius:7px; color:var(--gray-10); background:var(--gray-3); }
 .setting-field { display:flex; flex-direction:column; gap:7px; min-width:0; }

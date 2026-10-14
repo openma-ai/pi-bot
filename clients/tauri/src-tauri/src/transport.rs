@@ -218,12 +218,14 @@ async fn ready(endpoint: &Endpoint) -> Result<(), String> {
     }
     Ok(())
 }
-#[cfg(target_os="ios")]
-pub async fn connect(p: &Profile) -> Result<Endpoint,String> {
-    if p.mode!="ssh" {return Err("iPhone/iPad 仅支持远程 runtime".into());}
+#[cfg(target_os = "ios")]
+pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
+    if p.mode != "ssh" {
+        return Err("iPhone/iPad 仅支持远程 runtime".into());
+    }
     Err("共享嵌入式 SSH adapter 尚在验证；iOS 不使用系统 ssh 或执行本地 runtime".into())
 }
-#[cfg(not(target_os="ios"))]
+#[cfg(not(target_os = "ios"))]
 pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
     p.validate()?;
     if p.mode == "local" {
