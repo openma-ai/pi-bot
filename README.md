@@ -145,3 +145,5 @@ evals ──► 任意层（层外评测工具）
 [proactive runtime](docs/proactive-runtime.md)。
 
 Linux 桌面、共享浏览器 profile、Computer 实时画面与人工接管，见 [运行及验收说明](docs/linux-desktop-image.md)。
+
+Real flood, natural-language correction/cancellation and concurrent background compaction acceptance: [2026-10-14 report](docs/real-flood-compaction-20261014.md).

@@ -174,3 +174,6 @@ TypeScript check passed. Local suite: **67 tests, 67 pass, 0 failures/cancelled/
 skipped**. Hidden terminal also exercised with a fake secret in a real PTY:
 completed, input not echoed, process exited 0. `git diff --check` passed.
 Real API/tool compatibility and real-model scores remain untested pending approval.
+
+
+2026-10-14 续测与修复：上述限额、关闭摘要和未验收说明属于历史轮次。最新真实消息洪流、自然语言改口/取消、运行中取消及后台压缩并发验收，见 [真实并发验收](real-flood-compaction-20261014.md)。普通 GUI 已启用后台摘要；旧失败未改写成通过。

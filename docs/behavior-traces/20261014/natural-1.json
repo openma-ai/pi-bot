@@ -1,0 +1,746 @@
+{
+  "mode": "real",
+  "controlMode": "natural-language-only",
+  "scenarios": [
+    {
+      "id": "replace-cancel",
+      "mode": "real",
+      "trace": {
+        "inbox": [
+          {
+            "id": "a2f34e39-8f21-4f4b-941f-58c15f2d95f6",
+            "from": "chat:alpha:alice",
+            "to": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "text": "Prepare only a RED draft; do not commit yet. Wait for my explicit choice. No acknowledgement needed.",
+            "key": "red",
+            "kind": "user",
+            "taskId": "draft",
+            "replyTo": null,
+            "hop": 0,
+            "state": "processed",
+            "createdAt": 1791939405432,
+            "route": {
+              "channelId": "alpha",
+              "threadId": "draft",
+              "senderId": "alice"
+            },
+            "admittedAt": 1791939405433,
+            "consumedAt": 1791939408776,
+            "resolvedAt": 1791939413349,
+            "resolution": {
+              "owner": "native-final",
+              "evidence": []
+            }
+          },
+          {
+            "id": "822cb364-f9b7-4c6d-bfca-1035285c46ea",
+            "from": "chat:beta:alice",
+            "to": "262a3fb1-b057-4019-ae59-34edee871afa",
+            "text": "Prepare only a doomed draft; do not commit yet. Wait for approval. No acknowledgement needed.",
+            "key": "drop",
+            "kind": "user",
+            "taskId": "drop",
+            "replyTo": null,
+            "hop": 0,
+            "state": "processed",
+            "createdAt": 1791939405509,
+            "route": {
+              "channelId": "beta",
+              "threadId": "drop",
+              "senderId": "alice"
+            },
+            "admittedAt": 1791939405517,
+            "consumedAt": 1791939407421,
+            "resolvedAt": 1791939407423,
+            "resolution": {
+              "owner": "native-final",
+              "evidence": []
+            }
+          },
+          {
+            "id": "829afcf9-416e-43d6-9cb3-507402aa37b2",
+            "from": "chat:alpha:alice",
+            "to": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "text": "Correction: RED is obsolete. Task: record draft=BLUE using commit_record via start_job (the host supplies args message_id from source_message_id; item and value must match). Wait for native job completion; then use send_message exactly DONE draft=BLUE, with source_message_id for this task. No receipt/acknowledgement message; no extra actions.",
+            "key": "blue",
+            "kind": "user",
+            "taskId": "draft",
+            "replyTo": null,
+            "hop": 0,
+            "state": "processed",
+            "createdAt": 1791939405510,
+            "route": {
+              "channelId": "alpha",
+              "threadId": "draft",
+              "senderId": "alice"
+            },
+            "admittedAt": 1791939405510,
+            "consumedAt": 1791939408777,
+            "resolvedAt": 1791939413349,
+            "resolution": {
+              "owner": "native-final",
+              "evidence": []
+            }
+          },
+          {
+            "id": "260b5e4b-ca49-44b7-8270-bcf56849d17b",
+            "from": "chat:beta:alice",
+            "to": "262a3fb1-b057-4019-ae59-34edee871afa",
+            "text": "Cancel this task. No commit, delegation, question or reply needed.",
+            "key": "cancel",
+            "kind": "user",
+            "taskId": "drop",
+            "replyTo": null,
+            "hop": 0,
+            "state": "processed",
+            "createdAt": 1791939405511,
+            "route": {
+              "channelId": "beta",
+              "threadId": "drop",
+              "senderId": "alice"
+            },
+            "admittedAt": 1791939405522,
+            "consumedAt": 1791939407421,
+            "resolvedAt": 1791939407424,
+            "resolution": {
+              "owner": "native-final",
+              "evidence": []
+            }
+          },
+          {
+            "id": "edca0b77-79f6-4738-bbb7-a6c330dcc459",
+            "from": "chat:alpha:bob",
+            "to": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "text": "Unrelated chat; no request, remain silent.",
+            "key": "cn-0",
+            "kind": "user",
+            "taskId": "cancel-noise-0",
+            "replyTo": null,
+            "hop": 0,
+            "state": "processed",
+            "createdAt": 1791939405512,
+            "route": {
+              "channelId": "alpha",
+              "threadId": "lounge",
+              "senderId": "bob"
+            },
+            "admittedAt": 1791939405512,
+            "consumedAt": 1791939408777,
+            "resolvedAt": 1791939413349,
+            "resolution": {
+              "owner": "native-final",
+              "evidence": []
+            }
+          },
+          {
+            "id": "532abdcd-b0d6-44c8-a6e1-746f780c4ae9",
+            "from": "chat:alpha:bob",
+            "to": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "text": "Unrelated chat; no request, remain silent.",
+            "key": "cn-1",
+            "kind": "user",
+            "taskId": "cancel-noise-1",
+            "replyTo": null,
+            "hop": 0,
+            "state": "processed",
+            "createdAt": 1791939405512,
+            "route": {
+              "channelId": "alpha",
+              "threadId": "lounge",
+              "senderId": "bob"
+            },
+            "admittedAt": 1791939405513,
+            "consumedAt": 1791939408778,
+            "resolvedAt": 1791939413350,
+            "resolution": {
+              "owner": "native-final",
+              "evidence": []
+            }
+          },
+          {
+            "id": "0ff67f5b-fd15-4ca3-a2e6-a0c109087acd",
+            "from": "chat:alpha:bob",
+            "to": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "text": "Unrelated chat; no request, remain silent.",
+            "key": "cn-2",
+            "kind": "user",
+            "taskId": "cancel-noise-2",
+            "replyTo": null,
+            "hop": 0,
+            "state": "processed",
+            "createdAt": 1791939405513,
+            "route": {
+              "channelId": "alpha",
+              "threadId": "lounge",
+              "senderId": "bob"
+            },
+            "admittedAt": 1791939405514,
+            "consumedAt": 1791939408778,
+            "resolvedAt": 1791939413350,
+            "resolution": {
+              "owner": "native-final",
+              "evidence": []
+            }
+          },
+          {
+            "id": "8dfd70b8-1186-42c4-84cd-01a18b58b8d0",
+            "from": "chat:alpha:bob",
+            "to": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "text": "Unrelated chat; no request, remain silent.",
+            "key": "cn-3",
+            "kind": "user",
+            "taskId": "cancel-noise-3",
+            "replyTo": null,
+            "hop": 0,
+            "state": "processed",
+            "createdAt": 1791939405514,
+            "route": {
+              "channelId": "alpha",
+              "threadId": "lounge",
+              "senderId": "bob"
+            },
+            "admittedAt": 1791939405514,
+            "consumedAt": 1791939408778,
+            "resolvedAt": 1791939413350,
+            "resolution": {
+              "owner": "native-final",
+              "evidence": []
+            }
+          },
+          {
+            "id": "6a48cd8b-3db7-40b5-97d8-496616b47699",
+            "from": "chat:alpha:bob",
+            "to": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "text": "Unrelated chat; no request, remain silent.",
+            "key": "cn-4",
+            "kind": "user",
+            "taskId": "cancel-noise-4",
+            "replyTo": null,
+            "hop": 0,
+            "state": "processed",
+            "createdAt": 1791939405515,
+            "route": {
+              "channelId": "alpha",
+              "threadId": "lounge",
+              "senderId": "bob"
+            },
+            "admittedAt": 1791939405515,
+            "consumedAt": 1791939408779,
+            "resolvedAt": 1791939413350,
+            "resolution": {
+              "owner": "native-final",
+              "evidence": []
+            }
+          },
+          {
+            "id": "daf8c21e-093b-4cbe-bfbb-a76c20159147",
+            "from": "chat:alpha:bob",
+            "to": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "text": "Unrelated chat; no request, remain silent.",
+            "key": "cn-5",
+            "kind": "user",
+            "taskId": "cancel-noise-5",
+            "replyTo": null,
+            "hop": 0,
+            "state": "processed",
+            "createdAt": 1791939405515,
+            "route": {
+              "channelId": "alpha",
+              "threadId": "lounge",
+              "senderId": "bob"
+            },
+            "admittedAt": 1791939405516,
+            "consumedAt": 1791939408779,
+            "resolvedAt": 1791939413350,
+            "resolution": {
+              "owner": "native-final",
+              "evidence": []
+            }
+          },
+          {
+            "id": "4b49ab7c-0f19-4f9a-9b94-f9b0fbb53fc5",
+            "from": "job:a29cc3ee-0d63-4c39-af35-dbdba166f19a",
+            "to": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "text": "{\"jobId\":\"a29cc3ee-0d63-4c39-af35-dbdba166f19a\",\"state\":\"completed\",\"resultPreview\":\"{\\\"toolCall\\\":{\\\"type\\\":\\\"toolCall\\\",\\\"id\\\":\\\"call_00_Z07VaeEjx2A720JX0g7q1332/1\\\",\\\"name\\\":\\\"commit_record\\\",\\\"arguments\\\":{\\\"item\\\":\\\"draft\\\",\\\"value\\\":\\\"BLUE\\\",\\\"message_id\\\":\\\"829afcf9-416e-43d6-9cb3-507402aa37b2\\\"}},\\\"result\\\":{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"record completed\\\"}],\\\"details\\\":{\\\"completed\\\":true,\\\"item\\\":\\\"draft\\\",\\\"value\\\":\\\"BLUE\\\"}},\\\"isError\\\":false,\\\"durationMs\\\":21}\",\"resultCharacters\":349,\"retrieve\":\"job_result\"}",
+            "key": "settled:a29cc3ee-0d63-4c39-af35-dbdba166f19a",
+            "kind": "job",
+            "taskId": "draft",
+            "replyTo": "829afcf9-416e-43d6-9cb3-507402aa37b2",
+            "hop": 0,
+            "state": "processed",
+            "createdAt": 1791939408805,
+            "route": {
+              "channelId": "alpha",
+              "threadId": "draft",
+              "senderId": "alice"
+            },
+            "admittedAt": 1791939408805,
+            "consumedAt": 1791939410961,
+            "resolvedAt": 1791939413351,
+            "resolution": {
+              "owner": "native-final",
+              "evidence": []
+            }
+          }
+        ],
+        "jobs": [
+          {
+            "id": "a29cc3ee-0d63-4c39-af35-dbdba166f19a",
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "taskId": "draft",
+            "messageId": "829afcf9-416e-43d6-9cb3-507402aa37b2",
+            "key": "draft-blue-commit",
+            "tool": "commit_record",
+            "args": {
+              "item": "draft",
+              "value": "BLUE",
+              "message_id": "829afcf9-416e-43d6-9cb3-507402aa37b2"
+            },
+            "state": "completed",
+            "createdAt": 1791939408781,
+            "generation": "74d91ef9-2ad4-4973-9640-eea5e14f0a23",
+            "attempt": 1,
+            "owner": "386159a9-d46e-428c-a0a1-1f495524514c",
+            "completedAt": 1791939408804
+          }
+        ],
+        "outbox": [
+          {
+            "id": "664eb6ba-c4a5-4c8c-9d79-404929abc38c",
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "taskId": "draft",
+            "replyTo": "829afcf9-416e-43d6-9cb3-507402aa37b2",
+            "key": "draft-blue-done",
+            "text": "DONE draft=BLUE",
+            "toolCallId": "call_00_n79Djx32uquAuELvaXZl0071",
+            "state": "delivered",
+            "createdAt": 1791939412291,
+            "route": {
+              "channelId": "alpha",
+              "threadId": "draft",
+              "senderId": "alice"
+            },
+            "deliveredAt": 1791939413352
+          }
+        ],
+        "calls": [
+          {
+            "order": 4,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "id": "call_00_Z07VaeEjx2A720JX0g7q1332",
+            "name": "start_job",
+            "args": {
+              "tool": "commit_record",
+              "args": {
+                "item": "draft",
+                "value": "BLUE"
+              },
+              "key": "draft-blue-commit",
+              "source_message_id": "829afcf9-416e-43d6-9cb3-507402aa37b2"
+            }
+          },
+          {
+            "order": 5,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "id": "call_00_Z07VaeEjx2A720JX0g7q1332/1",
+            "parentId": "call_00_Z07VaeEjx2A720JX0g7q1332",
+            "name": "commit_record",
+            "args": {
+              "item": "draft",
+              "value": "BLUE",
+              "message_id": "829afcf9-416e-43d6-9cb3-507402aa37b2"
+            }
+          },
+          {
+            "order": 10,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "id": "call_00_LTLML6DwGQYiLCRQEiKd5976",
+            "name": "job_result",
+            "args": {
+              "job_id": "a29cc3ee-0d63-4c39-af35-dbdba166f19a"
+            }
+          },
+          {
+            "order": 13,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "id": "call_00_n79Djx32uquAuELvaXZl0071",
+            "name": "send_message",
+            "args": {
+              "text": "DONE draft=BLUE",
+              "key": "draft-blue-done",
+              "source_message_id": "829afcf9-416e-43d6-9cb3-507402aa37b2"
+            }
+          }
+        ],
+        "results": [
+          {
+            "order": 6,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "id": "call_00_Z07VaeEjx2A720JX0g7q1332",
+            "name": "start_job",
+            "isError": false,
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"jobId\":\"a29cc3ee-0d63-4c39-af35-dbdba166f19a\",\"state\":\"running\",\"taskId\":\"draft\"}"
+              }
+            ],
+            "details": {
+              "jobId": "a29cc3ee-0d63-4c39-af35-dbdba166f19a",
+              "state": "running",
+              "taskId": "draft"
+            }
+          },
+          {
+            "order": 8,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "id": "call_00_Z07VaeEjx2A720JX0g7q1332/1",
+            "parentId": "call_00_Z07VaeEjx2A720JX0g7q1332",
+            "name": "commit_record",
+            "isError": false,
+            "content": [
+              {
+                "type": "text",
+                "text": "record completed"
+              }
+            ],
+            "details": {
+              "completed": true,
+              "item": "draft",
+              "value": "BLUE"
+            }
+          },
+          {
+            "order": 11,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "id": "call_00_LTLML6DwGQYiLCRQEiKd5976",
+            "name": "job_result",
+            "isError": false,
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"id\":\"a29cc3ee-0d63-4c39-af35-dbdba166f19a\",\"state\":\"completed\",\"error\":null,\"total\":349,\"text\":\"{\\\"toolCall\\\":{\\\"type\\\":\\\"toolCall\\\",\\\"id\\\":\\\"call_00_Z07VaeEjx2A720JX0g7q1332/1\\\",\\\"name\\\":\\\"commit_record\\\",\\\"arguments\\\":{\\\"item\\\":\\\"draft\\\",\\\"value\\\":\\\"BLUE\\\",\\\"message_id\\\":\\\"829afcf9-416e-43d6-9cb3-507402aa37b2\\\"}},\\\"result\\\":{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"record completed\\\"}],\\\"details\\\":{\\\"completed\\\":true,\\\"item\\\":\\\"draft\\\",\\\"value\\\":\\\"BLUE\\\"}},\\\"isError\\\":false,\\\"durationMs\\\":21}\",\"offset\":0,\"next\":null}"
+              }
+            ],
+            "details": {
+              "id": "a29cc3ee-0d63-4c39-af35-dbdba166f19a",
+              "state": "completed",
+              "error": null,
+              "total": 349,
+              "text": "{\"toolCall\":{\"type\":\"toolCall\",\"id\":\"call_00_Z07VaeEjx2A720JX0g7q1332/1\",\"name\":\"commit_record\",\"arguments\":{\"item\":\"draft\",\"value\":\"BLUE\",\"message_id\":\"829afcf9-416e-43d6-9cb3-507402aa37b2\"}},\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"record completed\"}],\"details\":{\"completed\":true,\"item\":\"draft\",\"value\":\"BLUE\"}},\"isError\":false,\"durationMs\":21}",
+              "offset": 0,
+              "next": null
+            }
+          },
+          {
+            "order": 14,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "id": "call_00_n79Djx32uquAuELvaXZl0071",
+            "name": "send_message",
+            "isError": false,
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"id\":\"664eb6ba-c4a5-4c8c-9d79-404929abc38c\",\"botId\":\"95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1\",\"taskId\":\"draft\",\"replyTo\":\"829afcf9-416e-43d6-9cb3-507402aa37b2\",\"key\":\"draft-blue-done\",\"text\":\"DONE draft=BLUE\",\"toolCallId\":\"call_00_n79Djx32uquAuELvaXZl0071\",\"state\":\"pending\",\"createdAt\":1791939412291,\"route\":{\"channelId\":\"alpha\",\"threadId\":\"draft\",\"senderId\":\"alice\"}}"
+              }
+            ],
+            "details": {
+              "id": "664eb6ba-c4a5-4c8c-9d79-404929abc38c",
+              "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+              "taskId": "draft",
+              "replyTo": "829afcf9-416e-43d6-9cb3-507402aa37b2",
+              "key": "draft-blue-done",
+              "text": "DONE draft=BLUE",
+              "toolCallId": "call_00_n79Djx32uquAuELvaXZl0071",
+              "state": "pending",
+              "createdAt": 1791939412291,
+              "route": {
+                "channelId": "alpha",
+                "threadId": "draft",
+                "senderId": "alice"
+              }
+            }
+          }
+        ],
+        "boundaries": [
+          {
+            "order": 1,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "inboxIds": [
+              "a2f34e39-8f21-4f4b-941f-58c15f2d95f6"
+            ]
+          },
+          {
+            "order": 2,
+            "botId": "262a3fb1-b057-4019-ae59-34edee871afa",
+            "inboxIds": [
+              "822cb364-f9b7-4c6d-bfca-1035285c46ea",
+              "260b5e4b-ca49-44b7-8270-bcf56849d17b"
+            ]
+          },
+          {
+            "order": 3,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "inboxIds": [
+              "a2f34e39-8f21-4f4b-941f-58c15f2d95f6",
+              "829afcf9-416e-43d6-9cb3-507402aa37b2",
+              "edca0b77-79f6-4738-bbb7-a6c330dcc459",
+              "532abdcd-b0d6-44c8-a6e1-746f780c4ae9",
+              "0ff67f5b-fd15-4ca3-a2e6-a0c109087acd",
+              "8dfd70b8-1186-42c4-84cd-01a18b58b8d0",
+              "6a48cd8b-3db7-40b5-97d8-496616b47699",
+              "daf8c21e-093b-4cbe-bfbb-a76c20159147"
+            ]
+          },
+          {
+            "order": 7,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "inboxIds": [
+              "a2f34e39-8f21-4f4b-941f-58c15f2d95f6",
+              "829afcf9-416e-43d6-9cb3-507402aa37b2",
+              "edca0b77-79f6-4738-bbb7-a6c330dcc459",
+              "532abdcd-b0d6-44c8-a6e1-746f780c4ae9",
+              "0ff67f5b-fd15-4ca3-a2e6-a0c109087acd",
+              "8dfd70b8-1186-42c4-84cd-01a18b58b8d0",
+              "6a48cd8b-3db7-40b5-97d8-496616b47699",
+              "daf8c21e-093b-4cbe-bfbb-a76c20159147"
+            ]
+          },
+          {
+            "order": 9,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "inboxIds": [
+              "a2f34e39-8f21-4f4b-941f-58c15f2d95f6",
+              "829afcf9-416e-43d6-9cb3-507402aa37b2",
+              "edca0b77-79f6-4738-bbb7-a6c330dcc459",
+              "532abdcd-b0d6-44c8-a6e1-746f780c4ae9",
+              "0ff67f5b-fd15-4ca3-a2e6-a0c109087acd",
+              "8dfd70b8-1186-42c4-84cd-01a18b58b8d0",
+              "6a48cd8b-3db7-40b5-97d8-496616b47699",
+              "daf8c21e-093b-4cbe-bfbb-a76c20159147",
+              "4b49ab7c-0f19-4f9a-9b94-f9b0fbb53fc5"
+            ]
+          },
+          {
+            "order": 12,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "inboxIds": [
+              "a2f34e39-8f21-4f4b-941f-58c15f2d95f6",
+              "829afcf9-416e-43d6-9cb3-507402aa37b2",
+              "edca0b77-79f6-4738-bbb7-a6c330dcc459",
+              "532abdcd-b0d6-44c8-a6e1-746f780c4ae9",
+              "0ff67f5b-fd15-4ca3-a2e6-a0c109087acd",
+              "8dfd70b8-1186-42c4-84cd-01a18b58b8d0",
+              "6a48cd8b-3db7-40b5-97d8-496616b47699",
+              "daf8c21e-093b-4cbe-bfbb-a76c20159147",
+              "4b49ab7c-0f19-4f9a-9b94-f9b0fbb53fc5"
+            ]
+          },
+          {
+            "order": 15,
+            "botId": "95aaf29d-5a4f-42e6-82dd-fdeb52e7a6c1",
+            "inboxIds": [
+              "a2f34e39-8f21-4f4b-941f-58c15f2d95f6",
+              "829afcf9-416e-43d6-9cb3-507402aa37b2",
+              "edca0b77-79f6-4738-bbb7-a6c330dcc459",
+              "532abdcd-b0d6-44c8-a6e1-746f780c4ae9",
+              "0ff67f5b-fd15-4ca3-a2e6-a0c109087acd",
+              "8dfd70b8-1186-42c4-84cd-01a18b58b8d0",
+              "6a48cd8b-3db7-40b5-97d8-496616b47699",
+              "daf8c21e-093b-4cbe-bfbb-a76c20159147",
+              "4b49ab7c-0f19-4f9a-9b94-f9b0fbb53fc5"
+            ]
+          }
+        ]
+      },
+      "score": {
+        "validTaskCompletion": 1,
+        "expectedTasks": 1,
+        "missedCommitments": 0,
+        "duplicateActions": 0,
+        "wrongRecipients": 0,
+        "obsoleteActions": 0,
+        "appropriateSilence": true,
+        "malformedOutputs": 0
+      },
+      "effects": [
+        {
+          "channel": "alpha",
+          "task": "draft",
+          "messageId": "829afcf9-416e-43d6-9cb3-507402aa37b2",
+          "item": "draft",
+          "value": "BLUE",
+          "dispatchOrder": 1
+        }
+      ],
+      "routes": [
+        {
+          "channel": "alpha",
+          "thread": "draft",
+          "sender": "alice",
+          "task": "draft"
+        }
+      ],
+      "pendingEvents": 0,
+      "runtimeErrors": 0,
+      "transcriptPairsValid": true
+    }
+  ],
+  "timeouts": {
+    "roundReached": false,
+    "providerRequests": 0
+  },
+  "budget": {
+    "requests": 7,
+    "inputReserved": 0,
+    "outputReserved": 114688,
+    "refused": 0,
+    "accounting": "provider-request-count-only"
+  },
+  "pass": true,
+  "note": "Real provider behavioral smoke; small custom fixtures, not Gaia2.",
+  "telemetry": {
+    "requests": [
+      {
+        "id": 1,
+        "kind": "foreground",
+        "startedAt": 1791939405501,
+        "thinking": "enabled",
+        "effort": "high",
+        "maxOutput": 16384,
+        "abortedAt": 1791939405521
+      },
+      {
+        "id": 2,
+        "kind": "foreground",
+        "startedAt": 1791939405527,
+        "thinking": "enabled",
+        "effort": "high",
+        "maxOutput": 16384,
+        "responseAt": 1791939405669,
+        "status": 200,
+        "abortedAt": 1791939413355
+      },
+      {
+        "id": 3,
+        "kind": "foreground",
+        "startedAt": 1791939405529,
+        "thinking": "enabled",
+        "effort": "high",
+        "maxOutput": 16384,
+        "responseAt": 1791939405695,
+        "status": 200,
+        "abortedAt": 1791939413355
+      },
+      {
+        "id": 4,
+        "kind": "foreground",
+        "startedAt": 1791939408785,
+        "thinking": "enabled",
+        "effort": "high",
+        "maxOutput": 16384,
+        "responseAt": 1791939409143,
+        "status": 200,
+        "abortedAt": 1791939413355
+      },
+      {
+        "id": 5,
+        "kind": "foreground",
+        "startedAt": 1791939409766,
+        "thinking": "enabled",
+        "effort": "high",
+        "maxOutput": 16384,
+        "responseAt": 1791939409869,
+        "status": 200,
+        "abortedAt": 1791939413355
+      },
+      {
+        "id": 6,
+        "kind": "foreground",
+        "startedAt": 1791939410965,
+        "thinking": "enabled",
+        "effort": "high",
+        "maxOutput": 16384,
+        "responseAt": 1791939411068,
+        "status": 200,
+        "abortedAt": 1791939413355
+      },
+      {
+        "id": 7,
+        "kind": "foreground",
+        "startedAt": 1791939412294,
+        "thinking": "enabled",
+        "effort": "high",
+        "maxOutput": 16384,
+        "responseAt": 1791939412386,
+        "status": 200,
+        "abortedAt": 1791939413355
+      }
+    ],
+    "httpRequests": 7,
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "usage": [
+      {
+        "requestId": 2,
+        "prompt_tokens": 2260,
+        "completion_tokens": 279,
+        "total_tokens": 2539,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 2260,
+        "reasoning_tokens": 194
+      },
+      {
+        "requestId": 3,
+        "prompt_tokens": 4201,
+        "completion_tokens": 569,
+        "total_tokens": 4770,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 4201,
+        "reasoning_tokens": 441
+      },
+      {
+        "requestId": 4,
+        "prompt_tokens": 5071,
+        "completion_tokens": 81,
+        "total_tokens": 5152,
+        "prompt_cache_hit_tokens": 1280,
+        "prompt_cache_miss_tokens": 3791,
+        "reasoning_tokens": 60
+      },
+      {
+        "requestId": 5,
+        "prompt_tokens": 5973,
+        "completion_tokens": 141,
+        "total_tokens": 6114,
+        "prompt_cache_hit_tokens": 1280,
+        "prompt_cache_miss_tokens": 4693,
+        "reasoning_tokens": 80
+      },
+      {
+        "requestId": 6,
+        "prompt_tokens": 6339,
+        "completion_tokens": 168,
+        "total_tokens": 6507,
+        "prompt_cache_hit_tokens": 1536,
+        "prompt_cache_miss_tokens": 4803,
+        "reasoning_tokens": 66
+      },
+      {
+        "requestId": 7,
+        "prompt_tokens": 6830,
+        "completion_tokens": 67,
+        "total_tokens": 6897,
+        "prompt_cache_hit_tokens": 2816,
+        "prompt_cache_miss_tokens": 4014,
+        "reasoning_tokens": 0
+      }
+    ]
+  }
+}

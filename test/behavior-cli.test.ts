@@ -41,3 +41,13 @@ test('behavior CLI declares bounded background execution without imposing the ca
     assert.equal(result.dollarBudgetUsd, null);
     assert.ok(!Object.hasOwn(result.caps, 'approvedUsdNeeded'));
 });
+test('native Pi behavior dry run has no input reservation and declares concurrent summary', async () => {
+    const { stdout } = await execute(process.execPath, ['--import', 'tsx', 'src/evals/behavior-cli.ts', '--dry-run', '--real', '--suite', 'taskchain', '--background-execution', '--background-summary', '--auth-source', 'pi']);
+    const result = JSON.parse(stdout);
+    assert.equal(result.authSource, 'pi');
+    assert.equal(result.backgroundSummary, true);
+    assert.equal(result.paidRequests, 0);
+    assert.equal(result.inputReservationEnabled, false);
+    assert.equal(Object.hasOwn(result.caps, 'inputTokenReservations'), false);
+    assert.equal(result.caps.requests, 32);
+});

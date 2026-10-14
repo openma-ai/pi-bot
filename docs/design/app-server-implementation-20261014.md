@@ -101,3 +101,6 @@ GUI 读回复现：发送计算/写入/读取任务，核查 bash item 和单条
 - server core 不依赖 SDK client。仅 daemon/transports/auto.ts 作为宿主 CLI 入口适配器例外，分层测试限定这一处；核心、handlers、events、requests 不得反向依赖它。
 - 单用户回环服务；没有公开 listener、多租户认证、远程 SSH 或完整 VPS 打包部署。事件回放当前一次读取范围，尚未做百万条场景的分页性能验收。
 - 代码与文档本地提交；不 push、merge 远程 PR 或部署。
+
+
+2026-10-14 续测与修复：上述限额、关闭摘要和未验收说明属于历史轮次。最新真实消息洪流、自然语言改口/取消、运行中取消及后台压缩并发验收，见 [真实并发验收](../real-flood-compaction-20261014.md)。普通 GUI 已启用后台摘要；旧失败未改写成通过。

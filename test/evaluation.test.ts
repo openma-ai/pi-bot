@@ -194,3 +194,35 @@ test('wire accounting reserves the provider messages and tools, not unsent neste
             }]
     }), /budget/);
 });
+test('request-count evaluation keeps finite dispatch limits without input reservations', () => {
+    const budget = new RequestBudget({
+        ...SMOKE_CAP, requests: 2, inputTokenReservations: 10
+    }, 'wire', {
+        reserveInput: false
+    });
+    budget.reserveWire({
+        max_tokens: 8192, messages: [{
+                content: 'x'.repeat(10000)
+            }]
+    });
+    budget.reserveWire({
+        max_tokens: 16384, messages: [{
+                content: 'y'.repeat(10000)
+            }]
+    });
+    assert.equal(budget.requests, 2);
+    assert.equal(budget.inputReserved, 0);
+    assert.throws(() => budget.reserveWire({
+        max_tokens: 1
+    }), /request budget reached/);
+});
+test('natural-language controls are evaluated without host cancellation or replacement protection', async () => {
+    const report = await runEvaluation({
+        mode: 'scripted', trace: true, scenarioIds: ['replace-cancel'], hostControls: false
+    });
+    assert.equal(report.controlMode, 'natural-language-only');
+    assert.equal(report.pass, true);
+    assert.ok(report.scenarios[0].trace!.inbox.every(e => !e.taskControl));
+    assert.equal(report.scenarios[0].score.validTaskCompletion, 1);
+    assert.equal(report.scenarios[0].score.obsoleteActions, 0);
+});

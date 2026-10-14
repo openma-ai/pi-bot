@@ -43,7 +43,17 @@ export class ContextBudgetError extends Error {
 const bytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value) ?? 'null', 'utf8');
 // Deliberately conservative, tokenizer-independent text/JSON accounting. Images
 // need a provider-specific bound; never omit them to make a request fit.
-export const estimateContextTokens = (messages: readonly AgentMessage[]): number => messages.reduce((sum, message) => sum + bytes(message) + 32, 0);
+export const estimateContextTokens = (messages: readonly AgentMessage[]): number => messages.reduce((sum, message) => {
+    // Native providers transmit tool-result content, not SDK details. Count the
+    // content in full and retain the original diagnostic object in native history.
+    if (message.role === 'toolResult') {
+        const { details: _diagnostics, ...providerPayload } = message as Extract<AgentMessage, {
+            role: 'toolResult';
+        }>;
+        return sum + bytes(providerPayload) + 32;
+    }
+    return sum + bytes(message) + 32;
+}, 0);
 const fingerprint = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const hasImages = (message: AgentMessage): boolean => Array.isArray((message as any).content) &&
     (message as any).content.some((part: any) => part.type === 'image');

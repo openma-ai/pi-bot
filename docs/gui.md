@@ -27,3 +27,5 @@ Coding delegation now uses pinned community pi-subagents 0.77.0 execution and ch
 Linux 桌面、共享浏览器 profile、Computer 实时画面与人工接管，见 [运行及验收说明](linux-desktop-image.md)。
 
 Current architecture, real API counts, diagnostics, container evidence and unverified boundaries: [2026-10-14 implementation handoff](design/app-server-implementation-20261014.md). Earlier test counts and smoke references above are historical, not the current acceptance total.
+
+Background compaction is now enabled in normal GUI operation. It runs as a separate tool-free request with high thinking and at most 16,384 output tokens, a 10-minute timeout, single-flight scheduling and bounded retry. Complete native history and SDK diagnostics remain durable; only a verified stable prefix is adopted at a native boundary. Foreground requests never wait for summary completion. See [real concurrency acceptance](real-flood-compaction-20261014.md).

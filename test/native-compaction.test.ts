@@ -434,7 +434,7 @@ test('native compaction: default model summarizer uses a separate bounded tool-f
         assert.match(summaryContext, /SUMMARIZED_PREFIX_ONLY/);
         assert.match(summaryContext, /SUMMARY_JOB/);
         assert.doesNotMatch(summaryContext, /context_history|toolsAdded/);
-        assert.equal(summaryLimit, 2048);
+        assert.equal(summaryLimit, 4096);
         assert.equal(summarySignal, controller.signal);
         assert.equal(controller.signal.aborted, false);
         assert.doesNotMatch(texts(h.manager.getBranch()), /SUMMARIZED_PREFIX_ONLY/);
@@ -533,15 +533,67 @@ test('native compaction: summary becoming ready after idle waits for next safe n
         await h.close();
     }
 });
-
-test('background model summarizer reserves its actual request before dispatch and fails closed at host cap',async()=>{
-    let reservations=0,dispatches=0;
-    const model={contextWindow:128000,maxTokens:16384} as any;
-    const models={async completeSimple(){dispatches++;return fauxAssistantMessage('Stable requirements and pending task.');}} as any;
-    const beforeRequest=(context:unknown,max:number)=>{reservations++;assert.ok(JSON.stringify(context).includes('stablePrefix'));assert.equal(max,2048);};
-    const summarize=createModelSummarizer(models,model,{beforeRequest});
-    const snapshot={sessionId:'cap',messages:[user('Stable requirement')],state:{},signal:new AbortController().signal};
-    await summarize(snapshot);assert.equal(reservations,1);assert.equal(dispatches,1);
-    const capped=createModelSummarizer(models,model,{beforeRequest(){throw Error('request cap');}});
-    await assert.rejects(()=>capped(snapshot),/request cap/);assert.equal(dispatches,1);
+test('background model summarizer reserves its actual request before dispatch and fails closed at host cap', async () => {
+    let reservations = 0, dispatches = 0;
+    const model = {
+        contextWindow: 128000, maxTokens: 16384
+    } as any;
+    const models = {
+        async completeSimple() {
+            dispatches++;
+            return fauxAssistantMessage('Stable requirements and pending task.');
+        }
+    } as any;
+    const beforeRequest = (context: unknown, max: number) => {
+        reservations++;
+        assert.ok(JSON.stringify(context).includes('stablePrefix'));
+        assert.equal(max, 16384);
+    };
+    const summarize = createModelSummarizer(models, model, {
+        beforeRequest
+    });
+    const snapshot = {
+        sessionId: 'cap', messages: [user('Stable requirement')], state: {}, signal: new AbortController().signal
+    };
+    await summarize(snapshot);
+    assert.equal(reservations, 1);
+    assert.equal(dispatches, 1);
+    const capped = createModelSummarizer(models, model, {
+        beforeRequest() {
+            throw Error('request cap');
+        }
+    });
+    await assert.rejects(() => capped(snapshot), /request cap/);
+    assert.equal(dispatches, 1);
+});
+test('background summary gives reasoning-capable models room for a usable summary within the output ceiling', async () => {
+    const models = await ModelRuntime.create({
+        credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false
+    });
+    const faux = fauxProvider({
+        models: [{
+                id: 'summary', reasoning: true, maxTokens: 65536, contextWindow: 256000
+            }]
+    });
+    models.registerNativeProvider(faux.provider);
+    let limit: number | undefined;
+    faux.setResponses([(_context, options) => {
+            limit = options?.maxTokens;
+            return fauxAssistantMessage('A factual summary retaining the still-valid tasks.');
+        }]);
+    const summary = await createModelSummarizer(models, faux.getModel())({
+        sessionId: 'budget-room', messages: [user('Still-valid task, original ID and route.')], state: {}, signal: new AbortController().signal
+    });
+    assert.ok(summary.includes('still-valid'));
+    assert.equal(limit, 16384);
+    faux.setResponses([(_context, options) => {
+            limit = options?.maxTokens;
+            return fauxAssistantMessage('Bounded summary.');
+        }]);
+    await createModelSummarizer(models, faux.getModel(), {
+        maxTokens: 65536
+    })({
+        sessionId: 'cap-override', messages: [user('An unfinished task.')], state: {}, signal: new AbortController().signal
+    });
+    assert.equal(limit, 16384, 'an explicit override cannot exceed the per-request ceiling');
 });

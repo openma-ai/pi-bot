@@ -1009,3 +1009,44 @@ test('parent-source resolution rejects a different host task even when route and
         await h.close();
     }
 });
+test('default background summarizer uses the same host request guard as native foreground', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'pi-summary-guard-'));
+    const models = await ModelRuntime.create({
+        credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false
+    });
+    const faux = fauxProvider({
+        models: [{
+                id: 'summary-guard', contextWindow: 128000, maxTokens: 16384
+            }]
+    });
+    models.registerNativeProvider(faux.provider);
+    const guarded: string[] = [];
+    faux.setResponses(Array.from({
+        length: 12
+    }, () => (context: any) => JSON.stringify(context).includes('stablePrefix') ? fauxAssistantMessage('The earlier user task remains valid; this is a compacted stable prefix.') : fauxAssistantMessage('Internal completion.')));
+    const runtime = new BotRuntime(join(dir, 'runtime.db'), piSessionFactory({
+        dir: join(dir, 'sessions'), modelRuntime: models, model: faux.getModel(), context: {
+            backgroundEnabled: true, thresholdTokens: 1000, recentMessages: 1, summaryTimeoutMs: 1000
+        }, beforeProviderRequest: context => guarded.push(JSON.stringify(context).includes('stablePrefix') ? 'summary' : 'foreground')
+    }));
+    try {
+        const bot = runtime.createBot('native');
+        runtime.accept({
+            to: bot.id, from: 'user', kind: 'user', key: 'a', text: 'Do not reply. Remember this task context: ' + 'x'.repeat(5000)
+        });
+        await runtime.idle();
+        runtime.accept({
+            to: bot.id, from: 'user', kind: 'user', key: 'b', text: 'Do not reply. Keep the original valid commitment.'
+        });
+        await runtime.idle();
+        for (let i = 0; i < 100 && !guarded.includes('summary'); i++)
+            await new Promise(r => setTimeout(r, 10));
+        assert.ok(guarded.includes('summary'), 'background requests must not bypass the host dispatch guard');
+    }
+    finally {
+        await runtime.close();
+        await rm(dir, {
+            recursive: true, force: true
+        });
+    }
+});

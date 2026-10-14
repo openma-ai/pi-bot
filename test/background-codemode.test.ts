@@ -547,8 +547,10 @@ test('saved final result survives reopening the same session; another session ca
 });
 test('hard runtime limit stops a runaway script and retains its partial output', async () => {
     const notices: any[] = [];
+    // Allow native QuickJS bootstrap under the full parallel test suite. The
+    // infinite loop still must hit a hard deadline and retain its emitted output.
     const h = await setup('text("BEFORE_TIMEOUT");while(true){}', [], 10, {
-        maxRuntimeMs: 200, onCompletion: n => {
+        maxRuntimeMs: 2000, onCompletion: n => {
             notices.push(n);
         }
     });

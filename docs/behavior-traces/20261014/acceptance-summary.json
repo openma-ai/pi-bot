@@ -1,0 +1,64 @@
+{
+  "pass": true,
+  "score": {
+    "completedTasks": 2,
+    "expectedTasks": 2,
+    "missedTasks": 0,
+    "noiseReplies": 0,
+    "cancelledActions": 0,
+    "wrongRecipients": 0,
+    "duplicateActions": 0,
+    "obsoleteFinalArtifacts": 0
+  },
+  "pending": 0,
+  "runtimeErrors": 0,
+  "compaction": {
+    "started": 2,
+    "completed": 2,
+    "adopted": 2,
+    "foregroundOverlap": 3,
+    "lateCorrectionExcluded": true,
+    "lateCancellationExcluded": true,
+    "blockedStaleActions": 1
+  },
+  "httpDispatchAttempts": 12,
+  "http200Responses": 10,
+  "usageRecords": 9,
+  "unknownUsageRequestIds": [
+    1,
+    4,
+    7
+  ],
+  "acceptedConcurrentPairs": [
+    {
+      "summaryRequestId": 5,
+      "foregroundRequestId": 3
+    },
+    {
+      "summaryRequestId": 5,
+      "foregroundRequestId": 6
+    },
+    {
+      "summaryRequestId": 5,
+      "foregroundRequestId": 7
+    },
+    {
+      "summaryRequestId": 9,
+      "foregroundRequestId": 8
+    },
+    {
+      "summaryRequestId": 9,
+      "foregroundRequestId": 10
+    }
+  ],
+  "allThinkingHigh": true,
+  "maxOutputWithin16384": true,
+  "knownTokenTotals": {
+    "prompt_tokens": 176786,
+    "completion_tokens": 19965,
+    "total_tokens": 196751,
+    "prompt_cache_hit_tokens": 12032,
+    "prompt_cache_miss_tokens": 164754,
+    "reasoning_tokens": 13671
+  }
+}

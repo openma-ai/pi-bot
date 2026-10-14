@@ -27,7 +27,8 @@
     "format": "node scripts/format.mjs",
     "pi-bot": "node --import tsx src/daemon/main.ts",
     "protocol:schema": "node --import tsx scripts/protocol-schema.mjs",
-    "smoke:app-server": "node --import tsx src/evals/app-server-smoke.ts"
+    "smoke:app-server": "node --import tsx src/evals/app-server-smoke.ts",
+    "benchmark:engineering": "node --import tsx src/evals/complex-repo-cli.ts"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "1.1.0",

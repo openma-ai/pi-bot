@@ -20,7 +20,9 @@ export class RequestBudget {
     refused = 0;
     readonly limits: typeof SMOKE_CAP;
     readonly accounting: 'context' | 'wire';
-    constructor(limits = SMOKE_CAP, accounting: 'context' | 'wire' = 'context') {
+    constructor(limits = SMOKE_CAP, accounting: 'context' | 'wire' = 'context', readonly options: {
+        reserveInput?: boolean;
+    } = {}) {
         this.accounting = accounting;
         if (![limits.requests, limits.inputTokenReservations, limits.outputTokensPerRequest, limits.deadlineMs, limits.requestTimeoutMs].every(n => Number.isSafeInteger(n) && n > 0))
             throw Error('Invalid evaluation budget');
@@ -50,7 +52,7 @@ export class RequestBudget {
     reserve(context: unknown, maxTokens: number) {
         // Conservative byte reservation plus 1024 tokens for framing overhead.
         // This is a reservation, not a provider tokenizer or bill measurement.
-        const input = Buffer.byteLength(JSON.stringify(context), 'utf8') + 1024;
+        const input = this.options.reserveInput === false ? 0 : Buffer.byteLength(JSON.stringify(context), 'utf8') + 1024;
         if (!Number.isSafeInteger(maxTokens) || maxTokens < 1 || this.requests >= this.limits.requests || this.inputReserved + input > this.limits.inputTokenReservations || maxTokens > this.limits.outputTokensPerRequest) {
             this.refused++;
             throw Error('Evaluation request budget reached');
@@ -235,6 +237,7 @@ export async function runEvaluation(options: {
     model?: Model<Api>;
     budget?: RequestBudget;
     deadlineMs?: number;
+    hostControls?: boolean;
     scenarioIds?: string[];
     trace?: boolean;
 } = {}) {
@@ -393,7 +396,7 @@ export async function runEvaluation(options: {
                     if (lifetime.signal.aborted)
                         break;
                     chat.send({
-                        channelId: event.channel, senderId: event.sender, threadId: event.thread, taskId: event.task, key: event.key, text: event.text, taskControl: event.control
+                        channelId: event.channel, senderId: event.sender, threadId: event.thread, taskId: event.task, key: event.key, text: event.text, taskControl: options.hostControls === false ? undefined : event.control
                     });
                 }
                 await runtime.idle();
@@ -418,7 +421,7 @@ export async function runEvaluation(options: {
             }
         }
         return {
-            mode, scenarios: results, timeouts: {
+            mode, controlMode: options.hostControls === false ? 'natural-language-only' : 'host-enforced-and-natural-language', scenarios: results, timeouts: {
                 roundReached: lifetime.signal.aborted, providerRequests: requestTimeouts
             }, budget: {
                 requests: budget.requests, inputReserved: budget.inputReserved, outputReserved: budget.outputReserved, refused: budget.refused

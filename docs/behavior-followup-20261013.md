@@ -70,3 +70,6 @@ npm run evaluate:behavior -- --real --suite taskchain --background-execution --b
 所有原始失败报告在 [用量索引](behavior-traces/current-api-usage.json)相邻文件，命名 *-original.json；每轮 executions 子目录保存脱敏逐事件 JSONL 和 cell JSON。未覆写或撤销共享后台实现；未 push、merge 或部署。
 
 尚需进一步工作：在保持保护的条件下，让压缩后的任务/噪声 inbox 干净收尾，处理 quota 触发后整个 wake 的保守 uncertain 状态；不能用已交付成果替代 inbox 全部结清的证明。此次停止付费循环，保留明确可复现的保护触发和对应原生证据。
+
+
+2026-10-14 续测与修复：上述限额、关闭摘要和未验收说明属于历史轮次。最新真实消息洪流、自然语言改口/取消、运行中取消及后台压缩并发验收，见 [真实并发验收](real-flood-compaction-20261014.md)。普通 GUI 已启用后台摘要；旧失败未改写成通过。

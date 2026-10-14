@@ -56,7 +56,7 @@ export async function livePiFactory(dir: string, proactive: (host: BotHost) => P
     };
     const factory = piSessionFactory({
         credentials, desktop: DesktopClient.load(resolve('work/gui/desktop/control.json')), codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model, proactive, context: {
-            backgroundEnabled: false
+            backgroundEnabled: true, outputReserveTokens: 16384, summaryTimeoutMs: 600000
         }, backgroundTools: {}, extensions: [trace], thinkingLevel: configuration.thinkingLevel, maxOutputTokens: 16384, maxRequestsPerWake: 16, inferenceRequestTimeoutMs: 600000, inferenceSignal: lifetime,
         beforeProviderRequest: budget ? () => {
             if (Date.now() >= budget.expiresAt || budget.requests >= budget.maxRequests)
