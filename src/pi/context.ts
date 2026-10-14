@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { ExtensionFactory, ExtensionContext, BoundaryResult, CompactionEntryDraft, ProjectedSessionEntry } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
+import type {ImageBudget} from './image-budget.ts';
 export interface SummarySnapshot {
     sessionId: string;
     messages: AgentMessage[];
@@ -9,6 +10,7 @@ export interface SummarySnapshot {
     signal: AbortSignal;
 }
 export interface ContextOptions {
+    imageBudget?: ImageBudget;
     getState: () => unknown;
     maxContextTokens?: number;
     outputReserveTokens?: number;
@@ -43,17 +45,30 @@ export class ContextBudgetError extends Error {
 const bytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value) ?? 'null', 'utf8');
 // Deliberately conservative, tokenizer-independent text/JSON accounting. Images
 // need a provider-specific bound; never omit them to make a request fit.
-export const estimateContextTokens = (messages: readonly AgentMessage[]): number => messages.reduce((sum, message) => {
+export const estimateContextTokens = (messages: readonly AgentMessage[], imageBudget?:ImageBudget): number => {
+ let imageCount=0;
+ return messages.reduce((sum, message) => {
     // Native providers transmit tool-result content, not SDK details. Count the
     // content in full and retain the original diagnostic object in native history.
+    let payload:any=message;
     if (message.role === 'toolResult') {
         const { details: _diagnostics, ...providerPayload } = message as Extract<AgentMessage, {
             role: 'toolResult';
         }>;
-        return sum + bytes(providerPayload) + 32;
+        payload=providerPayload;
     }
-    return sum + bytes(message) + 32;
-}, 0);
+    let imageTokens=0;
+    if(imageBudget&&Array.isArray(payload.content))payload={...payload,content:payload.content.map((part:any)=>{
+      if(part.type!=='image')return part;
+      if(++imageCount>imageBudget.maxImages)throw new ContextBudgetError('Provider image count limit exceeded. Nothing was truncated.');
+      const size=Math.ceil(part.data.length*3/4)-(part.data.endsWith('==')?2:part.data.endsWith('=')?1:0);
+      if(size>imageBudget.maxImageBytes)throw new ContextBudgetError('Provider image size limit exceeded. Nothing was truncated.');
+      imageTokens+=imageBudget.tokensPerImage;
+      return {type:'image',mimeType:part.mimeType};
+    })};
+    return sum + bytes(payload) + 32 + imageTokens;
+ }, 0);
+};
 const fingerprint = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const hasImages = (message: AgentMessage): boolean => Array.isArray((message as any).content) &&
     (message as any).content.some((part: any) => part.type === 'image');
@@ -197,13 +212,13 @@ export class NonBlockingContextManager {
         };
         if (estimateContextTokens([ledger, ...input.messages.filter(message => message.role === 'system')]) >= budget)
             throw new ContextBudgetError('System prompt, tool declarations and authoritative runtime state exceed the input budget.');
-        if (input.messages.some(hasImages))
+        if (input.messages.some(hasImages) && !this.options.imageBudget)
             throw new ContextBudgetError('Image inputs need a provider-specific context budget. No input or history was truncated.');
         if (!hasValidToolPairs(input.messages))
             throw new ContextBudgetError('Incomplete or mismatched tool call/result batch. Full native history is retained.');
         const messages = [...input.messages];
         messages.splice(messages[0]?.role === 'system' ? 1 : 0, 0, ledger);
-        if (estimateContextTokens(messages) > budget)
+        if (estimateContextTokens(messages,this.options.imageBudget) > budget)
             throw new ContextBudgetError('Full native context exceeds the input budget before background compaction could be applied. Nothing was truncated and no summary was awaited; retry after a completed compaction or select a larger context budget/model.');
         return messages;
     }
@@ -215,7 +230,7 @@ export class NonBlockingContextManager {
         const { input: budget, threshold } = this.budget(input.contextWindow);
         const entries = visibleEntries(input.entries);
         const allMessages = entries.flatMap(entry => entry.messages);
-        if ((input.contextTokens ?? estimateContextTokens(allMessages)) < threshold)
+        if ((input.contextTokens ?? estimateContextTokens(allMessages,this.options.imageBudget)) < threshold)
             return;
         const indexed = entries.flatMap((entry, index) => entry.messages.filter(message => message.role !== 'system').map(message => ({
             message, index
@@ -350,7 +365,7 @@ export function createContextExtension(options: ContextOptions): ExtensionFactor
                 const messages = manager.preserveContext({
                     sessionId: ctx.sessionManager.getSessionId(), messages: event.messages, historyRef: historyRef(ctx), contextWindow: ctx.model?.contextWindow
                 });
-                schedule(ctx, estimateContextTokens(messages));
+                schedule(ctx, estimateContextTokens(messages,options.imageBudget));
                 return {
                     messages
                 };

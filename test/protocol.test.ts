@@ -279,7 +279,7 @@ test('host reconciliation trusts delivered evidence and resumes only verified pr
         })).outcome, 'queued');
         await d.runtime.idle();
         assert.equal(runs, 2);
-        assert.ok(d.trigger.inspect().some(r => r.item.id === recover.id));
+        assert.ok(d.trigger.inspect().some(r => (r.item.body as any).payload.id === recover.id));
         d.runtime.store.put('inbox', {
             ...recover, id: 'unsafe', key: 'unsafe', taskId: 'unsafe', consumedAt: Date.now()
         });
@@ -290,4 +290,149 @@ test('host reconciliation trusts delivered evidence and resumes only verified pr
     finally {
         await h.close();
     }
+});
+
+test("image-guard recovery replays only a proven read-only checkpoint", async () => {
+  const h = await fixture(echo);
+  try {
+    const e = h.d.runtime.accept({
+      to: h.bot.id,
+      text: "read screenshot",
+      key: "vision",
+    });
+    await h.d.runtime.idle();
+    // Inject a screenshot-only checkpoint; real provider execution is reported separately.
+    const safe: Input = {
+      ...e,
+      id: "image-safe",
+      key: "image-safe",
+      taskId: "image-task",
+      state: "uncertain",
+      consumedAt: Date.now(),
+      resolvedAt: undefined,
+      error:
+        "ContextBudgetError: Image inputs need a provider-specific context budget. No input or history was truncated.",
+    };
+    h.d.runtime.store.put("inbox", safe);
+    const turn: any = {
+      id: "image-turn",
+      taskId: safe.taskId,
+      botId: h.bot.id,
+      inputIds: [safe.id],
+      primaryInputId: safe.id,
+    };
+    h.d.runtime.store.put("turns", turn);
+    h.d.runtime.store.put("items", {
+      id: "image-call",
+      type: "toolCall",
+      turnId: turn.id,
+      status: "completed",
+      tool: "desktop_call",
+      args: { kind: "computer", tool: "screenshot", args: {} },
+      isError: false,
+    });
+    assert.equal(
+      (await h.api.task.recovery({ inputId: safe.id })).canRetry,
+      true,
+    );
+    assert.equal(
+      (await h.api.task.reconcile({ inputId: safe.id })).outcome,
+      "queued",
+    );
+    await h.d.runtime.idle();
+    const unsafe = {
+      ...safe,
+      id: "image-unsafe",
+      key: "image-unsafe",
+      taskId: "unsafe-task",
+    };
+    h.d.runtime.store.put("inbox", unsafe);
+    h.d.runtime.store.put("turns", {
+      ...turn,
+      id: "unsafe-turn",
+      taskId: unsafe.taskId,
+      inputIds: [unsafe.id],
+    });
+    h.d.runtime.store.put("items", {
+      id: "write-call",
+      type: "toolCall",
+      turnId: "unsafe-turn",
+      status: "completed",
+      tool: "bash",
+      args: { command: "echo effects" },
+      isError: false,
+    });
+    assert.equal(
+      (await h.api.task.recovery({ inputId: unsafe.id })).canRetry,
+      false,
+    );
+    h.d.runtime.store.put("inbox", {
+      ...unsafe,
+      consumedAt: undefined,
+      error: "Error: Provider request refused or failed before streaming",
+    });
+    assert.equal(
+      (await h.api.task.recovery({ inputId: unsafe.id })).canRetry,
+      false,
+    );
+    await assert.rejects(
+      h.api.task.reconcile({ inputId: unsafe.id }),
+      (e: any) => e.reason === "reviewRequired",
+    );
+  } finally {
+    await h.close();
+  }
+});
+
+test("resuming an already handed-off input reaches Pi again through a new OpenMatter lease", async () => {
+  let runs = 0;
+  const h = await fixture(async (_b, rt) => ({
+    async run(e) {
+      runs++;
+      if (runs === 1) {
+        rt.events?.emit(e.to, {
+          type: "toolStarted",
+          tool: "desktop_call",
+          toolCallId: "read-only",
+          args: { kind: "computer", tool: "screenshot", args: {} },
+        });
+        rt.events?.emit(e.to, {
+          type: "toolCompleted",
+          toolCallId: "read-only",
+          result: { content: [{ type: "text", text: "image fixture" }] },
+          isError: false,
+        });
+        throw Error("Provider request refused or failed before streaming");
+      }
+      rt.sendMessage(e, "resumed", "resumed");
+    },
+    async close() {},
+  }));
+  try {
+    const e = h.d.runtime.accept({
+      to: h.bot.id,
+      text: "resume actual input",
+      key: "actual",
+    });
+    await h.d.runtime.idle();
+    assert.equal(runs, 1);
+    assert.equal(h.d.trigger.inspect()[0]!.state, "completed");
+    await h.api.task.reconcile({ inputId: e.id });
+    await h.d.runtime.idle();
+    assert.equal(runs, 2);
+    assert.equal(
+      h.d.runtime.store.get<Input>("inbox", e.id)!.state,
+      "processed",
+    );
+  } finally {
+    await h.close();
+  }
+});
+
+test('paused ingress publishes a scoped service event without requiring a GUI refresh',async()=>{
+ const h=await fixture(echo);try{const events:any[]=[];const before=await h.api.daemon.snapshot({});const stop=await h.api.events.subscribe({after:before.seq},e=>events.push(e));
+ h.d.trigger.publish({id:'missing-native-input',from:'user',to:h.bot.id,kind:'user',text:'fixture',key:'missing',taskId:'missing',replyTo:null,hop:0,state:'queued',createdAt:Date.now()});h.d.trigger.flush();
+ const deadline=Date.now()+3000;while(!events.some(e=>e.method==='daemon/triggerChanged')&&Date.now()<deadline)await new Promise(r=>setTimeout(r,20));
+ assert.equal(events.find(e=>e.method==='daemon/triggerChanged')?.params.trigger.halted,true);assert.equal((await h.api.daemon.snapshot({})).trigger?.halted,true);stop();
+ }finally{await h.close();}
 });

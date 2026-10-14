@@ -702,3 +702,15 @@ test('direct native bash yields on new input and exec_wait collects the same pro
         await h.close();
     }
 });
+
+test('early final-result reads never advance a cursor over a running-state placeholder',async()=>{
+ const finish=deferred(),began=deferred();const gate:ToolDefinition={name:'gate_read',label:'Gate',description:'Held result',parameters:Type.Object({}),async execute(){began.resolve();await finish.promise;return {details:{},content:[{type:'text',text:'FINAL-READ-END'}]};}};
+ const h=await setup('text(await tools.gate_read({}));',[gate],30);
+ try{await h.session.prompt('start gated script');await began.promise;const receipt:any=h.manager.buildSessionProjection().messages.find(m=>m.role==='toolResult'&&m.toolName==='codemode');const id=receipt.details.cell_id;
+ h.session.setActiveToolsByName(['codemode','codemode_wait','codemode_read','gate_read']);h.faux.setResponses([fauxAssistantMessage(fauxToolCall('codemode_read',{cell_id:id},{id:'early-read'}),{stopReason:'toolUse'}),fauxAssistantMessage('internal')]);await h.session.prompt('read before completion');
+ const early:any=h.manager.buildSessionProjection().messages.find(m=>m.role==='toolResult'&&m.toolCallId==='early-read');assert.equal(early.details.done,false);assert.equal(early.details.next_offset,0);assert.equal(early.details.state,'running');
+ h.faux.setResponses(Array.from({length:10},()=>fauxAssistantMessage('internal')));finish.resolve();const path=join(h.dir,'cells',h.manager.getSessionId(),id+'.json');
+ const {readFileSync}=await import('node:fs');assert.equal(await until(()=>{try{return JSON.parse(readFileSync(path,'utf8')).state==='completed';}catch{return false;}}),true);await h.session.waitForIdle();
+ h.faux.setResponses([fauxAssistantMessage(fauxToolCall('codemode_read',{cell_id:id,offset:early.details.next_offset},{id:'final-read'}),{stopReason:'toolUse'}),fauxAssistantMessage('internal')]);await h.session.prompt('read completed result');const final:any=h.manager.buildSessionProjection().messages.find(m=>m.role==='toolResult'&&m.toolCallId==='final-read');assert.equal(final.details.done,true);assert.ok(JSON.stringify(final.content).includes('FINAL-READ-END'));assert.doesNotThrow(()=>JSON.parse(final.content[0].text));
+ }finally{finish.resolve();await h.close();}
+});

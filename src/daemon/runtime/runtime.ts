@@ -431,13 +431,13 @@ export class BotRuntime implements BotHost {
             throw new PiBotError('reviewRequired', 'Host review note required before retry or failure');
         this.store.put('inbox', {
             ...e, state: review.outcome, error: undefined, resolvedAt: review.outcome === 'queued' ? undefined : Date.now(), resolution: {
-                owner: 'host-review', evidence: review.evidence, note: review.note
+                owner: 'host-review', evidence: review.evidence, note: review.note, attempt:(e.resolution?.attempt??0)+1
             }
         });
         if (review.outcome === 'queued') {
             const reviewed = this.store.get<Envelope>('inbox', id)!;
             if (this.options.activation) {
-                this.options.activation.publish(reviewed);
+                this.options.activation.publish(reviewed, `resume:${reviewed.id}:${reviewed.resolution!.attempt}`);
                 this.options.activation.flush();
             }
             else
@@ -469,13 +469,14 @@ export class BotRuntime implements BotHost {
         this.store.put('outbox', o);
         return o;
     }
-    askUser(e: Envelope, text: string, key: string) {
+    askUser(e: Envelope, text: string, key: string, choices?:string[]) {
         this.assertTaskCurrent(e);
         if (text.length > 4000)
             throw new PiBotError('invalidParams', 'Question exceeds 4000 characters');
+        if(choices&&(!Array.isArray(choices)||choices.length<1||choices.length>6||choices.some(c=>typeof c!=='string'||!c.trim()||c.length>300)||new Set(choices).size!==choices.length))throw new PiBotError('invalidParams','Invalid decision choices');
         const old = this.store.find<Question>('questions', e.to, key);
         if (old) {
-            if (old.text !== text)
+            if (old.text !== text || JSON.stringify(old.choices??[])!==JSON.stringify(choices??[]))
                 throw new PiBotError('conflict', 'Idempotency key conflict');
             return old;
         }
@@ -483,12 +484,12 @@ export class BotRuntime implements BotHost {
             throw new PiBotError('capacity', 'Pending question capacity reached');
         return this.store.transaction(() => {
             const q: Question = {
-                id: randomUUID(), botId: e.to, taskId: e.taskId, messageId: e.id, key, text, state: 'pending', createdAt: Date.now()
+                id: randomUUID(), botId: e.to, taskId: e.taskId, messageId: e.id, key, text, ...(choices?{choices:[...choices]}:{}), state: 'pending', createdAt: Date.now()
             };
             this.store.put('questions', q);
             (this as any).requestBroker?.question(q);
             this.sendMessage(e, JSON.stringify({
-                questionId: q.id, question: text
+                questionId: q.id, question: text, ...(choices?{choices:q.choices}:{})
             }), `question:${q.id}`);
             return q;
         });

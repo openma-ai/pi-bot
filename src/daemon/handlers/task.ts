@@ -3,6 +3,7 @@ import type { DaemonConnection } from '../core/connection.ts';
 export async function taskHandler(d: PiBotDaemon, c: DaemonConnection, method: string, p: any): Promise<any> {
     const r = d.runtime, s = r.store;
     switch (method) {
+        case 'task/recovery': return d.taskRecovery(p.inputId);
         case 'task/reconcile': return d.reconcile(p.inputId);
     }
 }

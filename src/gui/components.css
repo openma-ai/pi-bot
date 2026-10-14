@@ -1,0 +1,27 @@
+@layer theme, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@source "./ui";
+@source "./MessengerSidebar.jsx";
+@theme inline {
+  --color-background: #111;
+  --color-foreground: #ecebea;
+  --color-muted: #202020;
+  --color-muted-foreground: #a9a7a5;
+  --color-accent: #242424;
+  --color-accent-foreground: #ecebea;
+  --color-primary: #b86506;
+  --color-primary-foreground: #fff6e9;
+  --color-border: #292929;
+  --color-input: #353535;
+  --color-ring: #80756b;
+  --color-sidebar: #101010;
+  --color-sidebar-foreground: #ecebea;
+  --color-sidebar-accent: #242424;
+  --color-sidebar-accent-foreground: #ecebea;
+  --color-sidebar-border: #222;
+  --color-sidebar-ring: #80756b;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}

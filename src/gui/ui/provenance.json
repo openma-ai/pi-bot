@@ -1,0 +1,56 @@
+[
+  {
+    "name": "sidebar",
+    "path": "src/gui/ui/sidebar.jsx",
+    "source": "https://ui.shadcn.com/r/styles/new-york-v4/sidebar.json",
+    "sourceSha256": "2ba1a9b9422f4172373f4cd0587b675d2331a41f4fa68f65dab2b23ca98fd9d2"
+  },
+  {
+    "name": "button",
+    "path": "src/gui/ui/button.jsx",
+    "source": "https://ui.shadcn.com/r/styles/new-york-v4/button.json",
+    "sourceSha256": "79dd6f75f8136394442202d6b8b922fb269eaad0a5dba579397c9d5b41f893bb"
+  },
+  {
+    "name": "separator",
+    "path": "src/gui/ui/separator.jsx",
+    "source": "https://ui.shadcn.com/r/styles/new-york-v4/separator.json",
+    "sourceSha256": "ad7d5403fe337160e41dbf04147896e448ae3a747b8d06660d627d74d60021bc"
+  },
+  {
+    "name": "sheet",
+    "path": "src/gui/ui/sheet.jsx",
+    "source": "https://ui.shadcn.com/r/styles/new-york-v4/sheet.json",
+    "sourceSha256": "ea473d38a26a9b0b879e5a13139899ad45e9782e896b3fa205c7763a6c506876"
+  },
+  {
+    "name": "tooltip",
+    "path": "src/gui/ui/tooltip.jsx",
+    "source": "https://ui.shadcn.com/r/styles/new-york-v4/tooltip.json",
+    "sourceSha256": "611e4305879b2773eafe76bf3c5caa69d8e47367fd97887a71634a27828f4433"
+  },
+  {
+    "name": "input",
+    "path": "src/gui/ui/input.jsx",
+    "source": "https://ui.shadcn.com/r/styles/new-york-v4/input.json",
+    "sourceSha256": "0c9457181f6ddc80969bcf854e92c362903a55b6e889fbef3fd85343ecc4af5b"
+  },
+  {
+    "name": "use-mobile",
+    "path": "src/gui/hooks/use-mobile.js",
+    "source": "https://ui.shadcn.com/r/styles/new-york-v4/use-mobile.json",
+    "sourceSha256": "ad0936f84f1df79d3697bfbff9c18f8ad58431c1cbaf2359c6a853b0fcc9f28b"
+  },
+  {
+    "name": "skeleton",
+    "path": "src/gui/ui/skeleton.jsx",
+    "source": "https://ui.shadcn.com/r/styles/new-york-v4/skeleton.json",
+    "sourceSha256": "f51ce0fcd31e5c31437382e80ea0af94b4fc3d64221d27091d36824546780a43"
+  },
+  {
+    "name": "textarea",
+    "path": "src/gui/ui/textarea.jsx",
+    "source": "https://ui.shadcn.com/r/styles/new-york-v4/textarea.json",
+    "sourceSha256": "5cafcfeeee29534f449387a16b585f5923d2faab1a0cdc50a874416b175f59ce"
+  }
+]

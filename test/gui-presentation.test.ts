@@ -4,7 +4,71 @@ import {
   botActivity,
   messageSegments,
   avatarVariant,
+  conversationList,
 } from "../src/gui/presentation.ts";
+
+test("bots and groups share a recent-conversation list with scope-safe previews", () => {
+  const data: any = {
+    bots: [
+      { id: "a", name: "Alice", createdAt: 1 },
+      { id: "b", name: "Bob", createdAt: 2 },
+    ],
+    groups: [
+      { id: "g", name: "Build team", memberIds: ["a", "b"], createdAt: 3 },
+    ],
+    messages: [
+      {
+        botId: "a",
+        channelId: "local:a",
+        direction: "outbound",
+        status: "delivered",
+        text: "private result",
+        receivedAt: 10,
+      },
+      {
+        botId: "a",
+        channelId: "g",
+        sourceKind: "user",
+        text: "shared input",
+        receivedAt: 25,
+      },
+      {
+        botId: "b",
+        channelId: "local:b",
+        sourceKind: "bot",
+        direction: "inbound",
+        text: "private peer exchange",
+        receivedAt: 30,
+      },
+    ],
+    groupMessages: [
+      {
+        channelId: "g",
+        direction: "outbound",
+        status: "delivered",
+        text: "shared result",
+        receivedAt: 20,
+      },
+    ],
+  };
+  const rows = conversationList(data);
+  assert.deepEqual(
+    rows.map((r) => r.kind + ":" + r.id),
+    ["group:g", "bot:a", "bot:b"],
+  );
+  assert.equal(rows[0].preview, "shared input");
+  assert.equal(rows[1].preview, "private result");
+  assert.equal(rows[2].preview, "开始聊天");
+  assert.deepEqual(
+    conversationList(data, "  ALICE ").map((r) => r.id),
+    ["a"],
+  );
+  assert.deepEqual(
+    conversationList(data, " TEAM").map((r) => r.id),
+    ["g"],
+  );
+  assert.equal(conversationList(data, "unknown").length, 0);
+});
 
 test("a completed inbox is not a running bot; active workers and turns are", () => {
   const data: any = {
@@ -57,4 +121,146 @@ test("absolute file paths become copyable segments without losing any text", () 
 test("avatar identity stays stable when contacts are searched or reordered", () => {
   assert.equal(avatarVariant("bot-a"), avatarVariant("bot-a"));
   assert.ok(avatarVariant("bot-a") >= 0 && avatarVariant("bot-a") < 6);
+});
+
+test("global search covers contacts, messages and bot-owned routines without peer leakage", async () => {
+  const { searchEverything } = await import("../src/gui/presentation.ts");
+  const data: any = {
+    bots: [{ id: "a", name: "Alice", createdAt: 1 }],
+    groups: [{ id: "g", name: "Team", memberIds: ["a"], createdAt: 2 }],
+    messages: [
+      {
+        messageId: "m",
+        botId: "a",
+        channelId: "local:a",
+        direction: "outbound",
+        status: "delivered",
+        text: "found report 73",
+        receivedAt: 3,
+      },
+      {
+        messageId: "private",
+        botId: "a",
+        channelId: "local:a",
+        sourceKind: "bot",
+        direction: "inbound",
+        text: "private report",
+        receivedAt: 4,
+      },
+    ],
+    groupMessages: [
+      {
+        messageId: "gm",
+        channelId: "g",
+        direction: "outbound",
+        status: "delivered",
+        text: "public report",
+        receivedAt: 5,
+      },
+    ],
+    states: {
+      a: {
+        proactive: {
+          schedules: [{ id: "s", prompt: "report daily", state: "active" }],
+          monitors: [{ id: "n", prompt: "CI failure", state: "paused" }],
+        },
+      },
+    },
+  };
+  assert.deepEqual(
+    searchEverything(data, "report")
+      .filter((r: any) => r.kind === "message")
+      .map((r: any) => r.id),
+    ["gm", "m"],
+  );
+  assert.ok(
+    searchEverything(data, "report").some(
+      (r: any) => r.kind === "schedule" && r.botId === "a",
+    ),
+  );
+  assert.ok(
+    searchEverything(data, "CI").some((r: any) => r.kind === "monitor"),
+  );
+  assert.ok(searchEverything(data, "Alice").some((r: any) => r.kind === "bot"));
+  assert.ok(
+    searchEverything(data, "model").some((r: any) => r.kind === "action"),
+  );
+  assert.equal(searchEverything(data, "private").length, 0);
+});
+
+test("task failures are scoped, actionable and never expose raw provider secrets", async () => {
+  const { taskFailure } = await import("../src/gui/presentation.ts");
+  const m: any = {
+    messageId: "m",
+    status: "uncertain",
+    error:
+      "ContextBudgetError: Image inputs need a provider-specific context budget. No input or history was truncated.",
+  };
+  const issue = taskFailure(m);
+  assert.ok(issue);
+  assert.equal(issue.title, "回复未完成");
+  assert.match(issue.description, /截图/);
+  assert.doesNotMatch(issue.description, /review|审核/);
+  assert.equal(taskFailure({ ...m, status: "processed" }), undefined);
+  const generic = taskFailure({
+    ...m,
+    error: "Failed https://provider?api_key=secret",
+  });
+  assert.ok(!JSON.stringify(generic).includes("secret"));
+  assert.ok(!JSON.stringify(generic).includes("https://"));
+  assert.equal(
+    taskFailure({ ...m, error: "request timeout" })!.code,
+    "timeout",
+  );
+});
+
+test("group failures attach to the public message and keep each bot and input correlation", async () => {
+  const { messageFailures } = await import("../src/gui/presentation.ts");
+  const data = {
+    messages: [
+      {
+        messageId: "a-input",
+        groupMessageId: "public",
+        channelId: "g",
+        botId: "a",
+        direction: "inbound",
+        status: "uncertain",
+      },
+      {
+        messageId: "b-input",
+        groupMessageId: "public",
+        channelId: "g",
+        botId: "b",
+        direction: "inbound",
+        status: "processed",
+      },
+      {
+        messageId: "private",
+        groupMessageId: "public",
+        channelId: "other",
+        botId: "c",
+        direction: "inbound",
+        status: "failed",
+      },
+      {messageId:'peer',groupMessageId:'public',channelId:'g',botId:'a',direction:'inbound',sourceKind:'bot',deliveryTarget:'direct',status:'uncertain'},
+    ],
+  };
+  assert.deepEqual(
+    messageFailures(data, {
+      messageId: "public",
+      channelId: "g",
+      direction: "inbound",
+      status: "received",
+    }).map((m: any) => m.messageId),
+    ["a-input"],
+  );
+  assert.equal(
+    messageFailures(data, {
+      messageId: "reply",
+      channelId: "g",
+      direction: "outbound",
+      status: "delivered",
+    }).length,
+    0,
+  );
 });

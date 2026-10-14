@@ -400,3 +400,15 @@ test('authoritative ledger includes processing inbox until the active task settl
         await h.close();
     }
 });
+
+test('decision questions retain choices, idempotency and one correlated answer',async()=>{
+ const h=await fixture();try{const b=h.runtime.createBot('choice');const e=h.runtime.accept({to:b.id,key:'ask',text:'choose deployment'});await h.runtime.idle();
+ const q=h.runtime.askUser(e,'Where?', 'decision',['Local container','VPS']);
+ assert.deepEqual(q.choices,['Local container','VPS']);
+ assert.equal(h.runtime.askUser(e,'Where?','decision',['Local container','VPS']).id,q.id);
+ assert.throws(()=>h.runtime.askUser(e,'Where?','decision',['Other']),/conflict/);
+ const sent=h.runtime.store.list<Outbound>('outbox').find(o=>o.key==='question:'+q.id)!;
+ assert.deepEqual(JSON.parse(sent.text).choices,q.choices);
+ h.runtime.answer(q.id,'Local container','one');await h.runtime.idle();assert.equal(h.runtime.store.list<Envelope>('inbox').filter(i=>i.kind==='answer').length,1);
+ }finally{await h.close();}
+});

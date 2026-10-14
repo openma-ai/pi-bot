@@ -35,19 +35,26 @@
   },
   "components": {
     "installed": [
-      "@radix-ui/themes"
+      "@radix-ui/themes",
+      "Official shadcn/ui Sidebar (vendored)",
+      "cmdk"
     ],
     "preferredPrimitives": [
-      "Radix Themes"
+      "shadcn/ui Sidebar",
+      "Radix Dialog/ScrollArea/Toast",
+      "cmdk"
     ],
     "patterns": []
   },
   "constraints": {
     "must": [
-      "Simple messenger navigation",
+      "Unified recent conversation list for bots and groups",
+      "Single Cmd+K global search",
+      "Desktop sidebar resize with avatar-only narrow mode",
       "Real Pi inbox and send_message results",
       "All group members see public messages",
-      "Dedicated schedule and monitor pages"
+      "Bot-owned schedules and monitors in details",
+      "Task-scoped errors and genuine user decision cards"
     ],
     "avoid": [
       "Ant Design",
@@ -62,6 +69,12 @@
       "reference": "Observed installed Grok Bot via computer use; REA static ASAR/renderer analysis",
       "motion": "Small original SVG avatars; blink, hover tilt and native working state; reduced motion disables animations",
       "content": "Existing native Pi messages and routes; no demo replacements"
+    },
+    {
+      "date": "2026-10-14",
+      "direction": "Mature Sidebar and cmdk; resize-only desktop, one conversation list and search",
+      "errors": "Connection/configuration at service scope; execution at originating message; normal tasks have no review gate",
+      "source": "User screenshot corrections and actual GUI/native Pi vision acceptance"
     }
   ],
   "evidence": [

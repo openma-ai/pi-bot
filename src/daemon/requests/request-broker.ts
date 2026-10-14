@@ -42,7 +42,7 @@ export class RequestBroker {
         if (!source)
             return;
         const r = this.create('question', source, {
-            botId: q.botId, taskId: q.taskId, questionId: q.id, text: q.text
+            botId: q.botId, taskId: q.taskId, questionId: q.id, text: q.text, ...(q.choices?{choices:q.choices}:{})
         }, null, 'req_question:' + q.id);
         if (q.state === 'answered' && r.status === 'pending')
             this.finish(r, 'resolved', {

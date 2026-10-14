@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { getAgentDir, ModelRuntime, SettingsManager } from '@earendil-works/pi-coding-agent';
+import {withVerifiedImageCapability} from './image-budget.ts';
 /** Native Pi owns model selection, credential resolution and OAuth refresh. */
 export async function loadPiConfiguration(options: {
     agentDir?: string;
@@ -21,9 +22,10 @@ export async function loadPiConfiguration(options: {
     catch {
         throw Error('Pi 模型或认证配置不可用，请在 Pi 中检查 /login 和 /model');
     }
-    const model = models.getModel(provider, id);
-    if (!model)
+    const configuredModel = models.getModel(provider, id);
+    if (!configuredModel)
         throw Error('Pi 配置的模型不可用，请在 Pi 中检查 /model');
+    const model=withVerifiedImageCapability(configuredModel);
     let authenticated;
     try {
         authenticated = await models.checkAuth(provider);

@@ -40,8 +40,9 @@ JSON-RPC 2.0 over in-process, HTTP + SSE, or stdio JSONL. Initialize, acknowledg
 | `job/read` | [params / result](../dist/protocol/schema.json) |
 | `request/list` | [params / result](../dist/protocol/schema.json) |
 | `request/resolve` | [params / result](../dist/protocol/schema.json) |
+| `task/recovery` | [params / result](../dist/protocol/schema.json) |
 | `task/reconcile` | [params / result](../dist/protocol/schema.json) |
 | `desktop/bind` | [params / result](../dist/protocol/schema.json) |
 | `desktop/control` | [params / result](../dist/protocol/schema.json) |
 
-Notifications: `daemon/configurationChanged`, `daemon/budgetUpdated`, `daemon/migrated`, `group/messageUpdated`, `daemon/statusChanged`, `events/watermark`, `bot/created`, `bot/updated`, `group/created`, `group/updated`, `turn/queued`, `turn/started`, `turn/completed`, `item/started`, `item/updated`, `item/completed`, `request/created`, `request/resolved`, `routine/updated`, `routine/fired`, `job/updated`, `task/reviewRequired`, `task/reconciled`, `proposal/updated`, `memory/updated`, `item/agentMessage/delta`, `item/toolCall/delta`, `item/internal/delta`, `thread/started`, `thread/loaded`, `thread/unloaded`, `thread/archived`.
+Notifications: `daemon/triggerChanged`, `daemon/configurationChanged`, `daemon/budgetUpdated`, `daemon/migrated`, `group/messageUpdated`, `daemon/statusChanged`, `events/watermark`, `bot/created`, `bot/updated`, `group/created`, `group/updated`, `turn/queued`, `turn/started`, `turn/completed`, `item/started`, `item/updated`, `item/completed`, `request/created`, `request/resolved`, `routine/updated`, `routine/fired`, `job/updated`, `task/reviewRequired`, `task/reconciled`, `proposal/updated`, `memory/updated`, `item/agentMessage/delta`, `item/toolCall/delta`, `item/internal/delta`, `thread/started`, `thread/loaded`, `thread/unloaded`, `thread/archived`.

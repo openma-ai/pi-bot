@@ -49,6 +49,7 @@ export type Envelope = {
     consumedAt?: number;
     resolvedAt?: number;
     resolution?: {
+        attempt?:number;
         owner: string;
         evidence: string[];
         note?: string;
@@ -82,6 +83,7 @@ export type Question = {
     messageId: string;
     key: string;
     text: string;
+    choices?: string[];
     state: 'pending' | 'answered';
     answer?: string;
     createdAt: number;

@@ -1,5 +1,7 @@
 # Local Pi GUI
 
+当前导航和报错验收：[2026-10-14 Sidebar / Cmd+K / 原生读图与恢复](gui-navigation-errors-20261014.md)。下文更早的测试数量为历史记录。
+
 Current visual implementation follows the installed Grok Bot messenger: compact contacts, original animated SVG avatars, centered conversation identity, and an optional bot-owned details/computer pane. File paths are copyable without cutting message contents; reading earlier history does not force-scroll to new messages. See [REA analysis and GUI acceptance, 2026-10-14](grok-ui-analysis-20261014.md) for the 232 offline checks, separate real Pi GUI task, desktop takeover readback, and screenshots.
 
 React + Radix Themes. Start with `npm run gui`, open http://127.0.0.1:4317. Model and authentication use native Pi settings/model catalog/auth storage. There are no custom model/auth environment overrides and no automatic DSH credential fallback. Use “Pi 登录与模型” in the GUI for native provider login and default model/thinking selection. Native settings are saved immediately and the factory switches when existing work is idle, without restarting or erasing history. Pi `/login` and `/model` remain available. Pi handles credential lookup and OAuth refresh; secrets never enter GUI state, chat or tool traces. Missing configuration keeps history readable and blocks task submission with a configuration message. See [Pi authentication and independent coding workers](pi-auth-workers.md).
@@ -22,7 +24,7 @@ Validation: TypeScript, GUI build and 162 offline tests pass. Separate bounded r
 
 Group chat delivers messages to every member. @member and @全体成员 change attention rather than visibility. Public group history is separate from direct bot-to-bot messages. Private, group and thread Pi contexts are isolated; interrupted commitments resume without cancelling dispatched jobs.
 
-Triggers use pinned upstream OpenMatter WorkEvent/DurableInbox/SQLite lease handoff, with provenance in `vendor/openmatter/`. Pi still owns execution. Dedicated left-sidebar pages manage schedules, monitors and bot conversations. Real smoke disables background compression; it does not validate real compaction.
+Triggers use pinned upstream OpenMatter WorkEvent/DurableInbox/SQLite lease handoff, with provenance in `vendor/openmatter/`. Pi still owns execution. Schedules and monitors belong to the selected bot details; bots and groups share one recent-conversation list. Cmd+K searches visible records and functions. Real smoke disables background compression; it does not validate real compaction.
 
 Coding delegation now uses pinned community pi-subagents 0.77.0 execution and child-session factories behind the durable host subagent tool. Parents retain message responsiveness; per-request timeout, anti-loop checks, permission checks and stale-task guards apply. 172 offline tests pass; no new real-API claim is made.
 

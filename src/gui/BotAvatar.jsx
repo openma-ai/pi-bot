@@ -10,7 +10,8 @@ export const activityLabels = {
   idle: "就绪",
   working: "正在处理",
   queued: "等待处理",
-  attention: "需要你查看",
+  attention: "等待你的回答",
+  interrupted: "执行中断",
 };
 export function BotAvatar({
   id = "",

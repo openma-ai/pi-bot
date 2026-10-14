@@ -487,6 +487,8 @@ export function createBackgroundCodemodeExtension(options: BackgroundCodemodeOpt
                 const live = cells.get(args.cell_id);
                 if (live)
                     await live.traceTail;
+                // A final-result cursor must refer to immutable final JSON, not a temporary running-state page.
+                if(args.event_seq===undefined&&record.result===undefined) return textResult('Final result is not available yet. End this turn and read after the completion notice.',{cell_id:args.cell_id,state:record.state,offset:0,next_offset:0,total_characters:0,done:false});
                 const text = args.event_seq === undefined ? JSON.stringify(record.result ?? {
                     state: record.state
                 }) : (await readFile(record.tracePath, 'utf8')).split('\n').find(row => row && JSON.parse(row).seq === args.event_seq);

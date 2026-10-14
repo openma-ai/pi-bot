@@ -1,6 +1,7 @@
 import { Type } from 'typebox';
-import { Id, Time, Json, ThreadSchema, TurnSchema, ItemSchema, PendingRequestSchema, BotSchema, GroupSchema, RoutineSchema, JobSummarySchema, DaemonStatusSchema } from './models.ts';
+import { TriggerStatusSchema, Id, Time, Json, ThreadSchema, TurnSchema, ItemSchema, PendingRequestSchema, BotSchema, GroupSchema, RoutineSchema, JobSummarySchema, DaemonStatusSchema } from './models.ts';
 export const notificationSchemas: Record<string, any> = {
+    'daemon/triggerChanged':Type.Object({trigger:TriggerStatusSchema}),
     'daemon/configurationChanged': Type.Object({
         mode: Type.String(), configuration: Json, budget: Type.Optional(Json)
     }),

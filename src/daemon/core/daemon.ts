@@ -1,3 +1,4 @@
+import {recoveryPlan} from '../runtime/task-recovery.ts';
 import { PiSettings } from '../pi-settings.ts';
 import { handleMethod } from '../handlers/index.ts';
 import { resolve, join } from 'node:path';
@@ -22,6 +23,7 @@ import type { Envelope, Outbound } from '../../pi/types.ts';
 export class PiBotDaemon {
     status: DaemonStatus = 'starting';
     readonly startedAt = Date.now();
+    private lastTriggerHalted=false;
     readonly connections = new Map<string, DaemonConnection>();
     readonly router = new Router(this);
     piSettings?: PiSettings;
@@ -144,10 +146,13 @@ export class PiBotDaemon {
                 } : {})
             }));
         d.runtime.start();
+        d.lastTriggerHalted=d.trigger.halted;
+        d.runtime.store.transaction(()=>d.log.append('daemon/triggerChanged',{trigger:{implementation:'OpenMatter SQLite DurableInbox',halted:d.trigger.halted,queued:d.trigger.inspect().filter(r=>r.state!=='completed').length}}));
         d.proactive.start();
         d.timer = setInterval(() => {
             if (!d.runtime.store.db.isTransaction)
                 d.trigger.flush();
+            if(d.lastTriggerHalted!==d.trigger.halted){d.lastTriggerHalted=d.trigger.halted;d.runtime.store.transaction(()=>d.log.append('daemon/triggerChanged',{trigger:{implementation:'OpenMatter SQLite DurableInbox',halted:d.trigger.halted,queued:d.trigger.inspect().filter(r=>r.state!=='completed').length}}));}
             void d.runtime.deliver(async () => {
             }).catch(() => {
             });
@@ -244,7 +249,7 @@ export class PiBotDaemon {
                 mode: this.live ? `真实 Pi · ${this.live.model}` : '测试 runtime', configuration: this.live?.configuration, desktop: !!this.desktop, watchFile: resolve(process.env.PI_BOT_WATCH_FILE ?? 'README.md'), trigger: {
                     implementation: 'OpenMatter SQLite DurableInbox', halted: this.trigger.halted, queued: this.trigger.inspect().filter(r => r.state !== 'completed').length
                 },
-                messages: items.map(i => i.message).filter(Boolean), groupMessages: all.list('group_messages'), errors: this.runtime.errors.map(() => 'Execution needs review'), states: Object.fromEntries(bots.map(b => [b.id, {
+                messages: items.map(i => i.message).filter(Boolean), groupMessages: all.list('group_messages'), errors: [], states: Object.fromEntries(bots.map(b => [b.id, {
                         ...all.state(b.id), proactive: {
                             schedules: this.proactive.listSchedules(b.id), monitors: this.proactive.listMonitors(b.id).map(({ cursor, baseline, ...m }) => m)
                         }
@@ -367,6 +372,12 @@ export class PiBotDaemon {
             } : {})
         } : routineView(table, this.required(table, key));
     }
+    taskRecovery(id:string){
+        const e=this.required<Envelope>('inbox',id);
+        if(e.state!=='uncertain')return {canRetry:false,reason:'inactive'};
+        try{this.runtime.assertTaskCurrent(e);}catch{return {canRetry:false,reason:'superseded'};}
+        return recoveryPlan(this.runtime.store,e);
+    }
     reconcile(id: string) {
         const r = this.runtime, s = r.store;
         const e = this.required<Envelope>('inbox', id);
@@ -381,11 +392,11 @@ export class PiBotDaemon {
                 outcome: 'processed'
             };
         }
-        if (e.consumedAt || e.resolvedAt || e.error !== 'Error: Provider request refused or failed before streaming' || s.list<any>('jobs').some(j => j.taskId === e.taskId) || s.list<Outbound>('outbox').some(o => o.taskId === e.taskId))
-            throw new PiBotError('reviewRequired', 'Effects require host review; no automatic replay');
+        const plan=this.taskRecovery(id);
+        if(!plan.canRetry)throw new PiBotError('reviewRequired','Effects require host review; no automatic replay');
         r.assertTaskCurrent(e);
         r.reconcileInbox(id, {
-            outcome: 'queued', evidence: ['prestream-refusal:' + id], note: 'Host verified no consumption or effects'
+            outcome: 'queued', evidence: [plan.reason+':'+id], note: 'Host verified checkpoint: '+plan.reason+'; no mutable effects or output'
         });
         return {
             outcome: 'queued'

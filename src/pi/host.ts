@@ -69,7 +69,7 @@ export interface BotHost {
     }): Envelope;
     sendToGroup(source: Envelope, text: string, key: string, priority?: boolean): Envelope[];
     sendMessage(e: Envelope, text: string, key: string, toolCallId?: string): Outbound;
-    askUser(e: Envelope, text: string, key: string): Question;
+    askUser(e: Envelope, text: string, key: string, choices?:string[]): Question;
     startJob(e: Envelope, tool: string, args: unknown, key: string, execute: () => Promise<unknown>, options?: {
         quiet?: boolean;
         onSettled?: (state: Job['state']) => void;

@@ -1,6 +1,16 @@
+import { ErrorBoundary } from "./ErrorBoundary.jsx";
+import { useConversationDraft } from "./hooks/use-conversation-draft.js";
+import { Notification, ServiceNotice } from "./Notification.jsx";
+import { TaskFailure } from "./TaskFailure.jsx";
+import { DecisionCard } from "./DecisionCard.jsx";
+import { SearchDialog } from "./SearchDialog.jsx";
+import { MessengerSidebar } from "./MessengerSidebar.jsx";
+import { SidebarProvider, SidebarTrigger } from "./ui/sidebar.jsx";
+import { Textarea as ComposerTextarea } from "./ui/textarea.jsx";
+import "./components.css";
 import { BotAvatar, GroupAvatar, activityLabels } from "./BotAvatar.jsx";
 import { MessageBody } from "./MessageBody.jsx";
-import { botActivity } from "./presentation.ts";
+import { botActivity, messageFailures } from "./presentation.ts";
 import {
   Plus,
   Search,
@@ -17,7 +27,7 @@ import {
 import { Tabs } from "@radix-ui/themes";
 import { PiSettingsDialog } from "./PiSettingsDialog.jsx";
 import { DesktopPanel } from "./DesktopPanel.jsx";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Theme,
@@ -44,7 +54,7 @@ const labels = {
   queued: "待处理",
   processing: "处理中",
   processed: "已处理",
-  uncertain: "待核查",
+  uncertain: "执行中断",
   failed: "失败",
   delivered: "已送达",
   active: "运行中",
@@ -100,19 +110,85 @@ function App() {
     [selected, setSelected] = useState(""),
     [groupId, setGroupId] = useState(""),
     [groupTarget, setGroupTarget] = useState("");
-  const [draft, setDraft] = useState(""),
-    [search, setSearch] = useState(""),
+  const [peerA, setPeerA] = useState(""),
+    [peerB, setPeerB] = useState(""),
+    [peerScope, setPeerScope] = useState("direct");
+  const [draft, setDraft] = useConversationDraft(
+      view === "peers"
+        ? JSON.stringify([view, peerA, peerB, peerScope])
+        : `${view}:${view === "group" ? groupId : selected}`,
+    ),
+    [searchOpen, setSearchOpen] = useState(false),
     [notice, setNotice] = useState(""),
-    [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try {
+      return Math.max(
+        76,
+        Math.min(360, Number(localStorage.getItem("pi-sidebar-width")) || 236),
+      );
+    } catch {
+      return 236;
+    }
+  });
+  const [searchTarget, setSearchTarget] = useState("");
+  const [inspectTask, setInspectTask] = useState(""),
+    [serviceDetails, setServiceDetails] = useState(false),
+    [runtimeDetailsOpen, setRuntimeDetailsOpen] = useState(false);
+  const resizeSidebar = (width) => {
+    const next = Math.max(76, Math.min(360, width));
+    setSidebarWidth(next);
+    try {
+      localStorage.setItem("pi-sidebar-width", String(next));
+    } catch {}
+  };
+  useEffect(() => {
+    const shortcut = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  }, []);
+  const chooseConversation = (row) => {
+    if (row.kind === "group") {
+      setGroupId(row.id);
+      setSelected(row.group.memberIds[0]);
+      setView("group");
+    } else {
+      setSelected(row.id);
+      setView("chat");
+    }
+    setDetails(false);
+    setInspectTask("");
+    setRuntimeDetailsOpen(false);
+  };
+  useLayoutEffect(() => {
+    if (!searchTarget) return;
+    const message = Array.from(
+      conversation.current?.querySelectorAll("[data-message-id]") ?? [],
+    ).find((el) => el.dataset.messageId === searchTarget);
+    if (message) {
+      pinnedToEnd.current = false;
+      message.scrollIntoView({ block: "center", behavior: "instant" });
+      message.classList.add("search-highlight");
+      const timer = setTimeout(() => {
+        message.classList.remove("search-highlight");
+        setSearchTarget("");
+      }, 2000);
+      return () => {
+        clearTimeout(timer);
+        message.classList.remove("search-highlight");
+      };
+    }
+  }, [searchTarget, view, selected, groupId]);
   const [adding, setAdding] = useState(false),
     [name, setName] = useState(""),
     [newGroup, setNewGroup] = useState(false),
     [members, setMembers] = useState([]),
     [details, setDetails] = useState(false);
-  const [peerA, setPeerA] = useState(""),
-    [peerB, setPeerB] = useState(""),
-    [peerScope, setPeerScope] = useState("direct");
   const [piSettingsOpen, setPiSettingsOpen] = useState(false),
     [routineOwner, setRoutineOwner] = useState("");
   const [routineKind, setRoutineKind] = useState(""),
@@ -130,8 +206,7 @@ function App() {
     conversation = useRef(null),
     pinnedToEnd = useRef(true),
     lastScope = useRef("");
-  const [sidebarOpen, setSidebarOpen] = useState(false),
-    [atBottom, setAtBottom] = useState(true),
+  const [atBottom, setAtBottom] = useState(true),
     [wide, setWide] = useState(() => matchMedia("(min-width: 1100px)").matches);
   useEffect(() => {
     const media = matchMedia("(min-width: 1100px)");
@@ -140,15 +215,6 @@ function App() {
     return () => media.removeEventListener("change", update);
   }, []);
   useEffect(() => {
-    if (!sidebarOpen) return;
-    document.getElementById("contact-search")?.focus();
-    const close = (e) => {
-      if (e.key === "Escape") setSidebarOpen(false);
-    };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [sidebarOpen]);
-  useEffect(() => {
     const observer = new ResizeObserver(() => {
       if (pinnedToEnd.current)
         end.current?.scrollIntoView({ behavior: "instant", block: "end" });
@@ -156,6 +222,13 @@ function App() {
     if (conversation.current) observer.observe(conversation.current);
     return () => observer.disconnect();
   }, [view]);
+  useLayoutEffect(() => {
+    const input = composer.current;
+    if (!input) return;
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
+    input.style.overflowY = input.scrollHeight > 160 ? "auto" : "hidden";
+  }, [draft, view]);
   const activity = (id) => botActivity(data, id);
   const scrollBottom = () => {
     end.current?.scrollIntoView({
@@ -171,7 +244,6 @@ function App() {
     setSelected((s) => s || data.bots[0]?.id);
     setPeerA((s) => s || data.bots[0]?.id);
     setPeerB((s) => s || data.bots[1]?.id);
-    setError(connectionError);
   }, [data.bots, connectionError]);
   const bot = data.bots.find((b) => b.id === selected),
     group = data.groups.find((g) => g.id === groupId),
@@ -480,7 +552,28 @@ function App() {
           </Text>
         )}
       </div>
-      <details className="runtime-details">
+      <Button
+        variant="soft"
+        color="gray"
+        onClick={() => {
+          setPeerA(selected);
+          setPeerB(data.bots.find((b) => b.id !== selected)?.id || "");
+          setPeerScope("direct");
+          setDetails(false);
+          setView("peers");
+        }}
+        disabled={data.bots.length < 2}
+      >
+        让其他 bot 协作
+      </Button>
+      <details
+        className="runtime-details"
+        open={runtimeDetailsOpen}
+        onToggle={(e) => {
+          setRuntimeDetailsOpen(e.currentTarget.open);
+          if (!e.currentTarget.open) setInspectTask("");
+        }}
+      >
         <summary>任务与会话</summary>
         <Heading size="2" mt="6" mb="3">
           运行状态
@@ -491,6 +584,22 @@ function App() {
         <Text as="div" size="1" color="gray">
           累计输出 {botUsage.output} token
         </Text>
+        {inspectTask && (
+          <div className="inspected-task">
+            <Text size="2">这条任务的运行记录</Text>
+            {(data.turns || [])
+              .filter((t) => t.inputIds.includes(inspectTask))
+              .map((t) => (
+                <div key={t.id}>
+                  <Text size="1">
+                    {labels[t.status] || t.status} ·{" "}
+                    {t.startedAt ? time(t.startedAt) : "尚未开始"}
+                  </Text>
+                  <code>{t.id}</code>
+                </div>
+              ))}
+          </div>
+        )}
         <Heading size="2" mt="5" mb="3">
           会话
         </Heading>
@@ -679,261 +788,66 @@ function App() {
       grayColor="sand"
       radius="large"
     >
-      <div className={"app " + (sidebarOpen ? "sidebar-open" : "")}>
-        {sidebarOpen && (
-          <button
-            className="sidebar-backdrop"
-            aria-label="收起会话列表"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-        <aside className="sidebar">
-          <div className="brand">
-            <Heading size="4">Pi Bot</Heading>
-            <Flex gap="2">
-              <IconButton
-                variant="ghost"
-                color="gray"
-                aria-label="搜索会话"
-                onClick={() =>
-                  document.getElementById("contact-search")?.focus()
-                }
-              >
-                <Search size={18} />
-              </IconButton>
-              <IconButton
-                variant="soft"
-                color="gray"
-                aria-label="新建 bot"
-                onClick={() => {
-                  setName("");
-                  setAdding(true);
-                }}
-              >
-                <Plus size={19} />
-              </IconButton>
-            </Flex>
-          </div>
-          <div className="sidebar-scroll">
-            <div className="home-bot">
-              {data.bots[0] && (
-                <button
-                  onClick={() => {
-                    setSelected(data.bots[0].id);
-                    setView("chat");
-                    setSidebarOpen(false);
-                  }}
-                >
-                  <BotAvatar
-                    id={data.bots[0].id}
-                    name={data.bots[0].name}
-                    activity={activity(data.bots[0].id)}
-                    size={64}
-                    animated
-                  />
-                  <Text size="2">{data.bots[0].name}</Text>
-                </button>
-              )}
-            </div>
-            <TextField.Root
-              id="contact-search"
-              aria-label="搜索 bot 或群"
-              placeholder="搜索 bot 或群"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <nav className="bots" aria-label="Bot 列表">
-              {data.bots
-                .filter((b) =>
-                  b.name.toLowerCase().includes(search.toLowerCase()),
-                )
-                .map((b, i) => (
-                  <button
-                    key={b.id}
-                    className={
-                      "bot " +
-                      (selected === b.id && view === "chat" ? "selected" : "")
-                    }
-                    onClick={() => {
-                      setSelected(b.id);
-                      setView("chat");
-                      setDetails(false);
-                      setSidebarOpen(false);
-                    }}
-                    aria-current={
-                      selected === b.id && view === "chat" ? "page" : undefined
-                    }
-                  >
-                    <BotAvatar
-                      id={b.id}
-                      name={b.name}
-                      activity={activity(b.id)}
-                    />
-                    <div className="bot-label">
-                      <Text as="div" size="2" weight="medium">
-                        {b.name}
-                      </Text>
-                      <Text as="div" size="1" color="gray" className="preview">
-                        {data.messages
-                          .filter(
-                            (m) =>
-                              m.botId === b.id &&
-                              m.channelId ===
-                                (b.channelId || `local:${b.id}`) &&
-                              m.sourceKind !== "job" &&
-                              !(
-                                m.direction === "inbound" &&
-                                m.sourceKind === "bot"
-                              ),
-                          )
-                          .at(-1)?.text || "开始聊天"}
-                      </Text>
-                    </div>
-                  </button>
-                ))}
-            </nav>
-            <Flex justify="between" align="center" mt="4" mb="2">
-              <Text size="1" color="gray">
-                群聊
-              </Text>
-              <Button
-                size="1"
-                variant="ghost"
-                onClick={() => {
-                  setName("");
-                  setMembers([]);
-                  setNewGroup(true);
-                }}
-              >
-                新建群聊
-              </Button>
-            </Flex>
-            <nav aria-label="群聊列表">
-              {data.groups
-                .filter((g) => g.name.includes(search))
-                .map((g) => (
-                  <button
-                    className={
-                      "bot " +
-                      (view === "group" && g.id === groupId ? "selected" : "")
-                    }
-                    key={g.id}
-                    onClick={() => {
-                      setGroupId(g.id);
-                      setGroupTarget(g.memberIds[0]);
-                      setSelected(g.memberIds[0]);
-                      setView("group");
-                      setDetails(false);
-                      setSidebarOpen(false);
-                    }}
-                    aria-current={
-                      view === "group" && g.id === groupId ? "page" : undefined
-                    }
-                  >
-                    <GroupAvatar
-                      members={data.bots.filter((b) =>
-                        g.memberIds.includes(b.id),
-                      )}
-                    />
-                    <div className="bot-label">
-                      <Text size="2" as="div">
-                        {g.name}
-                      </Text>
-                      <Text size="1" color="gray">
-                        {g.memberIds.length} 个 bot
-                      </Text>
-                    </div>
-                  </button>
-                ))}
-            </nav>
-            <nav className="sections" aria-label="工作区">
-              <Button
-                variant={view === "schedules" ? "soft" : "ghost"}
-                color="gray"
-                onClick={() => {
-                  setView("schedules");
-                  setSidebarOpen(false);
-                }}
-              >
-                <Clock3 size={16} />
-                定时任务
-              </Button>
-              <Button
-                variant={view === "monitors" ? "soft" : "ghost"}
-                color="gray"
-                onClick={() => {
-                  setView("monitors");
-                  setSidebarOpen(false);
-                }}
-              >
-                <Radar size={16} />
-                监控
-              </Button>
-              <Button
-                variant={view === "peers" ? "soft" : "ghost"}
-                color="gray"
-                onClick={() => {
-                  setView("peers");
-                  setSidebarOpen(false);
-                }}
-              >
-                <MessagesSquare size={16} />
-                Bot 对话
-              </Button>
-            </nav>
-          </div>
-          <div className="sidebar-footer">
-            <Button
-              variant={view === "requests" ? "soft" : "ghost"}
-              color="gray"
-              onClick={() => {
-                setView("requests");
-                setSidebarOpen(false);
-              }}
-            >
-              待处理 ·{" "}
-              {
-                (data.requests || []).filter((r) => r.status === "pending")
-                  .length
-              }
-            </Button>
-            <Button
-              variant="soft"
-              color="gray"
-              onClick={() => setPiSettingsOpen(true)}
-            >
-              <Settings2 size={16} />
-              Pi 登录与模型
-            </Button>
-            <div className="mode">
-              <span
-                className={
-                  "connection-dot " +
-                  (!error && data.status === "ready" ? "connected" : "")
-                }
-              />
-              <Text size="1" color="gray">
-                {error ||
-                  (data.configuration?.setupRequired
-                    ? "请配置 Pi"
-                    : data.status === "ready"
-                      ? "Pi 已连接"
-                      : "连接中")}
-              </Text>
-            </div>
-          </div>
-        </aside>
+      <SidebarProvider
+        className="app"
+        open={true}
+        style={{ "--sidebar-width": `${sidebarWidth}px` }}
+      >
+        <MessengerSidebar
+          data={data}
+          width={sidebarWidth}
+          onResize={resizeSidebar}
+          onSearch={() => setSearchOpen(true)}
+          selected={selected}
+          groupId={groupId}
+          view={view}
+          error={connectionError}
+          onSelect={chooseConversation}
+          onNewBot={() => {
+            setNotice("");
+            setName("");
+            setAdding(true);
+          }}
+          onNewGroup={() => {
+            setNotice("");
+            setName("");
+            setMembers([]);
+            setNewGroup(true);
+          }}
+          onRequests={() => setView("requests")}
+          onSettings={() => setPiSettingsOpen(true)}
+        />
+        <SearchDialog
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          data={data}
+          onSelect={(row) => {
+            if (row.kind === "message") {
+              chooseConversation(row.owner);
+              setSearchTarget(row.id);
+            } else if (["bot", "group"].includes(row.kind))
+              chooseConversation(row);
+            else if (["schedule", "monitor"].includes(row.kind)) {
+              setSelected(row.botId);
+              setView("chat");
+              setDetails(true);
+            } else if (row.id === "settings") setPiSettingsOpen(true);
+            else if (row.id === "new-bot") {
+              setName("");
+              setAdding(true);
+            } else if (row.id === "new-group") {
+              setName("");
+              setMembers([]);
+              setNewGroup(true);
+            } else if (row.id === "requests") setView("requests");
+          }}
+        />
         <main className="main">
           <header className="header">
-            <IconButton
-              className="mobile-menu"
-              variant="ghost"
-              color="gray"
+            <SidebarTrigger
+              className="sidebar-toggle"
               aria-label="打开会话列表"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <Menu size={20} />
-            </IconButton>
+            />
             <button
               className="conversation-identity"
               onClick={() => setDetails((v) => !v)}
@@ -953,7 +867,7 @@ function App() {
               ) : null}
               <Heading size="3">{title || "Pi Bot"}</Heading>
             </button>
-            {routineView ? (
+            {routineView && (
               <Button
                 size="2"
                 disabled={!selected}
@@ -962,43 +876,41 @@ function App() {
                 <Plus size={16} />
                 新建
               </Button>
-            ) : (
-              <IconButton
-                variant="ghost"
-                color="gray"
-                aria-label="详情"
-                onClick={() => setDetails((v) => !v)}
-              >
-                <PanelRight size={19} />
-              </IconButton>
             )}
           </header>
-          {data.configuration?.setupRequired && (
-            <Callout.Root color="amber" m="3">
-              <Callout.Text>{data.configuration.message}</Callout.Text>
-              <Button variant="soft" onClick={() => setPiSettingsOpen(true)}>
-                登录并选择模型
-              </Button>
-            </Callout.Root>
+          {connectionError && (
+            <ServiceNotice kind="connection">
+              与服务的连接已断开，正在重连。草稿已保留。
+            </ServiceNotice>
           )}
-          {data.trigger?.halted && (
-            <Callout.Root color="red" m="3">
-              <Callout.Text>触发投递需要核查，已停止自动处理。</Callout.Text>
-            </Callout.Root>
+          {data.configuration?.setupRequired && !connectionError && (
+            <ServiceNotice
+              kind="setup"
+              action={
+                <button onClick={() => setPiSettingsOpen(true)}>
+                  登录与选择模型
+                </button>
+              }
+            >
+              配置 Pi 后即可开始聊天。
+            </ServiceNotice>
           )}
-          {data.errors?.length > 0 && (
-            <Callout.Root color="red" m="3">
-              <Callout.Text>{data.errors.at(-1)}</Callout.Text>
-            </Callout.Root>
+          {data.trigger?.halted && !connectionError && (
+            <ServiceNotice
+              kind="failure"
+              action={
+                <button onClick={() => setServiceDetails(true)}>
+                  查看状态
+                </button>
+              }
+            >
+              消息投递已暂停，排队消息已保留。
+            </ServiceNotice>
           )}
-          {notice && (
-            <Callout.Root m="3">
-              <Callout.Text>{notice}</Callout.Text>
-              <Button variant="ghost" onClick={() => setNotice("")}>
-                关闭
-              </Button>
-            </Callout.Root>
-          )}
+          <Notification
+            text={adding || newGroup || routineKind ? "" : notice}
+            onClose={() => setNotice("")}
+          />
           {view === "requests" ? (
             <section className="routine-page">
               <Heading size="4" mb="4">
@@ -1138,34 +1050,6 @@ function App() {
                   <Text size="2" color="gray">
                     {groupBots.map((b) => b.name).join("、")}
                   </Text>
-                  {data.messages.some(
-                    (m) =>
-                      m.channelId === groupId &&
-                      m.sourceKind === "bot" &&
-                      m.direction === "inbound" &&
-                      m.deliveryTarget === "direct",
-                  ) && (
-                    <Button
-                      variant="ghost"
-                      color="gray"
-                      size="1"
-                      onClick={() => {
-                        const m = data.messages.find(
-                          (m) =>
-                            m.channelId === groupId &&
-                            m.sourceKind === "bot" &&
-                            m.direction === "inbound" &&
-                            m.deliveryTarget === "direct",
-                        );
-                        setPeerA(m.sender);
-                        setPeerB(m.recipient);
-                        setPeerScope(groupId);
-                        setView("peers");
-                      }}
-                    >
-                      bot 间对话
-                    </Button>
-                  )}
                 </div>
               )}
               {view === "peers" && (
@@ -1232,6 +1116,7 @@ function App() {
                         </div>
                       )}
                       <div
+                        data-message-id={m.messageId}
                         className={
                           "row " +
                           (m.direction === "inbound" &&
@@ -1261,33 +1146,59 @@ function App() {
                               },
                             )}
                           </div>
-                          <MessageBody text={displayText(m)} />
-                          {[
-                            "queued",
-                            "processing",
-                            "uncertain",
-                            "failed",
-                          ].includes(m.status) && (
+                          {(() => {
+                            let question;
+                            try {
+                              question = JSON.parse(m.text);
+                            } catch {}
+                            const request =
+                              question?.questionId &&
+                              (data.requests || []).find(
+                                (r) =>
+                                  r.kind === "question" &&
+                                  r.params.questionId === question.questionId &&
+                                  r.status === "pending",
+                              );
+                            return request ? (
+                              <DecisionCard
+                                request={request}
+                                onAnswer={(text) =>
+                                  api.request.resolve({
+                                    requestId: request.id,
+                                    response: { text },
+                                  })
+                                }
+                              />
+                            ) : (
+                              <MessageBody text={displayText(m)} />
+                            );
+                          })()}
+                          {["queued", "processing"].includes(m.status) && (
                             <Text size="1" className="status">
                               {labels[m.status] || m.status}
                             </Text>
                           )}
-                          {m.status === "uncertain" &&
-                            m.sourceKind === "user" && (
-                              <Button
-                                size="1"
-                                variant="soft"
-                                onClick={() =>
-                                  mutate(
-                                    api.task.reconcile({
-                                      inputId: m.messageId,
-                                    }),
-                                  ).catch((e) => setNotice(errorText(e)))
+                          {messageFailures(data, m).map((failed) => (
+                            <TaskFailure
+                              key={failed.messageId}
+                              message={failed}
+                              owner={
+                                view === "group"
+                                  ? botName(failed.botId)
+                                  : undefined
+                              }
+                              api={api}
+                              onInspect={() => {
+                                if (view === "group") {
+                                  setSelected(failed.botId);
+                                  setView("chat");
                                 }
-                              >
-                                核查并恢复
-                              </Button>
-                            )}
+                                setInspectTask(failed.messageId);
+                                setRuntimeDetailsOpen(true);
+                                setDetails(true);
+                              }}
+                            />
+                          ))}
                         </div>
                       </div>
                     </React.Fragment>
@@ -1373,7 +1284,11 @@ function App() {
                     </div>
                   ))}
                 <div className="composer">
-                  <TextArea
+                  <ComposerTextarea
+                    className="message-input"
+                    data-gramm="false"
+                    data-gramm_editor="false"
+                    data-enable-grammarly="false"
                     ref={composer}
                     aria-label="消息"
                     placeholder={
@@ -1428,7 +1343,7 @@ function App() {
                       !api ||
                       busy ||
                       !draft.trim() ||
-                      !!error ||
+                      !!connectionError ||
                       data.configuration?.setupRequired
                     }
                     onClick={send}
@@ -1735,7 +1650,13 @@ function App() {
             {detailContent}
           </Dialog.Content>
         </Dialog.Root>
-        <Dialog.Root open={adding} onOpenChange={setAdding}>
+        <Dialog.Root
+          open={adding}
+          onOpenChange={(v) => {
+            setAdding(v);
+            setNotice("");
+          }}
+        >
           <Dialog.Content maxWidth="380px">
             <Dialog.Title>新建 bot</Dialog.Title>
             <Dialog.Description size="2" mb="4">
@@ -1748,6 +1669,11 @@ function App() {
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
+            {notice && (
+              <Text size="2" color="red" role="alert">
+                {notice}
+              </Text>
+            )}
             <Flex gap="3" justify="end" mt="5">
               <Dialog.Close>
                 <Button variant="soft">取消</Button>
@@ -1774,12 +1700,35 @@ function App() {
             </Flex>
           </Dialog.Content>
         </Dialog.Root>
+        <Dialog.Root open={serviceDetails} onOpenChange={setServiceDetails}>
+          <Dialog.Content maxWidth="420px">
+            <Dialog.Title>服务状态</Dialog.Title>
+            <Dialog.Description>
+              消息仍然保存在服务端。修复服务的投递问题后，可以继续处理。
+            </Dialog.Description>
+            <Flex direction="column" gap="3" mt="4">
+              <Text>连接：{connectionError ? "正在重连" : "已连接"}</Text>
+              <Text>消息投递：{data.trigger?.halted ? "已暂停" : "正常"}</Text>
+              <Text>排队消息：{data.trigger?.queued ?? 0}</Text>
+              <Text size="1" color="gray">
+                定位信息：{data.seq ?? 0} · {data.status}
+              </Text>
+              <Dialog.Close>
+                <Button variant="soft">关闭</Button>
+              </Dialog.Close>
+            </Flex>
+          </Dialog.Content>
+        </Dialog.Root>
         <PiSettingsDialog
           open={piSettingsOpen}
           onOpenChange={setPiSettingsOpen}
         />
-      </div>
+      </SidebarProvider>
     </Theme>
   );
 }
-createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>,
+);

@@ -222,6 +222,26 @@
           "status"
         ],
         "properties": {
+          "trigger": {
+            "type": "object",
+            "required": [
+              "implementation",
+              "halted",
+              "queued"
+            ],
+            "properties": {
+              "implementation": {
+                "type": "string"
+              },
+              "halted": {
+                "type": "boolean"
+              },
+              "queued": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
           "seq": {
             "type": "integer",
             "minimum": 0
@@ -4036,6 +4056,38 @@
         "additionalProperties": false
       }
     },
+    "task/recovery": {
+      "params": {
+        "type": "object",
+        "required": [
+          "inputId"
+        ],
+        "properties": {
+          "inputId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "canRetry",
+          "reason"
+        ],
+        "properties": {
+          "canRetry": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "task/reconcile": {
       "params": {
         "type": "object",
@@ -4143,6 +4195,34 @@
     }
   },
   "notifications": {
+    "daemon/triggerChanged": {
+      "type": "object",
+      "required": [
+        "trigger"
+      ],
+      "properties": {
+        "trigger": {
+          "type": "object",
+          "required": [
+            "implementation",
+            "halted",
+            "queued"
+          ],
+          "properties": {
+            "implementation": {
+              "type": "string"
+            },
+            "halted": {
+              "type": "boolean"
+            },
+            "queued": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
     "daemon/configurationChanged": {
       "type": "object",
       "required": [

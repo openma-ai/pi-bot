@@ -54,8 +54,9 @@ export const JobSummarySchema = Type.Object({
 }, {
     additionalProperties: true
 });
+export const TriggerStatusSchema=Type.Object({implementation:Type.String(),halted:Type.Boolean(),queued:Type.Integer({minimum:0})});
 export const SnapshotSchema = Type.Object({
-    seq: Time, bots: Type.Array(BotSchema), groups: Type.Array(GroupSchema), threads: Type.Array(ThreadSchema), turns: Type.Array(TurnSchema), activeTurns: Type.Array(TurnSchema), items: Type.Array(ItemSchema), pendingRequests: Type.Array(PendingRequestSchema), requests: Type.Array(PendingRequestSchema), routines: Type.Array(RoutineSchema), jobs: Type.Array(JobSummarySchema), budget: Type.Optional(Json), usage: UsageSchema, status: DaemonStatusSchema
+    trigger:Type.Optional(TriggerStatusSchema), seq: Time, bots: Type.Array(BotSchema), groups: Type.Array(GroupSchema), threads: Type.Array(ThreadSchema), turns: Type.Array(TurnSchema), activeTurns: Type.Array(TurnSchema), items: Type.Array(ItemSchema), pendingRequests: Type.Array(PendingRequestSchema), requests: Type.Array(PendingRequestSchema), routines: Type.Array(RoutineSchema), jobs: Type.Array(JobSummarySchema), budget: Type.Optional(Json), usage: UsageSchema, status: DaemonStatusSchema
 }, {
     additionalProperties: true
 });

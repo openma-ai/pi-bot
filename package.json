@@ -28,7 +28,8 @@
     "pi-bot": "node --import tsx src/daemon/main.ts",
     "protocol:schema": "node --import tsx scripts/protocol-schema.mjs",
     "smoke:app-server": "node --import tsx src/evals/app-server-smoke.ts",
-    "benchmark:engineering": "node --import tsx src/evals/complex-repo-cli.ts"
+    "benchmark:engineering": "node --import tsx src/evals/complex-repo-cli.ts",
+    "gui:check": "eslint src/gui"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "1.1.0",
@@ -36,22 +37,32 @@
     "@earendil-works/pi-coding-agent": "1.1.0",
     "@novnc/novnc": "1.7.0",
     "@radix-ui/themes": "^3.2.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "effect": "^3.22.1",
     "lucide-react": "^0.468.0",
     "pi-chrome-use": "1.1.1",
     "pi-subagents": "0.77.0",
+    "radix-ui": "^1.4.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.3",
     "typebox": "1.3.27",
     "ws": "8.22.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "22.19.15",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/ws": "8.18.1",
+    "eslint": "^9.39.4",
+    "globals": "^17.13.0",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vite": "^8.3.4"
