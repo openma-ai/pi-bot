@@ -1,0 +1,58 @@
+{
+  "tool": "rea-agents@6.4.0",
+  "operation": "static renderer analysis",
+  "sourceArchiveSha256": "8dd7b6c4a58439d626a9a7b3766982b7c725db2bc1f6ff68a29fc1ec62ca4cf7",
+  "extractionEvidenceId": "ev_89dc60fccf83e775240183490a31498954405d786a9d20bcc374acb2c1ddfc07",
+  "rendererEvidenceId": "ev_ac3ebad2975d1007080f1a33a19d8fa7f18483180575553f44ae0f5d9eabf5be",
+  "statistics": {
+    "relevant_files": 4,
+    "nested_asar_containers": 0,
+    "text_bytes_read": 2660164,
+    "invalid_utf8_files": 0,
+    "parsed_javascript_files": 4,
+    "visited_ast_nodes": 783935,
+    "findings": 3375,
+    "modules": 0,
+    "parse_failures": 0
+  },
+  "graph": {
+    "nodes": 625,
+    "edges": 3384
+  },
+  "assets": [
+    {
+      "file": "chunk-team-bot-details-dialog-gHP54EP4.js",
+      "bytes": 73176,
+      "sha256": "b4d7f22a7c377fe0b824f44b969802ae5e8f4c328b51a312d22a033b960d0c42"
+    },
+    {
+      "file": "chunk-team-bot-line-render-Dq0rY3Nw.js",
+      "bytes": 374706,
+      "sha256": "a6e892fe95a5eb7effb3d6bb4e13d5362478c902e8f89b897c8135fa84bfe011"
+    },
+    {
+      "file": "chunk-working-daisy-CwtdY0k9.js",
+      "bytes": 1254,
+      "sha256": "da01f85596753f217270f948a67d580525a3b4df5a955262aa53e89e5a642d23"
+    },
+    {
+      "file": "index-CjjO5fU0.js",
+      "bytes": 2211028,
+      "sha256": "632cf699dba2f74be35ba9215fbdcfae5ca36c60300936d601c185e2695a49dd"
+    },
+    {
+      "file": "index-Dve5Ol5U.css",
+      "bytes": 698408,
+      "sha256": "7a1f78e57358cc7d1276d8fde21ab33376dd41af96a41c2ef30235c78183d3c1"
+    }
+  ],
+  "scope": "Five selected renderer assets only; excludes user data and credentials",
+  "limitations": [
+    "CommonJS and ESM binding relationships were recovered from inert syntax and resolved only within the inventoried artifact container.",
+    "JavaScript and HTML were parsed as inert text; bundle bootstrap code was never executed.",
+    "Static imports, entrypoints, workers, endpoints, and storage relationships do not prove runtime execution.",
+    "Static paths and relationships may remain unresolved when expressions are dynamic or obfuscated.",
+    "Webpack/Rspack factories were recovered from AST literals; REA did not invoke push handlers or bundle bootstrap code."
+  ],
+  "nativeIntegrityContradictions": 6
+}

@@ -1,5 +1,7 @@
 # Local Pi GUI
 
+Current visual implementation follows the installed Grok Bot messenger: compact contacts, original animated SVG avatars, centered conversation identity, and an optional bot-owned details/computer pane. File paths are copyable without cutting message contents; reading earlier history does not force-scroll to new messages. See [REA analysis and GUI acceptance, 2026-10-14](grok-ui-analysis-20261014.md) for the 232 offline checks, separate real Pi GUI task, desktop takeover readback, and screenshots.
+
 React + Radix Themes. Start with `npm run gui`, open http://127.0.0.1:4317. Model and authentication use native Pi settings/model catalog/auth storage. There are no custom model/auth environment overrides and no automatic DSH credential fallback. Use “Pi 登录与模型” in the GUI for native provider login and default model/thinking selection. Native settings are saved immediately and the factory switches when existing work is idle, without restarting or erasing history. Pi `/login` and `/model` remain available. Pi handles credential lookup and OAuth refresh; secrets never enter GUI state, chat or tool traces. Missing configuration keeps history readable and blocks task submission with a configuration message. See [Pi authentication and independent coding workers](pi-auth-workers.md).
 
 GUI request protections remain: 16,384 output token maximum, zero provider retries, 10-minute request timeout, no aggregate request, input-token or dollar budget. Native model limits can lower the output cap.

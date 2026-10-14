@@ -1,286 +1,1785 @@
-import {Tabs} from '@radix-ui/themes';
-import {PiSettingsDialog} from './PiSettingsDialog.jsx';
-import {DesktopPanel} from './DesktopPanel.jsx';
-import React, { useState, useEffect, useRef } from 'react';
-import { createRoot } from 'react-dom/client';
-import { Theme, Avatar, Button, TextField, TextArea, Heading, Text, Badge, Dialog, Flex, Callout, Select, Checkbox } from '@radix-ui/themes';
-import '@radix-ui/themes/styles.css';
-import './style.css';
-import { useDaemon, errorText } from './useDaemon.js';
+import { BotAvatar, GroupAvatar, activityLabels } from "./BotAvatar.jsx";
+import { MessageBody } from "./MessageBody.jsx";
+import { botActivity } from "./presentation.ts";
+import {
+  Plus,
+  Search,
+  Settings2,
+  PanelRight,
+  X,
+  ArrowUp,
+  Menu,
+  Clock3,
+  Radar,
+  MessagesSquare,
+  ChevronDown,
+} from "lucide-react";
+import { Tabs } from "@radix-ui/themes";
+import { PiSettingsDialog } from "./PiSettingsDialog.jsx";
+import { DesktopPanel } from "./DesktopPanel.jsx";
+import React, { useState, useEffect, useRef } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  Theme,
+  Button,
+  TextField,
+  TextArea,
+  Heading,
+  Text,
+  Badge,
+  Dialog,
+  Flex,
+  Callout,
+  Select,
+  Checkbox,
+  Switch,
+  IconButton,
+} from "@radix-ui/themes";
+import "@radix-ui/themes/styles.css";
+import "./style.css";
+import { useDaemon, errorText } from "./useDaemon.js";
 // Layer ④ GUI talks to the daemon only through the SDK client.
 
-const colors = ['var(--amber-9)', 'var(--teal-9)', 'var(--violet-9)', 'var(--blue-9)'];
 const labels = {
-    queued: '待处理', processing: '处理中', processed: '已处理', uncertain: '待核查', failed: '失败', delivered: '已送达', active: '运行中', paused: '已暂停', completed: '已完成', cancelled: '已取消', expired: '已到期', received: '已发送'
+  queued: "待处理",
+  processing: "处理中",
+  processed: "已处理",
+  uncertain: "待核查",
+  failed: "失败",
+  delivered: "已送达",
+  active: "运行中",
+  paused: "已暂停",
+  completed: "已完成",
+  cancelled: "已取消",
+  expired: "已到期",
+  received: "已发送",
 };
-const time = n => new Date(n).toLocaleString('zh-CN', {
-    timeZone: 'Asia/Shanghai'
-});
+const time = (n) =>
+  new Date(n).toLocaleString("zh-CN", {
+    timeZone: "Asia/Shanghai",
+  });
 function displayText(m) {
-    try {const value=JSON.parse(m.text);if(typeof value.questionId==='string'&&typeof value.question==='string')return value.question;if(m.sourceKind==='answer'&&typeof value.answer==='string')return value.answer;}catch{}
-    if (['schedule', 'monitor'].includes(m.sourceKind)) {
-        try {
-            const e = JSON.parse(m.text);
-            return (m.sourceKind === 'schedule' ? '定时任务已触发：' : '监控发现变化：') + (e.prompt || e.observation || '');
-        }
-        catch {
-        }
-    }
-    return m.text;
+  try {
+    const value = JSON.parse(m.text);
+    if (
+      typeof value.questionId === "string" &&
+      typeof value.question === "string"
+    )
+      return value.question;
+    if (m.sourceKind === "answer" && typeof value.answer === "string")
+      return value.answer;
+  } catch {}
+  if (["schedule", "monitor"].includes(m.sourceKind)) {
+    try {
+      const e = JSON.parse(m.text);
+      return (
+        (m.sourceKind === "schedule" ? "定时任务已触发：" : "监控发现变化：") +
+        (e.prompt || e.observation || "")
+      );
+    } catch {}
+  }
+  return m.text;
 }
 function Picker({ value, onChange, items, label }) {
-    return <Select.Root value={value || undefined} onValueChange={onChange}><Select.Trigger aria-label={label} placeholder={label}/><Select.Content>{items.map(i => <Select.Item key={i.id} value={i.id}>{i.name}</Select.Item>)}</Select.Content></Select.Root>;
+  return (
+    <Select.Root value={value || undefined} onValueChange={onChange}>
+      <Select.Trigger aria-label={label} placeholder={label} />
+      <Select.Content>
+        {items.map((i) => (
+          <Select.Item key={i.id} value={i.id}>
+            {i.name}
+          </Select.Item>
+        ))}
+      </Select.Content>
+    </Select.Root>
+  );
 }
 function App() {
-    const {data,client:api,error:connectionError}=useDaemon();
-    const [view, setView] = useState('chat'), [selected, setSelected] = useState(''), [groupId, setGroupId] = useState(''), [groupTarget, setGroupTarget] = useState('');
-    const [draft, setDraft] = useState(''), [search, setSearch] = useState(''), [notice, setNotice] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
-    const [adding, setAdding] = useState(false), [name, setName] = useState(''), [newGroup, setNewGroup] = useState(false), [members, setMembers] = useState([]), [details, setDetails] = useState(false);
-    const [peerA, setPeerA] = useState(''), [peerB, setPeerB] = useState(''), [peerScope, setPeerScope] = useState('direct');
-    const [piSettingsOpen,setPiSettingsOpen]=useState(false),[routineOwner,setRoutineOwner]=useState('');
-    const [routineKind, setRoutineKind] = useState(''), [prompt, setPrompt] = useState(''), [when, setWhen] = useState(''), [interval, setIntervalMinutes] = useState(''), [watchPath, setWatchPath] = useState(''), [routineGroup, setRoutineGroup] = useState('direct');
-    const [result, setResult] = useState(''), [answer, setAnswer] = useState(''), [mentionIndex, setMentionIndex] = useState(0), [hideMentions, setHideMentions] = useState(false);
-    const end = useRef(null), composer = useRef(null);
-    useEffect(()=>{setSelected(s=>s||data.bots[0]?.id);setPeerA(s=>s||data.bots[0]?.id);setPeerB(s=>s||data.bots[1]?.id);setError(connectionError);},[data.bots,connectionError]);
-    const bot = data.bots.find(b => b.id === selected), group = data.groups.find(g => g.id === groupId), state = data.states[selected];
-    const botUsage=(data.turns||[]).filter(t=>t.botId===selected).reduce((sum,t)=>({output:sum.output+(t.usage?.output??0),estimatedUsd:sum.estimatedUsd+(t.usage?.costUsd??0)}),{output:0,estimatedUsd:0});
-    const botName = id => data.bots.find(b => b.id === id)?.name || id;
-    const groupBots = data.bots.filter(b => group?.memberIds.includes(b.id));
-    const scopeMatches = m => peerScope === 'direct' ? m.channelId.startsWith('local:') : m.channelId === peerScope;
-    const peerMessages = data.messages.filter(m => m.sourceKind === 'bot' && m.direction === 'inbound' && scopeMatches(m) && ((m.sender === peerA && m.recipient === peerB) || (m.sender === peerB && m.recipient === peerA)));
-    const peerTasks = new Set(peerMessages.map(m => m.taskId));
-    const shared = (data.groupMessages || []).filter(m => m.channelId === groupId && (m.direction !== 'outbound' || m.status === 'delivered'));
-    const sharedIds = new Set(shared.map(m => m.messageId));
-    const legacy = data.messages.filter(m => m.channelId === groupId && m.sourceKind !== 'job' && !m.groupMessageId && !sharedIds.has(m.messageId) && !(m.direction === 'inbound' && m.sourceKind === 'bot'));
-    const groupMessages = [...shared, ...legacy].sort((a, b) => a.receivedAt - b.receivedAt);
-    const messages = view === 'group' ? groupMessages : view === 'peers' ? data.messages.filter(m => peerMessages.includes(m) || (peerTasks.has(m.taskId) && m.direction === 'outbound') || (m.sourceKind === 'user' && m.recipient === peerA && m.text.startsWith('协作任务：') && m.text.includes(peerB) && scopeMatches(m))) : data.messages.filter(m => m.botId === selected && m.channelId === (bot?.channelId || `local:${selected}`) && m.sourceKind !== 'job' && !(m.direction === 'inbound' && m.sourceKind === 'bot'));
-    const mentionMatch = view === 'group' && !hideMentions ? draft.match(/(?:^|\s)@([^\s]*)$/) : null;
-    const mentionOptions = mentionMatch ? [...groupBots.map(b => b.name), '全体成员'].filter(name => name.includes(mentionMatch[1])) : [];
-    function chooseMention(name) {
-        setDraft(s => s.replace(/(^|\s)@[^\s]*$/, (_match, space) => space + '@' + name + ' '));
-        setMentionIndex(0);
-        setHideMentions(false);
-        requestAnimationFrame(() => composer.current?.focus());
-    }
-    const scrollKey = messages.map(m => m.direction + m.messageId).join('|');
-    useEffect(() => {
-        end.current?.scrollIntoView({
-            behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'
-        });
-    }, [view, selected, groupId, peerA, peerB, peerScope, scrollKey]);
-    /** Run an SDK write, then refresh the snapshot. */
-    async function mutate(write) {
-        const v = await write;
-        return v;
-    }
-    async function send() {
-        if (!draft.trim() || busy)
-            return;
-        setBusy(true);
-        setNotice('');
-        try {
-            const to = view === 'group' ? groupBots[0]?.id : view === 'peers' ? peerA : selected;
-            if (!to || view === 'peers' && (!peerB || peerA === peerB))
-                throw Error('请选择不同的 bot');
-            const text = view === 'peers' ? `协作任务：${draft}\n请使用 send_to_bot 将任务交给 ${botName(peerB)}（${peerB}）。对方完成后使用 send_to_bot 将结果返回给你（${peerA}）；你核验后使用 send_message 给用户最终结果。你负责最终回复。不要互相发确认或闲聊，不要创建额外任务。` : draft;
-            await mutate(api.turn.start({
-                botId:to, text, key: crypto.randomUUID(), groupId: view === 'group' ? groupId : view === 'peers' && peerScope !== 'direct' ? peerScope : undefined
-            }));
-            setDraft('');
-        }
-        catch (e) {
-            setNotice(errorText(e));
-        }
-        finally {
-            setBusy(false);
-        }
-    }
-    const action = async (kind, r, act) => {
-        try {
-            const v = await mutate(api.routine[act==='dry-run'?'dryRun':act]({routineId:kind+':'+r.id}));
-            if (act === 'dry-run')
-                setNotice(v.decision === 'error' ? '试运行失败：' + v.error : '试运行通过：' + v.decision);
-        }
-        catch (e) {
-            setNotice(errorText(e));
-        }
+  const { data, client: api, error: connectionError } = useDaemon();
+  const [view, setView] = useState("chat"),
+    [selected, setSelected] = useState(""),
+    [groupId, setGroupId] = useState(""),
+    [groupTarget, setGroupTarget] = useState("");
+  const [draft, setDraft] = useState(""),
+    [search, setSearch] = useState(""),
+    [notice, setNotice] = useState(""),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false),
+    [name, setName] = useState(""),
+    [newGroup, setNewGroup] = useState(false),
+    [members, setMembers] = useState([]),
+    [details, setDetails] = useState(false);
+  const [peerA, setPeerA] = useState(""),
+    [peerB, setPeerB] = useState(""),
+    [peerScope, setPeerScope] = useState("direct");
+  const [piSettingsOpen, setPiSettingsOpen] = useState(false),
+    [routineOwner, setRoutineOwner] = useState("");
+  const [routineKind, setRoutineKind] = useState(""),
+    [prompt, setPrompt] = useState(""),
+    [when, setWhen] = useState(""),
+    [interval, setIntervalMinutes] = useState(""),
+    [watchPath, setWatchPath] = useState(""),
+    [routineGroup, setRoutineGroup] = useState("direct");
+  const [result, setResult] = useState(""),
+    [answer, setAnswer] = useState(""),
+    [mentionIndex, setMentionIndex] = useState(0),
+    [hideMentions, setHideMentions] = useState(false);
+  const end = useRef(null),
+    composer = useRef(null),
+    conversation = useRef(null),
+    pinnedToEnd = useRef(true),
+    lastScope = useRef("");
+  const [sidebarOpen, setSidebarOpen] = useState(false),
+    [atBottom, setAtBottom] = useState(true),
+    [wide, setWide] = useState(() => matchMedia("(min-width: 1100px)").matches);
+  useEffect(() => {
+    const media = matchMedia("(min-width: 1100px)");
+    const update = () => setWide(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    document.getElementById("contact-search")?.focus();
+    const close = (e) => {
+      if (e.key === "Escape") setSidebarOpen(false);
     };
-    function openRoutine(kind) {
-        setNotice('');
-        setRoutineKind(kind);
-        setRoutineOwner(selected||data.bots[0]?.id||'');
-        setRoutineGroup(view === 'group' ? groupId : 'direct');
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [sidebarOpen]);
+  useEffect(() => {
+    const observer = new ResizeObserver(() => {
+      if (pinnedToEnd.current)
+        end.current?.scrollIntoView({ behavior: "instant", block: "end" });
+    });
+    if (conversation.current) observer.observe(conversation.current);
+    return () => observer.disconnect();
+  }, [view]);
+  const activity = (id) => botActivity(data, id);
+  const scrollBottom = () => {
+    end.current?.scrollIntoView({
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
+      block: "end",
+    });
+    pinnedToEnd.current = true;
+    setAtBottom(true);
+  };
+  useEffect(() => {
+    setSelected((s) => s || data.bots[0]?.id);
+    setPeerA((s) => s || data.bots[0]?.id);
+    setPeerB((s) => s || data.bots[1]?.id);
+    setError(connectionError);
+  }, [data.bots, connectionError]);
+  const bot = data.bots.find((b) => b.id === selected),
+    group = data.groups.find((g) => g.id === groupId),
+    state = data.states[selected];
+  const botUsage = (data.turns || [])
+    .filter((t) => t.botId === selected)
+    .reduce(
+      (sum, t) => ({
+        output: sum.output + (t.usage?.output ?? 0),
+        estimatedUsd: sum.estimatedUsd + (t.usage?.costUsd ?? 0),
+      }),
+      { output: 0, estimatedUsd: 0 },
+    );
+  const botName = (id) => data.bots.find((b) => b.id === id)?.name || id;
+  const groupBots = data.bots.filter((b) => group?.memberIds.includes(b.id));
+  const scopeMatches = (m) =>
+    peerScope === "direct"
+      ? m.channelId.startsWith("local:")
+      : m.channelId === peerScope;
+  const peerMessages = data.messages.filter(
+    (m) =>
+      m.sourceKind === "bot" &&
+      m.direction === "inbound" &&
+      scopeMatches(m) &&
+      ((m.sender === peerA && m.recipient === peerB) ||
+        (m.sender === peerB && m.recipient === peerA)),
+  );
+  const peerTasks = new Set(peerMessages.map((m) => m.taskId));
+  const shared = (data.groupMessages || []).filter(
+    (m) =>
+      m.channelId === groupId &&
+      (m.direction !== "outbound" || m.status === "delivered"),
+  );
+  const sharedIds = new Set(shared.map((m) => m.messageId));
+  const legacy = data.messages.filter(
+    (m) =>
+      m.channelId === groupId &&
+      m.sourceKind !== "job" &&
+      !m.groupMessageId &&
+      !sharedIds.has(m.messageId) &&
+      !(m.direction === "inbound" && m.sourceKind === "bot"),
+  );
+  const groupMessages = [...shared, ...legacy].sort(
+    (a, b) => a.receivedAt - b.receivedAt,
+  );
+  const messages =
+    view === "group"
+      ? groupMessages
+      : view === "peers"
+        ? data.messages.filter(
+            (m) =>
+              peerMessages.includes(m) ||
+              (peerTasks.has(m.taskId) && m.direction === "outbound") ||
+              (m.sourceKind === "user" &&
+                m.recipient === peerA &&
+                m.text.startsWith("协作任务：") &&
+                m.text.includes(peerB) &&
+                scopeMatches(m)),
+          )
+        : data.messages.filter(
+            (m) =>
+              m.botId === selected &&
+              m.channelId === (bot?.channelId || `local:${selected}`) &&
+              m.sourceKind !== "job" &&
+              !(m.direction === "inbound" && m.sourceKind === "bot"),
+          );
+  const mentionMatch =
+    view === "group" && !hideMentions
+      ? draft.match(/(?:^|\s)@([^\s]*)$/)
+      : null;
+  const mentionOptions = mentionMatch
+    ? [...groupBots.map((b) => b.name), "全体成员"].filter((name) =>
+        name.includes(mentionMatch[1]),
+      )
+    : [];
+  function chooseMention(name) {
+    setDraft((s) =>
+      s.replace(/(^|\s)@[^\s]*$/, (_match, space) => space + "@" + name + " "),
+    );
+    setMentionIndex(0);
+    setHideMentions(false);
+    requestAnimationFrame(() => composer.current?.focus());
+  }
+  const scrollKey = messages.map((m) => m.direction + m.messageId).join("|");
+  useEffect(() => {
+    const scope = [view, selected, groupId, peerA, peerB, peerScope].join(":");
+    if (scope !== lastScope.current || pinnedToEnd.current) {
+      end.current?.scrollIntoView({ behavior: "instant", block: "end" });
+      pinnedToEnd.current = true;
+      setAtBottom(true);
     }
-    function routineCard(kind, r) {
-        return <div className="routine" key={r.id}><Flex gap="2" align="center" wrap="wrap"><Text weight="medium">{botName(r.botId)}</Text><Badge color={r.state === 'active' ? 'green' : 'gray'}>{kind==='schedule'&&r.state==='completed'?'已触发':kind==='monitor'&&r.state==='active'&&!r.enabled?'未启用':labels[r.state] || r.state}</Badge>{r.dryRunVerified && <Badge color="green">试运行通过</Badge>}</Flex><Text size="2">{r.prompt}</Text><Text size="1" color="gray">{kind === 'schedule' ? `执行时间：${time(r.nextFire)} · ${r.intervalMs ? `每 ${r.intervalMs / 60000} 分钟` : '仅一次'}` : `${r.detector === 'file' ? data.watchFile : r.detector.replace(/^file:/, '')} · 每 ${r.intervalMs / 1000} 秒 · 截止 ${time(r.deadline)}`}</Text>{kind === 'monitor' && <Text size="1" color="gray">{r.enabled ? '已启用' : '未启用'} · 最近检查：{{silent:'无变化',wake:'发现变化',error:'检查失败'}[r.lastDecision] || '尚未检查'}</Text>}<Flex gap="3" wrap="wrap">{kind === 'schedule' && r.state === 'active' && <Button size="1" variant="soft" onClick={() => action(kind, r, 'pause')}>暂停</Button>}{kind === 'schedule' && r.state === 'paused' && <Button size="1" variant="soft" onClick={() => action(kind, r, 'resume')}>恢复</Button>}{kind === 'monitor' && r.state === 'active' && <><Button size="1" variant="soft" onClick={() => action(kind, r, 'dry-run')}>试运行</Button><Button size="1" variant="soft" onClick={() => action(kind, r, r.enabled ? 'pause' : 'enable')}>{r.enabled ? '暂停' : '启用'}</Button></>}{['active', 'paused'].includes(r.state) && <Button variant="soft" size="1" color="red" onClick={() => action(kind, r, 'cancel')}>取消</Button>}</Flex>{r.error && <Text size="1" color="red">{r.error}</Text>}</div>;
+    lastScope.current = scope;
+  }, [view, selected, groupId, peerA, peerB, peerScope, scrollKey]);
+  /** Run an SDK write, then refresh the snapshot. */
+  async function mutate(write) {
+    const v = await write;
+    return v;
+  }
+  async function send() {
+    if (!draft.trim() || busy) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      const to =
+        view === "group"
+          ? groupBots[0]?.id
+          : view === "peers"
+            ? peerA
+            : selected;
+      if (!to || (view === "peers" && (!peerB || peerA === peerB)))
+        throw Error("请选择不同的 bot");
+      const text =
+        view === "peers"
+          ? `协作任务：${draft}\n请使用 send_to_bot 将任务交给 ${botName(peerB)}（${peerB}）。对方完成后使用 send_to_bot 将结果返回给你（${peerA}）；你核验后使用 send_message 给用户最终结果。你负责最终回复。不要互相发确认或闲聊，不要创建额外任务。`
+          : draft;
+      await mutate(
+        api.turn.start({
+          botId: to,
+          text,
+          key: crypto.randomUUID(),
+          groupId:
+            view === "group"
+              ? groupId
+              : view === "peers" && peerScope !== "direct"
+                ? peerScope
+                : undefined,
+        }),
+      );
+      setDraft("");
+      pinnedToEnd.current = true;
+    } catch (e) {
+      setNotice(errorText(e));
+    } finally {
+      setBusy(false);
     }
-    const routineRows = view === 'schedules' ? state?.proactive?.schedules || [] : state?.proactive?.monitors || [];
-    const routineView = ['schedules', 'monitors'].includes(view), kind = view === 'schedules' ? 'schedule' : 'monitor';
-    const title = view==='requests'?'待处理':routineView ? (view === 'schedules' ? '定时任务' : '监控') : view === 'peers' ? 'Bot 对话' : view === 'group' ? group?.name : bot?.name;
-    const inspector = <><Heading size="4">{bot?.name}</Heading><Text color="gray" size="2">{bot?.description || '个人 bot'}</Text><Flex gap="2" mt="4"><Button size="1" variant="soft" onClick={() => {
-        setDetails(false);
-        setView('schedules');
-    }}>定时任务</Button><Button size="1" variant="soft" onClick={() => {
-        setDetails(false);
-        setView('monitors');
-    }}>监控</Button></Flex><Heading size="2" mt="6" mb="3">运行状态</Heading><Text size="2" color="gray">待处理 {state?.counts?.inbox ?? 0}</Text><Text as="div" size="1" color="gray">累计输出 {botUsage.output} token</Text><Heading size="2" mt="5" mb="3">会话</Heading>{(data.threads||[]).filter(t=>t.botId===selected).map(t=><Flex key={t.id} gap="2" align="center" wrap="wrap"><Text size="1">{t.scope.channelId||'私聊'} · {t.status==='loaded'?'已加载':t.status==='archived'?'已归档':'已存储'}</Text><Button size="1" variant="ghost" onClick={async()=>{try{if(t.status==='loaded'){const result=await api.thread.unload({threadId:t.id});if(!result.unloaded)setNotice('当前会话仍有工作：'+result.blockedBy.join('、'));}else await api.thread[t.status==='archived'?'unarchive':'archive']({threadId:t.id});}catch(e){setNotice(errorText(e));}}}>{t.status==='loaded'?'卸载':t.status==='archived'?'恢复':'归档'}</Button></Flex>)}<Heading size="2" mt="5" mb="3">工具任务</Heading>{(data.jobs || []).filter(j => j.botId === selected).map(j => <div className="routine" key={j.id}><Text size="2">{j.tool} · {labels[j.state] || j.state}</Text><Button size="1" variant="ghost" onClick={async () => {
-        try {
-            const v = await mutate(api.job.read({
-                jobId: j.id
-            }));
-            setResult(JSON.stringify(v, null, 2));
-        }
-        catch (e) {
-            setNotice(errorText(e));
-        }
-    }}>查看结果</Button></div>)}{(state?.questions || []).map(q => <div className="routine" key={q.id}><Text>{q.text || q.question}</Text><TextField.Root placeholder="回答" value={answer} onChange={e => setAnswer(e.target.value)}/><Button size="1" onClick={() => mutate(api.request.resolve({requestId:'req_question:'+q.id,response:{text:answer}})).then(() => setAnswer('')).catch(e => setNotice(errorText(e)))}>提交回答</Button></div>)}</>;
-    return <Theme appearance="dark" accentColor="amber" grayColor="sand" radius="large"><div className="app">
- <aside className="sidebar"><div className="brand"><Heading size="5">Pi Bot</Heading><Button variant="soft" aria-label="新建 bot" onClick={() => setAdding(true)}>＋</Button></div>
- <nav className="sections" aria-label="工作区"><Button variant={view === 'schedules' ? 'solid' : 'ghost'} color="gray" onClick={() => setView('schedules')}>定时任务</Button><Button variant={view === 'monitors' ? 'solid' : 'ghost'} color="gray" onClick={() => setView('monitors')}>监控</Button><Button variant={view === 'peers' ? 'solid' : 'ghost'} color="gray" onClick={() => setView('peers')}>Bot 对话</Button></nav>
- <TextField.Root placeholder="搜索 bot 或群" value={search} onChange={e => setSearch(e.target.value)}/><nav className="bots" aria-label="Bot 列表">{data.bots.filter(b => b.name.toLowerCase().includes(search.toLowerCase())).map((b, i) => <button key={b.id} className={'bot ' + (selected === b.id && view === 'chat' ? 'selected' : '')} onClick={() => {
-        setSelected(b.id);
-        setView('chat');
-    }}><Avatar fallback={b.name.slice(0, 1)} radius="full" style={{
-        background: colors[i % 4], color: 'white'
-    }}/><div className="bot-label"><Text as="div" size="2" weight="medium">{b.name}</Text><Text as="div" size="1" color="gray" className="preview">{data.messages.filter(m => m.botId === b.id && m.sourceKind!=='job').at(-1)?.text || '开始聊天'}</Text></div></button>)}</nav>
- <Flex justify="between" align="center" mt="4" mb="2"><Text size="1" color="gray">群聊</Text><Button size="1" variant="ghost" onClick={() => {
-        setName('');
-        setMembers([]);
-        setNewGroup(true);
-    }}>新建群聊</Button></Flex><nav aria-label="群聊列表">{data.groups.filter(g => g.name.includes(search)).map(g => <button className={'bot ' + (view === 'group' && g.id === groupId ? 'selected' : '')} key={g.id} onClick={() => {
-        setGroupId(g.id);
-        setGroupTarget(g.memberIds[0]);
-        setSelected(g.memberIds[0]);
-        setView('group');
-    }}><Avatar fallback="群" radius="full" color="gray"/><div><Text size="2" as="div">{g.name}</Text><Text size="1" color="gray">{g.memberIds.length} 个 bot</Text></div></button>)}</nav>
- <Button variant={view==='requests'?'soft':'ghost'} onClick={()=>setView('requests')}>待处理 · {(data.requests||[]).filter(r=>r.status==='pending').length}</Button>
- <Button variant="soft" onClick={()=>setPiSettingsOpen(true)}>Pi 登录与模型</Button>
- <div className="mode"><Badge color="gray">{data.mode || '连接中'} · {data.status==='ready'?'运行中':data.status==='draining'?'正在关闭':data.status||'连接中'}</Badge><Text size="1" color="gray">{error || data.configuration?.message || '本地工作区'}</Text></div></aside>
- <main className="main"><header className="header"><Heading size="4">{title || 'Pi Bot'}</Heading>{routineView ? <Button disabled={!selected} onClick={() => openRoutine(kind)}>新建{kind === 'schedule' ? '定时任务' : '监控'}</Button> : <Button variant="ghost" color="gray" onClick={() => setDetails(true)}>详情</Button>}</header>
- {data.configuration?.setupRequired && <Callout.Root color="amber" m="3"><Callout.Text>{data.configuration.message}</Callout.Text><Button variant="soft" onClick={()=>setPiSettingsOpen(true)}>登录并选择模型</Button></Callout.Root>}
- {data.trigger?.halted && <Callout.Root color="red" m="3"><Callout.Text>触发投递需要核查，已停止自动处理。</Callout.Text></Callout.Root>}{data.errors?.length > 0 && <Callout.Root color="red" m="3"><Callout.Text>{data.errors.at(-1)}</Callout.Text></Callout.Root>}{notice && <Callout.Root m="3"><Callout.Text>{notice}</Callout.Text><Button variant="ghost" onClick={() => setNotice('')}>关闭</Button></Callout.Root>}
- {view==='requests'?<section className="routine-page"><Heading size="4" mb="4">待处理</Heading>{(data.requests||[]).filter(r=>r.status==='pending').map(r=><div className="routine" key={r.id}><Text weight="medium">{botName(r.botId)} · {r.kind==='approval'?'工具审批':r.kind==='question'?'需要回答':'凭据输入'}</Text><Text size="2">{r.params.text||r.params.label||r.params.tool}</Text>{r.kind==='approval'&&<><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(r.params.args,null,2)}</pre><Flex gap="3"><Button onClick={()=>api.request.resolve({requestId:r.id,response:{decision:'approve'}}).catch(e=>setNotice(errorText(e)))}>允许</Button><Button color="red" variant="soft" onClick={()=>api.request.resolve({requestId:r.id,response:{decision:'deny'}}).catch(e=>setNotice(errorText(e)))}>拒绝</Button></Flex></>}{r.kind==='question'&&<><TextField.Root aria-label="回答待处理问题" value={answer} onChange={e=>setAnswer(e.target.value)}/><Button disabled={!answer.trim()} onClick={()=>api.request.resolve({requestId:r.id,response:{text:answer}}).then(()=>setAnswer('')).catch(e=>setNotice(errorText(e)))}>回答</Button></>}{r.kind==='credential'&&r.params.formUrl&&<a href={r.params.formUrl} target="_blank" rel="noreferrer">安全输入凭据</a>}</div>)}{!(data.requests||[]).some(r=>r.status==='pending')&&<Text color="gray">没有待处理请求</Text>}</section>:routineView ? <section className="routine-page"><Flex gap="3" align="center" wrap="wrap"><Text size="2">所属 bot</Text><Picker label="查看 bot 的任务" value={selected} onChange={setSelected} items={data.bots}/></Flex><Text as="p" size="2" color="gray">{kind === 'schedule' ? `${bot?.name||'当前 bot'} 的定时任务，时间按上海时区显示。` : `${bot?.name||'当前 bot'} 的文件变化监控，先试运行再启用。`}</Text><div className="routine-list">{routineRows.length ? routineRows.map(r => routineCard(kind, r)) : <div className="empty"><Heading size="4">暂无{kind === 'schedule' ? '定时任务' : '监控'}</Heading><Button disabled={!selected} onClick={() => openRoutine(kind)}>创建第一个{kind === 'schedule' ? '定时任务' : '监控'}</Button></div>}</div></section> : <>
- {view === 'group' && <div className="view-toolbar group-toolbar"><Text size="2" color="gray">{groupBots.map(b => b.name).join('、')}</Text>{data.messages.some(m => m.channelId === groupId && m.sourceKind === 'bot' && m.direction === 'inbound' && m.deliveryTarget === 'direct') && <Button variant="ghost" color="gray" size="1" onClick={() => {
-            const m = data.messages.find(m => m.channelId === groupId && m.sourceKind === 'bot' && m.direction === 'inbound' && m.deliveryTarget === 'direct');
-            setPeerA(m.sender);
-            setPeerB(m.recipient);
-            setPeerScope(groupId);
-            setView('peers');
-        }}>bot 间对话</Button>}</div>}
- {view === 'peers' && <div className="view-toolbar"><Flex gap="2" align="center" wrap="wrap"><Picker label="发起 bot" value={peerA} onChange={setPeerA} items={data.bots}/><Text>⇄</Text><Picker label="协作 bot" value={peerB} onChange={setPeerB} items={data.bots}/><Picker label="对话范围" value={peerScope} onChange={setPeerScope} items={[{
-                id: 'direct', name: '直接协作'
-            }, ...data.groups]}/></Flex><Text size="1" color="gray">查看两个 bot 的实际协作记录，也可发起新任务。</Text></div>}
- <section className="conversation" aria-label="聊天消息">{messages.length ? messages.map(m => <div key={m.direction + m.messageId} className={'row ' + (m.direction === 'inbound' && m.sourceKind === 'user' ? 'user' : '')}><div className="bubble" style={m.sourceKind === 'user' ? {
-            background: colors[0]
-        } : undefined}><div className="bubble-meta">{['user','answer'].includes(m.sourceKind) ? '你' : m.direction === 'outbound' ? botName(m.sender) : m.sourceKind === 'bot' ? `${botName(m.sender)}${m.recipient === 'group' ? ' · 群消息' : ' → ' + botName(m.recipient)}` : m.sourceKind === 'schedule' ? '定时任务' : '监控'} · {new Date(m.receivedAt).toLocaleTimeString('zh-CN', {
-            timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit'
-        })}</div><div>{displayText(m)}</div><Text size="1" className="status">{labels[m.status] || m.status}</Text>{m.status === 'uncertain' && m.sourceKind === 'user' && <Button size="1" variant="soft" onClick={() => mutate(api.task.reconcile({
-            inputId: m.messageId
-        })).catch(e => setNotice(errorText(e)))}>核查并恢复</Button>}</div></div>) : <div className="empty"><Heading size="5">{view === 'peers' ? '暂无 bot 对话' : '准备开始'}</Heading><Text color="gray" size="2">{view === 'peers' ? '选择两个 bot，发起一项真实协作任务。' : '发一条消息，开始处理任务。'}</Text></div>}<div ref={end}/></section>
- <div className="composer-area">{mentionOptions.length > 0 && <div className="mention-menu" role="listbox" aria-label="选择 @ 成员">{mentionOptions.map((name, i) => <button key={name} className={i === mentionIndex ? 'active' : ''} onClick={() => chooseMention(name)}>{name === '全体成员' ? '@全体成员' : '@' + name}</button>)}</div>}{Object.entries(data.streaming||{}).filter(([id])=>{const thread=data.threads.find(t=>t.id===data.streamingScopes?.[id]);return thread&&(view==='group'?thread.scope.channelId===groupId:view==='chat'?thread.botId===selected&&thread.scope.channelId===(bot?.channelId??null):false);}).map(([id,text])=><div key={id} className="routine"><Text size="2">{text}</Text><Text size="1" color="gray">正在回复…</Text></div>)}<div className="composer"><TextArea ref={composer} aria-label="消息" placeholder={view === 'peers' ? '交给这两个 bot 的协作任务…' : view === 'group' ? `发到 ${group?.name}…` : `给 ${bot?.name || 'bot'} 发消息…`} value={draft} onChange={e => {
-            setDraft(e.target.value);
-            setMentionIndex(0);
-            setHideMentions(false);
-        }} rows={2} onKeyDown={e => {
-            if (mentionOptions.length) {
-                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    setMentionIndex(i => (i + (e.key === 'ArrowDown' ? 1 : -1) + mentionOptions.length) % mentionOptions.length);
-                    return;
+  }
+  const action = async (kind, r, act) => {
+    try {
+      const v = await mutate(
+        api.routine[act === "dry-run" ? "dryRun" : act]({
+          routineId: kind + ":" + r.id,
+        }),
+      );
+      if (act === "dry-run")
+        setNotice(
+          v.decision === "error"
+            ? "试运行失败：" + v.error
+            : "试运行通过：" + v.decision,
+        );
+    } catch (e) {
+      setNotice(errorText(e));
+    }
+  };
+  function openRoutine(kind) {
+    setNotice("");
+    setRoutineKind(kind);
+    setRoutineOwner(selected || data.bots[0]?.id || "");
+    setRoutineGroup(view === "group" ? groupId : "direct");
+  }
+  function routineCard(kind, r) {
+    return (
+      <div className="routine" key={r.id}>
+        <Flex gap="2" align="center" wrap="wrap">
+          <Text weight="medium">
+            {kind === "schedule" ? "定时任务" : "监控"}
+          </Text>
+          <Badge color={r.state === "active" ? "green" : "gray"}>
+            {kind === "schedule" && r.state === "completed"
+              ? "已触发"
+              : kind === "monitor" && r.state === "active" && !r.enabled
+                ? "未启用"
+                : labels[r.state] || r.state}
+          </Badge>
+          {r.dryRunVerified && <Badge color="green">试运行通过</Badge>}
+        </Flex>
+        <Text size="2">{r.prompt}</Text>
+        <Text size="1" color="gray">
+          {kind === "schedule"
+            ? `执行时间：${time(r.nextFire)} · ${r.intervalMs ? `每 ${r.intervalMs / 60000} 分钟` : "仅一次"}`
+            : `${r.detector === "file" ? data.watchFile : r.detector.replace(/^file:/, "")} · 每 ${r.intervalMs / 1000} 秒 · 截止 ${time(r.deadline)}`}
+        </Text>
+        {kind === "monitor" && (
+          <Text size="1" color="gray">
+            {r.enabled ? "已启用" : "未启用"} · 最近检查：
+            {{ silent: "无变化", wake: "发现变化", error: "检查失败" }[
+              r.lastDecision
+            ] || "尚未检查"}
+          </Text>
+        )}
+        <Flex gap="3" wrap="wrap" align="center">
+          {kind === "schedule" && ["active", "paused"].includes(r.state) && (
+            <Switch
+              aria-label={
+                r.state === "active" ? "暂停定时任务" : "恢复定时任务"
+              }
+              checked={r.state === "active"}
+              onCheckedChange={(checked) =>
+                action(kind, r, checked ? "resume" : "pause")
+              }
+            />
+          )}
+          {kind === "monitor" && r.state === "active" && (
+            <>
+              <Button
+                size="1"
+                variant="soft"
+                onClick={() => action(kind, r, "dry-run")}
+              >
+                试运行
+              </Button>
+              <Switch
+                aria-label={r.enabled ? "暂停监控" : "启用监控"}
+                checked={!!r.enabled}
+                onCheckedChange={(checked) =>
+                  action(kind, r, checked ? "enable" : "pause")
                 }
-                if (e.key === 'Escape') {
-                    setHideMentions(true);
-                    return;
-                }
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                    e.preventDefault();
-                    chooseMention(mentionOptions[mentionIndex]);
-                    return;
-                }
-            }
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                send();
-            }
-        }}/><Button disabled={!api || busy || !draft.trim() || !!error || data.configuration?.setupRequired} onClick={send}>{busy ? '发送中' : view === 'peers' ? '发起协作' : '发送'}</Button></div></div></>}
- </main>{!routineView && view === 'chat' && <aside className="inspector">{inspector}</aside>}
- <Dialog.Root open={!!routineKind} onOpenChange={v => {
-        if (!v)
-            setRoutineKind('');
-    }}><Dialog.Content maxWidth="440px"><Dialog.Title>{routineKind === 'schedule' ? '新建定时任务' : '新建监控'}</Dialog.Title><Dialog.Description size="2" mb="4">{routineKind === 'schedule' ? '选择负责 bot、任务和执行时间。' : '监控仓库内的文件变化；试运行通过后启用。'}</Dialog.Description><Flex direction="column" gap="3">{notice && <Text size="2" color="red">{notice}</Text>}<Picker label="负责 bot" value={routineOwner} onChange={v => {
-        setRoutineOwner(v);
-        setRoutineGroup('direct');
-    }} items={data.bots}/><Picker label="回复到" value={routineGroup} onChange={setRoutineGroup} items={[{
-            id: 'direct', name: '回复到 bot 私聊'
-        }, ...data.groups.filter(g => g.memberIds.includes(routineOwner))]}/><TextArea aria-label="任务内容" placeholder="任务内容" value={prompt} onChange={e => setPrompt(e.target.value)}/><Flex gap="2"><Button size="1" variant="soft" onClick={() => setWhen(new Date(Date.now() + 120000).toLocaleString('sv-SE', {
-        timeZone: 'Asia/Shanghai'
-    }).replace(' ', 'T').slice(0, 16))}>2 分钟后</Button><Button size="1" variant="soft" onClick={() => setWhen(new Date(Date.now() + 3600000).toLocaleString('sv-SE', {
-        timeZone: 'Asia/Shanghai'
-    }).replace(' ', 'T').slice(0, 16))}>1 小时后</Button></Flex><label><Text size="2">{routineKind === 'schedule' ? '首次执行时间' : '监控截止时间'}（上海）</Text><TextField.Root aria-label="执行时间" type="datetime-local" value={when} onChange={e => setWhen(e.target.value)}/></label><label><Text size="2">{routineKind === 'schedule' ? '重复间隔（分钟，留空仅一次）' : '检查间隔（分钟）'}</Text><TextField.Root aria-label="间隔分钟" type="number" min="1" value={interval} onChange={e => setIntervalMinutes(e.target.value)}/></label>{routineKind === 'monitor' && <label><Text size="2">监控文件（仓库内路径）</Text><TextField.Root aria-label="监控文件" placeholder={data.watchFile} value={watchPath} onChange={e => setWatchPath(e.target.value)}/></label>}<Flex gap="3" justify="end"><Dialog.Close><Button variant="soft" color="gray">返回</Button></Dialog.Close><Button disabled={busy||!routineOwner||!prompt.trim()} onClick={async () => {
-        setBusy(true);
-        try {
-            const at = Date.parse(when + ':00+08:00');
-            if (!Number.isFinite(at))
-                throw Error('请选择有效时间');
-            await mutate(api.routine.create({botId:routineOwner,kind:routineKind,prompt,groupId:routineGroup==='direct'?undefined:routineGroup,...(routineKind==='schedule'?{at,timezone:'Asia/Shanghai',intervalMs:interval?Number(interval)*60000:undefined}:{deadline:at,intervalMs:interval?Number(interval)*60000:60000,filePath:watchPath||undefined})}));
-            setSelected(routineOwner);
-            setRoutineKind('');
-            setPrompt('');
-            setWhen('');
-            setIntervalMinutes('');
-            setWatchPath('');
-            setNotice('');
-        }
-        catch (e) {
-            setNotice(errorText(e));
-        }
-        finally {
-            setBusy(false);
-        }
-    }}>创建</Button></Flex></Flex></Dialog.Content></Dialog.Root>
- <Dialog.Root open={newGroup} onOpenChange={setNewGroup}><Dialog.Content maxWidth="400px"><Dialog.Title>新建群聊</Dialog.Title><Dialog.Description size="2" mb="4">至少选择两个 bot；同一 bot 可加入多个群。群消息所有成员可见，输入 @ 点名或 @全体成员。</Dialog.Description><Flex direction="column" gap="3"><TextField.Root aria-label="群名称" placeholder="群名称" maxLength={60} value={name} onChange={e => setName(e.target.value)}/>{data.bots.map(b => <label key={b.id}><Flex gap="2" align="center"><Checkbox checked={members.includes(b.id)} onCheckedChange={checked => setMembers(s => checked ? [...s, b.id] : s.filter(id => id !== b.id))}/><Text size="2">{b.name}</Text></Flex></label>)}{notice && <Text color="red" size="2">{notice}</Text>}<Flex justify="end" gap="3"><Dialog.Close><Button variant="soft">返回</Button></Dialog.Close><Button disabled={busy || members.length < 2 || !name.trim()} onClick={async () => {
-        setBusy(true);
-        try {
-            const {group:g} = await mutate(api.group.create({
-                name, memberIds: members
-            }));
-            setGroupId(g.id);
-            setGroupTarget(g.memberIds[0]);
-            setSelected(g.memberIds[0]);
-            setView('group');
-            setNewGroup(false);
-            setName('');
-            setNotice('');
-        }
-        catch (e) {
-            setNotice(errorText(e));
-        }
-        finally {
-            setBusy(false);
-        }
-    }}>创建群聊</Button></Flex></Flex></Dialog.Content></Dialog.Root>
- <Dialog.Root open={!!result} onOpenChange={v => {
-        if (!v)
-            setResult('');
-    }}><Dialog.Content><Dialog.Title>任务结果</Dialog.Title><Dialog.Description>持久工具结果，最多显示首 4096 字。</Dialog.Description><pre style={{
-        whiteSpace: 'pre-wrap', overflowWrap: 'anywhere'
-    }}>{result}</pre><Dialog.Close><Button>关闭</Button></Dialog.Close></Dialog.Content></Dialog.Root>
- <Dialog.Root open={details} onOpenChange={setDetails}><Dialog.Content maxWidth="600px"><Dialog.Title>Bot 详情</Dialog.Title><Dialog.Description size="2" mb="4">任务结果和运行状态</Dialog.Description><Tabs.Root key={view+selected} defaultValue="details"><Tabs.List><Tabs.Trigger value="details">Details</Tabs.Trigger>{view === "chat" && <Tabs.Trigger value="computer">Computer</Tabs.Trigger>}</Tabs.List><Tabs.Content value="details">{inspector}</Tabs.Content>{view === "chat" && <Tabs.Content value="computer"><DesktopPanel botId={selected} name={bot?.name || "Bot"} enabled={data.desktop} api={(path,body)=>api.desktop[path.endsWith('/bind')?'bind':'control'](body)}/></Tabs.Content>}</Tabs.Root><Flex justify="end" mt="5"><Dialog.Close><Button variant="soft">关闭</Button></Dialog.Close></Flex></Dialog.Content></Dialog.Root>
- <Dialog.Root open={adding} onOpenChange={setAdding}><Dialog.Content maxWidth="380px"><Dialog.Title>新建 bot</Dialog.Title><Dialog.Description size="2" mb="4">给助手取个名字。</Dialog.Description><TextField.Root aria-label="名称" placeholder="名称" maxLength={60} value={name} onChange={e => setName(e.target.value)}/><Flex gap="3" justify="end" mt="5"><Dialog.Close><Button variant="soft">取消</Button></Dialog.Close><Button onClick={async () => {
-        try {
-            const {bot:b} = await mutate(api.bot.create({
-                name
-            }));
+              />
+            </>
+          )}
+          {["active", "paused"].includes(r.state) && (
+            <Button
+              variant="soft"
+              size="1"
+              color="red"
+              onClick={() => action(kind, r, "cancel")}
+            >
+              取消
+            </Button>
+          )}
+        </Flex>
+        {r.error && (
+          <Text size="1" color="red">
+            {r.error}
+          </Text>
+        )}
+      </div>
+    );
+  }
+  const routineRows =
+    view === "schedules"
+      ? state?.proactive?.schedules || []
+      : state?.proactive?.monitors || [];
+  const routineView = ["schedules", "monitors"].includes(view),
+    kind = view === "schedules" ? "schedule" : "monitor";
+  const title =
+    view === "requests"
+      ? "待处理"
+      : routineView
+        ? view === "schedules"
+          ? "定时任务"
+          : "监控"
+        : view === "peers"
+          ? "Bot 对话"
+          : view === "group"
+            ? group?.name
+            : bot?.name;
+  const inspector = (
+    <>
+      <div className="details-section">
+        <Flex justify="between" align="center">
+          <Text size="2" color="gray">
+            定时任务
+          </Text>
+          <IconButton
+            variant="ghost"
+            aria-label="新建定时任务"
+            onClick={() => openRoutine("schedule")}
+          >
+            <Plus size={17} />
+          </IconButton>
+        </Flex>
+        {state?.proactive?.schedules?.some((r) =>
+          ["active", "paused"].includes(r.state),
+        ) ? (
+          state.proactive.schedules
+            .filter((r) => ["active", "paused"].includes(r.state))
+            .map((r) => routineCard("schedule", r))
+        ) : (
+          <Text as="p" size="2" color="gray">
+            还没有定时任务
+          </Text>
+        )}
+      </div>
+      <div className="details-section">
+        <Flex justify="between" align="center">
+          <Text size="2" color="gray">
+            监控
+          </Text>
+          <IconButton
+            variant="ghost"
+            aria-label="新建监控"
+            onClick={() => openRoutine("monitor")}
+          >
+            <Plus size={17} />
+          </IconButton>
+        </Flex>
+        {state?.proactive?.monitors?.some((r) =>
+          ["active", "paused"].includes(r.state),
+        ) ? (
+          state.proactive.monitors
+            .filter((r) => ["active", "paused"].includes(r.state))
+            .map((r) => routineCard("monitor", r))
+        ) : (
+          <Text as="p" size="2" color="gray">
+            还没有监控
+          </Text>
+        )}
+      </div>
+      <details className="runtime-details">
+        <summary>任务与会话</summary>
+        <Heading size="2" mt="6" mb="3">
+          运行状态
+        </Heading>
+        <Text size="2" color="gray">
+          待处理 {state?.counts?.inbox ?? 0}
+        </Text>
+        <Text as="div" size="1" color="gray">
+          累计输出 {botUsage.output} token
+        </Text>
+        <Heading size="2" mt="5" mb="3">
+          会话
+        </Heading>
+        {(data.threads || [])
+          .filter((t) => t.botId === selected)
+          .map((t) => (
+            <Flex key={t.id} gap="2" align="center" wrap="wrap">
+              <Text size="1">
+                {t.scope.channelId || "私聊"} ·{" "}
+                {t.status === "loaded"
+                  ? "已加载"
+                  : t.status === "archived"
+                    ? "已归档"
+                    : "已存储"}
+              </Text>
+              <Button
+                size="1"
+                variant="ghost"
+                onClick={async () => {
+                  try {
+                    if (t.status === "loaded") {
+                      const result = await api.thread.unload({
+                        threadId: t.id,
+                      });
+                      if (!result.unloaded)
+                        setNotice(
+                          "当前会话仍有工作：" + result.blockedBy.join("、"),
+                        );
+                    } else
+                      await api.thread[
+                        t.status === "archived" ? "unarchive" : "archive"
+                      ]({ threadId: t.id });
+                  } catch (e) {
+                    setNotice(errorText(e));
+                  }
+                }}
+              >
+                {t.status === "loaded"
+                  ? "卸载"
+                  : t.status === "archived"
+                    ? "恢复"
+                    : "归档"}
+              </Button>
+            </Flex>
+          ))}
+        <Heading size="2" mt="5" mb="3">
+          工具任务
+        </Heading>
+        {(data.jobs || [])
+          .filter((j) => j.botId === selected)
+          .map((j) => (
+            <div className="routine" key={j.id}>
+              <Text size="2">
+                {j.tool} · {labels[j.state] || j.state}
+              </Text>
+              <Button
+                size="1"
+                variant="ghost"
+                onClick={async () => {
+                  try {
+                    const v = await mutate(
+                      api.job.read({
+                        jobId: j.id,
+                      }),
+                    );
+                    setResult(JSON.stringify(v, null, 2));
+                  } catch (e) {
+                    setNotice(errorText(e));
+                  }
+                }}
+              >
+                查看结果
+              </Button>
+            </div>
+          ))}
+        {(state?.questions || []).map((q) => (
+          <div className="routine" key={q.id}>
+            <Text>{q.text || q.question}</Text>
+            <TextField.Root
+              placeholder="回答"
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+            />
+            <Button
+              size="1"
+              onClick={() =>
+                mutate(
+                  api.request.resolve({
+                    requestId: "req_question:" + q.id,
+                    response: { text: answer },
+                  }),
+                )
+                  .then(() => setAnswer(""))
+                  .catch((e) => setNotice(errorText(e)))
+              }
+            >
+              提交回答
+            </Button>
+          </div>
+        ))}
+      </details>
+    </>
+  );
+  const groupInspector = (
+    <>
+      <div className="profile">
+        <GroupAvatar members={groupBots} size={80} />
+        <Heading size="4">{group?.name}</Heading>
+        <Text size="2" color="gray">
+          {groupBots.length} 位成员
+        </Text>
+      </div>
+      <Text as="p" size="2" color="gray">
+        群消息所有成员可见，可用 @ 点名或 @全体成员。
+      </Text>
+      {groupBots.map((b) => (
+        <button
+          className="bot"
+          key={b.id}
+          onClick={() => {
             setSelected(b.id);
-            setView('chat');
-            setName('');
-            setAdding(false);
-        }
-        catch (e) {
-            setNotice(errorText(e));
-        }
-    }}>创建</Button></Flex></Dialog.Content></Dialog.Root>
- <PiSettingsDialog open={piSettingsOpen} onOpenChange={setPiSettingsOpen}/>
- </div></Theme>;
+            setView("chat");
+            setDetails(false);
+          }}
+        >
+          <BotAvatar id={b.id} name={b.name} activity={activity(b.id)} />
+          <Text>{b.name}</Text>
+        </button>
+      ))}
+    </>
+  );
+  const detailContent = (
+    <>
+      <div className="details-top">
+        <IconButton
+          variant="ghost"
+          color="gray"
+          aria-label="关闭详情"
+          onClick={() => setDetails(false)}
+        >
+          <X size={19} />
+        </IconButton>
+      </div>
+      {view === "group" ? (
+        groupInspector
+      ) : (
+        <>
+          <div className="profile">
+            <BotAvatar
+              id={bot?.id}
+              name={bot?.name}
+              size={88}
+              activity={activity(selected)}
+              animated
+            />
+            <Heading size="4">{bot?.name}</Heading>
+            <Text color="gray" size="2">
+              {bot?.description || "你的工作伙伴"}
+            </Text>
+          </div>
+          <Tabs.Root defaultValue="details" key={selected}>
+            <Tabs.List>
+              <Tabs.Trigger value="details">详情</Tabs.Trigger>
+              <Tabs.Trigger value="computer">电脑</Tabs.Trigger>
+            </Tabs.List>
+            <Tabs.Content value="details">{inspector}</Tabs.Content>
+            <Tabs.Content value="computer">
+              <DesktopPanel
+                botId={selected}
+                name={bot?.name || "Bot"}
+                enabled={data.desktop}
+                api={(path, body) =>
+                  api.desktop[path.endsWith("/bind") ? "bind" : "control"](body)
+                }
+              />
+            </Tabs.Content>
+          </Tabs.Root>
+        </>
+      )}
+    </>
+  );
+  return (
+    <Theme
+      appearance="dark"
+      accentColor="amber"
+      grayColor="sand"
+      radius="large"
+    >
+      <div className={"app " + (sidebarOpen ? "sidebar-open" : "")}>
+        {sidebarOpen && (
+          <button
+            className="sidebar-backdrop"
+            aria-label="收起会话列表"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+        <aside className="sidebar">
+          <div className="brand">
+            <Heading size="4">Pi Bot</Heading>
+            <Flex gap="2">
+              <IconButton
+                variant="ghost"
+                color="gray"
+                aria-label="搜索会话"
+                onClick={() =>
+                  document.getElementById("contact-search")?.focus()
+                }
+              >
+                <Search size={18} />
+              </IconButton>
+              <IconButton
+                variant="soft"
+                color="gray"
+                aria-label="新建 bot"
+                onClick={() => {
+                  setName("");
+                  setAdding(true);
+                }}
+              >
+                <Plus size={19} />
+              </IconButton>
+            </Flex>
+          </div>
+          <div className="sidebar-scroll">
+            <div className="home-bot">
+              {data.bots[0] && (
+                <button
+                  onClick={() => {
+                    setSelected(data.bots[0].id);
+                    setView("chat");
+                    setSidebarOpen(false);
+                  }}
+                >
+                  <BotAvatar
+                    id={data.bots[0].id}
+                    name={data.bots[0].name}
+                    activity={activity(data.bots[0].id)}
+                    size={64}
+                    animated
+                  />
+                  <Text size="2">{data.bots[0].name}</Text>
+                </button>
+              )}
+            </div>
+            <TextField.Root
+              id="contact-search"
+              aria-label="搜索 bot 或群"
+              placeholder="搜索 bot 或群"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <nav className="bots" aria-label="Bot 列表">
+              {data.bots
+                .filter((b) =>
+                  b.name.toLowerCase().includes(search.toLowerCase()),
+                )
+                .map((b, i) => (
+                  <button
+                    key={b.id}
+                    className={
+                      "bot " +
+                      (selected === b.id && view === "chat" ? "selected" : "")
+                    }
+                    onClick={() => {
+                      setSelected(b.id);
+                      setView("chat");
+                      setDetails(false);
+                      setSidebarOpen(false);
+                    }}
+                    aria-current={
+                      selected === b.id && view === "chat" ? "page" : undefined
+                    }
+                  >
+                    <BotAvatar
+                      id={b.id}
+                      name={b.name}
+                      activity={activity(b.id)}
+                    />
+                    <div className="bot-label">
+                      <Text as="div" size="2" weight="medium">
+                        {b.name}
+                      </Text>
+                      <Text as="div" size="1" color="gray" className="preview">
+                        {data.messages
+                          .filter(
+                            (m) =>
+                              m.botId === b.id &&
+                              m.channelId ===
+                                (b.channelId || `local:${b.id}`) &&
+                              m.sourceKind !== "job" &&
+                              !(
+                                m.direction === "inbound" &&
+                                m.sourceKind === "bot"
+                              ),
+                          )
+                          .at(-1)?.text || "开始聊天"}
+                      </Text>
+                    </div>
+                  </button>
+                ))}
+            </nav>
+            <Flex justify="between" align="center" mt="4" mb="2">
+              <Text size="1" color="gray">
+                群聊
+              </Text>
+              <Button
+                size="1"
+                variant="ghost"
+                onClick={() => {
+                  setName("");
+                  setMembers([]);
+                  setNewGroup(true);
+                }}
+              >
+                新建群聊
+              </Button>
+            </Flex>
+            <nav aria-label="群聊列表">
+              {data.groups
+                .filter((g) => g.name.includes(search))
+                .map((g) => (
+                  <button
+                    className={
+                      "bot " +
+                      (view === "group" && g.id === groupId ? "selected" : "")
+                    }
+                    key={g.id}
+                    onClick={() => {
+                      setGroupId(g.id);
+                      setGroupTarget(g.memberIds[0]);
+                      setSelected(g.memberIds[0]);
+                      setView("group");
+                      setDetails(false);
+                      setSidebarOpen(false);
+                    }}
+                    aria-current={
+                      view === "group" && g.id === groupId ? "page" : undefined
+                    }
+                  >
+                    <GroupAvatar
+                      members={data.bots.filter((b) =>
+                        g.memberIds.includes(b.id),
+                      )}
+                    />
+                    <div className="bot-label">
+                      <Text size="2" as="div">
+                        {g.name}
+                      </Text>
+                      <Text size="1" color="gray">
+                        {g.memberIds.length} 个 bot
+                      </Text>
+                    </div>
+                  </button>
+                ))}
+            </nav>
+            <nav className="sections" aria-label="工作区">
+              <Button
+                variant={view === "schedules" ? "soft" : "ghost"}
+                color="gray"
+                onClick={() => {
+                  setView("schedules");
+                  setSidebarOpen(false);
+                }}
+              >
+                <Clock3 size={16} />
+                定时任务
+              </Button>
+              <Button
+                variant={view === "monitors" ? "soft" : "ghost"}
+                color="gray"
+                onClick={() => {
+                  setView("monitors");
+                  setSidebarOpen(false);
+                }}
+              >
+                <Radar size={16} />
+                监控
+              </Button>
+              <Button
+                variant={view === "peers" ? "soft" : "ghost"}
+                color="gray"
+                onClick={() => {
+                  setView("peers");
+                  setSidebarOpen(false);
+                }}
+              >
+                <MessagesSquare size={16} />
+                Bot 对话
+              </Button>
+            </nav>
+          </div>
+          <div className="sidebar-footer">
+            <Button
+              variant={view === "requests" ? "soft" : "ghost"}
+              color="gray"
+              onClick={() => {
+                setView("requests");
+                setSidebarOpen(false);
+              }}
+            >
+              待处理 ·{" "}
+              {
+                (data.requests || []).filter((r) => r.status === "pending")
+                  .length
+              }
+            </Button>
+            <Button
+              variant="soft"
+              color="gray"
+              onClick={() => setPiSettingsOpen(true)}
+            >
+              <Settings2 size={16} />
+              Pi 登录与模型
+            </Button>
+            <div className="mode">
+              <span
+                className={
+                  "connection-dot " +
+                  (!error && data.status === "ready" ? "connected" : "")
+                }
+              />
+              <Text size="1" color="gray">
+                {error ||
+                  (data.configuration?.setupRequired
+                    ? "请配置 Pi"
+                    : data.status === "ready"
+                      ? "Pi 已连接"
+                      : "连接中")}
+              </Text>
+            </div>
+          </div>
+        </aside>
+        <main className="main">
+          <header className="header">
+            <IconButton
+              className="mobile-menu"
+              variant="ghost"
+              color="gray"
+              aria-label="打开会话列表"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <Menu size={20} />
+            </IconButton>
+            <button
+              className="conversation-identity"
+              onClick={() => setDetails((v) => !v)}
+              disabled={!bot && !group}
+              aria-label="打开会话详情"
+            >
+              {view === "chat" ? (
+                <BotAvatar
+                  id={bot?.id}
+                  name={bot?.name}
+                  size={28}
+                  activity={activity(selected)}
+                  animated
+                />
+              ) : view === "group" ? (
+                <GroupAvatar members={groupBots} size={28} />
+              ) : null}
+              <Heading size="3">{title || "Pi Bot"}</Heading>
+            </button>
+            {routineView ? (
+              <Button
+                size="2"
+                disabled={!selected}
+                onClick={() => openRoutine(kind)}
+              >
+                <Plus size={16} />
+                新建
+              </Button>
+            ) : (
+              <IconButton
+                variant="ghost"
+                color="gray"
+                aria-label="详情"
+                onClick={() => setDetails((v) => !v)}
+              >
+                <PanelRight size={19} />
+              </IconButton>
+            )}
+          </header>
+          {data.configuration?.setupRequired && (
+            <Callout.Root color="amber" m="3">
+              <Callout.Text>{data.configuration.message}</Callout.Text>
+              <Button variant="soft" onClick={() => setPiSettingsOpen(true)}>
+                登录并选择模型
+              </Button>
+            </Callout.Root>
+          )}
+          {data.trigger?.halted && (
+            <Callout.Root color="red" m="3">
+              <Callout.Text>触发投递需要核查，已停止自动处理。</Callout.Text>
+            </Callout.Root>
+          )}
+          {data.errors?.length > 0 && (
+            <Callout.Root color="red" m="3">
+              <Callout.Text>{data.errors.at(-1)}</Callout.Text>
+            </Callout.Root>
+          )}
+          {notice && (
+            <Callout.Root m="3">
+              <Callout.Text>{notice}</Callout.Text>
+              <Button variant="ghost" onClick={() => setNotice("")}>
+                关闭
+              </Button>
+            </Callout.Root>
+          )}
+          {view === "requests" ? (
+            <section className="routine-page">
+              <Heading size="4" mb="4">
+                待处理
+              </Heading>
+              {(data.requests || [])
+                .filter((r) => r.status === "pending")
+                .map((r) => (
+                  <div className="routine" key={r.id}>
+                    <Text weight="medium">
+                      {botName(r.botId)} ·{" "}
+                      {r.kind === "approval"
+                        ? "工具审批"
+                        : r.kind === "question"
+                          ? "需要回答"
+                          : "凭据输入"}
+                    </Text>
+                    <Text size="2">
+                      {r.params.text || r.params.label || r.params.tool}
+                    </Text>
+                    {r.kind === "approval" && (
+                      <>
+                        <pre
+                          style={{
+                            whiteSpace: "pre-wrap",
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {JSON.stringify(r.params.args, null, 2)}
+                        </pre>
+                        <Flex gap="3">
+                          <Button
+                            onClick={() =>
+                              api.request
+                                .resolve({
+                                  requestId: r.id,
+                                  response: { decision: "approve" },
+                                })
+                                .catch((e) => setNotice(errorText(e)))
+                            }
+                          >
+                            允许
+                          </Button>
+                          <Button
+                            color="red"
+                            variant="soft"
+                            onClick={() =>
+                              api.request
+                                .resolve({
+                                  requestId: r.id,
+                                  response: { decision: "deny" },
+                                })
+                                .catch((e) => setNotice(errorText(e)))
+                            }
+                          >
+                            拒绝
+                          </Button>
+                        </Flex>
+                      </>
+                    )}
+                    {r.kind === "question" && (
+                      <>
+                        <TextField.Root
+                          aria-label="回答待处理问题"
+                          value={answer}
+                          onChange={(e) => setAnswer(e.target.value)}
+                        />
+                        <Button
+                          disabled={!answer.trim()}
+                          onClick={() =>
+                            api.request
+                              .resolve({
+                                requestId: r.id,
+                                response: { text: answer },
+                              })
+                              .then(() => setAnswer(""))
+                              .catch((e) => setNotice(errorText(e)))
+                          }
+                        >
+                          回答
+                        </Button>
+                      </>
+                    )}
+                    {r.kind === "credential" && r.params.formUrl && (
+                      <a
+                        href={r.params.formUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        安全输入凭据
+                      </a>
+                    )}
+                  </div>
+                ))}
+              {!(data.requests || []).some((r) => r.status === "pending") && (
+                <Text color="gray">没有待处理请求</Text>
+              )}
+            </section>
+          ) : routineView ? (
+            <section className="routine-page">
+              <Flex gap="3" align="center" wrap="wrap">
+                <Text size="2">所属 bot</Text>
+                <Picker
+                  label="查看 bot 的任务"
+                  value={selected}
+                  onChange={setSelected}
+                  items={data.bots}
+                />
+              </Flex>
+              <Text as="p" size="2" color="gray">
+                {kind === "schedule"
+                  ? `${bot?.name || "当前 bot"} 的定时任务，时间按上海时区显示。`
+                  : `${bot?.name || "当前 bot"} 的文件变化监控，先试运行再启用。`}
+              </Text>
+              <div className="routine-list">
+                {routineRows.length ? (
+                  routineRows.map((r) => routineCard(kind, r))
+                ) : (
+                  <div className="empty">
+                    <Heading size="4">
+                      暂无{kind === "schedule" ? "定时任务" : "监控"}
+                    </Heading>
+                    <Button
+                      disabled={!selected}
+                      onClick={() => openRoutine(kind)}
+                    >
+                      创建第一个{kind === "schedule" ? "定时任务" : "监控"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </section>
+          ) : (
+            <>
+              {view === "group" && (
+                <div className="view-toolbar group-toolbar">
+                  <Text size="2" color="gray">
+                    {groupBots.map((b) => b.name).join("、")}
+                  </Text>
+                  {data.messages.some(
+                    (m) =>
+                      m.channelId === groupId &&
+                      m.sourceKind === "bot" &&
+                      m.direction === "inbound" &&
+                      m.deliveryTarget === "direct",
+                  ) && (
+                    <Button
+                      variant="ghost"
+                      color="gray"
+                      size="1"
+                      onClick={() => {
+                        const m = data.messages.find(
+                          (m) =>
+                            m.channelId === groupId &&
+                            m.sourceKind === "bot" &&
+                            m.direction === "inbound" &&
+                            m.deliveryTarget === "direct",
+                        );
+                        setPeerA(m.sender);
+                        setPeerB(m.recipient);
+                        setPeerScope(groupId);
+                        setView("peers");
+                      }}
+                    >
+                      bot 间对话
+                    </Button>
+                  )}
+                </div>
+              )}
+              {view === "peers" && (
+                <div className="view-toolbar">
+                  <Flex gap="2" align="center" wrap="wrap">
+                    <Picker
+                      label="发起 bot"
+                      value={peerA}
+                      onChange={setPeerA}
+                      items={data.bots}
+                    />
+                    <Text>⇄</Text>
+                    <Picker
+                      label="协作 bot"
+                      value={peerB}
+                      onChange={setPeerB}
+                      items={data.bots}
+                    />
+                    <Picker
+                      label="对话范围"
+                      value={peerScope}
+                      onChange={setPeerScope}
+                      items={[
+                        {
+                          id: "direct",
+                          name: "直接协作",
+                        },
+                        ...data.groups,
+                      ]}
+                    />
+                  </Flex>
+                  <Text size="1" color="gray">
+                    查看两个 bot 的实际协作记录，也可发起新任务。
+                  </Text>
+                </div>
+              )}
+              <section
+                ref={conversation}
+                className={
+                  "conversation " + (view === "chat" ? "private-chat" : "")
+                }
+                aria-label="聊天消息"
+                onScroll={() => {
+                  const el = conversation.current;
+                  const bottom =
+                    el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+                  pinnedToEnd.current = bottom;
+                  setAtBottom(bottom);
+                }}
+              >
+                {messages.length ? (
+                  messages.map((m, i) => (
+                    <React.Fragment key={m.direction + m.messageId}>
+                      {(!i ||
+                        m.receivedAt - messages[i - 1].receivedAt > 300000) && (
+                        <div className="date-divider">
+                          {new Date(m.receivedAt).toLocaleString("zh-CN", {
+                            timeZone: "Asia/Shanghai",
+                            month: "numeric",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
+                      )}
+                      <div
+                        className={
+                          "row " +
+                          (m.direction === "inbound" &&
+                          ["user", "answer"].includes(m.sourceKind)
+                            ? "user"
+                            : "")
+                        }
+                      >
+                        <div className="bubble" title={time(m.receivedAt)}>
+                          <div className="bubble-meta">
+                            {["user", "answer"].includes(m.sourceKind)
+                              ? "你"
+                              : m.direction === "outbound"
+                                ? botName(m.sender)
+                                : m.sourceKind === "bot"
+                                  ? `${botName(m.sender)}${m.recipient === "group" ? " · 群消息" : " → " + botName(m.recipient)}`
+                                  : m.sourceKind === "schedule"
+                                    ? "定时任务"
+                                    : "监控"}{" "}
+                            ·{" "}
+                            {new Date(m.receivedAt).toLocaleTimeString(
+                              "zh-CN",
+                              {
+                                timeZone: "Asia/Shanghai",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              },
+                            )}
+                          </div>
+                          <MessageBody text={displayText(m)} />
+                          {[
+                            "queued",
+                            "processing",
+                            "uncertain",
+                            "failed",
+                          ].includes(m.status) && (
+                            <Text size="1" className="status">
+                              {labels[m.status] || m.status}
+                            </Text>
+                          )}
+                          {m.status === "uncertain" &&
+                            m.sourceKind === "user" && (
+                              <Button
+                                size="1"
+                                variant="soft"
+                                onClick={() =>
+                                  mutate(
+                                    api.task.reconcile({
+                                      inputId: m.messageId,
+                                    }),
+                                  ).catch((e) => setNotice(errorText(e)))
+                                }
+                              >
+                                核查并恢复
+                              </Button>
+                            )}
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  ))
+                ) : (
+                  <div className="empty">
+                    <Heading size="5">
+                      {view === "peers" ? "暂无 bot 对话" : "准备开始"}
+                    </Heading>
+                    <Text color="gray" size="2">
+                      {view === "peers"
+                        ? "选择两个 bot，发起一项真实协作任务。"
+                        : "发一条消息，开始处理任务。"}
+                    </Text>
+                  </div>
+                )}
+                <div ref={end} />
+              </section>
+              <div className="composer-area">
+                {!atBottom && (
+                  <Button
+                    className="scroll-latest"
+                    variant="soft"
+                    color="gray"
+                    onClick={scrollBottom}
+                  >
+                    <ChevronDown size={17} />
+                    最新消息
+                  </Button>
+                )}
+                {view === "chat" && activity(selected) !== "idle" && (
+                  <div className="activity-line" role="status">
+                    <BotAvatar
+                      id={selected}
+                      name={bot?.name}
+                      activity={activity(selected)}
+                      size={22}
+                      animated
+                    />
+                    <Text size="2" color="gray">
+                      {activityLabels[activity(selected)]}
+                    </Text>
+                  </div>
+                )}
+                {mentionOptions.length > 0 && (
+                  <div
+                    className="mention-menu"
+                    role="listbox"
+                    aria-label="选择 @ 成员"
+                  >
+                    {mentionOptions.map((name, i) => (
+                      <button
+                        key={name}
+                        className={i === mentionIndex ? "active" : ""}
+                        onClick={() => chooseMention(name)}
+                      >
+                        {name === "全体成员" ? "@全体成员" : "@" + name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {Object.entries(data.streaming || {})
+                  .filter(([id]) => {
+                    const thread = data.threads.find(
+                      (t) => t.id === data.streamingScopes?.[id],
+                    );
+                    return (
+                      thread &&
+                      (view === "group"
+                        ? thread.scope.channelId === groupId
+                        : view === "chat"
+                          ? thread.botId === selected &&
+                            thread.scope.channelId === (bot?.channelId ?? null)
+                          : false)
+                    );
+                  })
+                  .map(([id, text]) => (
+                    <div key={id} className="routine">
+                      <Text size="2">{text}</Text>
+                      <Text size="1" color="gray">
+                        正在回复…
+                      </Text>
+                    </div>
+                  ))}
+                <div className="composer">
+                  <TextArea
+                    ref={composer}
+                    aria-label="消息"
+                    placeholder={
+                      view === "peers"
+                        ? "交给这两个 bot 的协作任务…"
+                        : view === "group"
+                          ? `发到 ${group?.name}…`
+                          : `给 ${bot?.name || "bot"} 发消息…`
+                    }
+                    value={draft}
+                    onChange={(e) => {
+                      setDraft(e.target.value);
+                      setMentionIndex(0);
+                      setHideMentions(false);
+                    }}
+                    rows={1}
+                    onKeyDown={(e) => {
+                      if (mentionOptions.length) {
+                        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                          e.preventDefault();
+                          setMentionIndex(
+                            (i) =>
+                              (i +
+                                (e.key === "ArrowDown" ? 1 : -1) +
+                                mentionOptions.length) %
+                              mentionOptions.length,
+                          );
+                          return;
+                        }
+                        if (e.key === "Escape") {
+                          setHideMentions(true);
+                          return;
+                        }
+                        if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                          e.preventDefault();
+                          chooseMention(mentionOptions[mentionIndex]);
+                          return;
+                        }
+                      }
+                      if (
+                        e.key === "Enter" &&
+                        !e.shiftKey &&
+                        !e.nativeEvent.isComposing
+                      ) {
+                        e.preventDefault();
+                        send();
+                      }
+                    }}
+                  />
+                  <Button
+                    disabled={
+                      !api ||
+                      busy ||
+                      !draft.trim() ||
+                      !!error ||
+                      data.configuration?.setupRequired
+                    }
+                    onClick={send}
+                    aria-label={view === "peers" ? "发起协作" : "发送"}
+                    className="send-button"
+                  >
+                    {busy ? "…" : <ArrowUp size={20} />}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </main>
+        {details && wide && ["chat", "group"].includes(view) && (
+          <aside className="inspector" aria-label="会话详情">
+            {detailContent}
+          </aside>
+        )}
+        <Dialog.Root
+          open={!!routineKind}
+          onOpenChange={(v) => {
+            if (!v) setRoutineKind("");
+          }}
+        >
+          <Dialog.Content maxWidth="440px">
+            <Dialog.Title>
+              {routineKind === "schedule" ? "新建定时任务" : "新建监控"}
+            </Dialog.Title>
+            <Dialog.Description size="2" mb="4">
+              {routineKind === "schedule"
+                ? "选择负责 bot、任务和执行时间。"
+                : "监控仓库内的文件变化；试运行通过后启用。"}
+            </Dialog.Description>
+            <Flex direction="column" gap="3">
+              {notice && (
+                <Text size="2" color="red">
+                  {notice}
+                </Text>
+              )}
+              <Picker
+                label="负责 bot"
+                value={routineOwner}
+                onChange={(v) => {
+                  setRoutineOwner(v);
+                  setRoutineGroup("direct");
+                }}
+                items={data.bots}
+              />
+              <Picker
+                label="回复到"
+                value={routineGroup}
+                onChange={setRoutineGroup}
+                items={[
+                  {
+                    id: "direct",
+                    name: "回复到 bot 私聊",
+                  },
+                  ...data.groups.filter((g) =>
+                    g.memberIds.includes(routineOwner),
+                  ),
+                ]}
+              />
+              <TextArea
+                aria-label="任务内容"
+                placeholder="任务内容"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+              />
+              <Flex gap="2">
+                <Button
+                  size="1"
+                  variant="soft"
+                  onClick={() =>
+                    setWhen(
+                      new Date(Date.now() + 120000)
+                        .toLocaleString("sv-SE", {
+                          timeZone: "Asia/Shanghai",
+                        })
+                        .replace(" ", "T")
+                        .slice(0, 16),
+                    )
+                  }
+                >
+                  2 分钟后
+                </Button>
+                <Button
+                  size="1"
+                  variant="soft"
+                  onClick={() =>
+                    setWhen(
+                      new Date(Date.now() + 3600000)
+                        .toLocaleString("sv-SE", {
+                          timeZone: "Asia/Shanghai",
+                        })
+                        .replace(" ", "T")
+                        .slice(0, 16),
+                    )
+                  }
+                >
+                  1 小时后
+                </Button>
+              </Flex>
+              <label>
+                <Text size="2">
+                  {routineKind === "schedule" ? "首次执行时间" : "监控截止时间"}
+                  （上海）
+                </Text>
+                <TextField.Root
+                  aria-label="执行时间"
+                  type="datetime-local"
+                  value={when}
+                  onChange={(e) => setWhen(e.target.value)}
+                />
+              </label>
+              <label>
+                <Text size="2">
+                  {routineKind === "schedule"
+                    ? "重复间隔（分钟，留空仅一次）"
+                    : "检查间隔（分钟）"}
+                </Text>
+                <TextField.Root
+                  aria-label="间隔分钟"
+                  type="number"
+                  min="1"
+                  value={interval}
+                  onChange={(e) => setIntervalMinutes(e.target.value)}
+                />
+              </label>
+              {routineKind === "monitor" && (
+                <label>
+                  <Text size="2">监控文件（仓库内路径）</Text>
+                  <TextField.Root
+                    aria-label="监控文件"
+                    placeholder={data.watchFile}
+                    value={watchPath}
+                    onChange={(e) => setWatchPath(e.target.value)}
+                  />
+                </label>
+              )}
+              <Flex gap="3" justify="end">
+                <Dialog.Close>
+                  <Button variant="soft" color="gray">
+                    返回
+                  </Button>
+                </Dialog.Close>
+                <Button
+                  disabled={busy || !routineOwner || !prompt.trim()}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      const at = Date.parse(when + ":00+08:00");
+                      if (!Number.isFinite(at)) throw Error("请选择有效时间");
+                      await mutate(
+                        api.routine.create({
+                          botId: routineOwner,
+                          kind: routineKind,
+                          prompt,
+                          groupId:
+                            routineGroup === "direct"
+                              ? undefined
+                              : routineGroup,
+                          ...(routineKind === "schedule"
+                            ? {
+                                at,
+                                timezone: "Asia/Shanghai",
+                                intervalMs: interval
+                                  ? Number(interval) * 60000
+                                  : undefined,
+                              }
+                            : {
+                                deadline: at,
+                                intervalMs: interval
+                                  ? Number(interval) * 60000
+                                  : 60000,
+                                filePath: watchPath || undefined,
+                              }),
+                        }),
+                      );
+                      setSelected(routineOwner);
+                      setRoutineKind("");
+                      setPrompt("");
+                      setWhen("");
+                      setIntervalMinutes("");
+                      setWatchPath("");
+                      setNotice("");
+                    } catch (e) {
+                      setNotice(errorText(e));
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  创建
+                </Button>
+              </Flex>
+            </Flex>
+          </Dialog.Content>
+        </Dialog.Root>
+        <Dialog.Root open={newGroup} onOpenChange={setNewGroup}>
+          <Dialog.Content maxWidth="400px">
+            <Dialog.Title>新建群聊</Dialog.Title>
+            <Dialog.Description size="2" mb="4">
+              至少选择两个 bot；同一 bot 可加入多个群。群消息所有成员可见，输入
+              @ 点名或 @全体成员。
+            </Dialog.Description>
+            <Flex direction="column" gap="3">
+              <TextField.Root
+                aria-label="群名称"
+                placeholder="群名称"
+                maxLength={60}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              {data.bots.map((b) => (
+                <label key={b.id}>
+                  <Flex gap="2" align="center">
+                    <Checkbox
+                      checked={members.includes(b.id)}
+                      onCheckedChange={(checked) =>
+                        setMembers((s) =>
+                          checked
+                            ? [...s, b.id]
+                            : s.filter((id) => id !== b.id),
+                        )
+                      }
+                    />
+                    <Text size="2">{b.name}</Text>
+                  </Flex>
+                </label>
+              ))}
+              {notice && (
+                <Text color="red" size="2">
+                  {notice}
+                </Text>
+              )}
+              <Flex justify="end" gap="3">
+                <Dialog.Close>
+                  <Button variant="soft">返回</Button>
+                </Dialog.Close>
+                <Button
+                  disabled={busy || members.length < 2 || !name.trim()}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      const { group: g } = await mutate(
+                        api.group.create({
+                          name,
+                          memberIds: members,
+                        }),
+                      );
+                      setGroupId(g.id);
+                      setGroupTarget(g.memberIds[0]);
+                      setSelected(g.memberIds[0]);
+                      setView("group");
+                      setNewGroup(false);
+                      setName("");
+                      setNotice("");
+                    } catch (e) {
+                      setNotice(errorText(e));
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  创建群聊
+                </Button>
+              </Flex>
+            </Flex>
+          </Dialog.Content>
+        </Dialog.Root>
+        <Dialog.Root
+          open={!!result}
+          onOpenChange={(v) => {
+            if (!v) setResult("");
+          }}
+        >
+          <Dialog.Content>
+            <Dialog.Title>任务结果</Dialog.Title>
+            <Dialog.Description>
+              持久工具结果，最多显示首 4096 字。
+            </Dialog.Description>
+            <pre
+              style={{
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {result}
+            </pre>
+            <Dialog.Close>
+              <Button>关闭</Button>
+            </Dialog.Close>
+          </Dialog.Content>
+        </Dialog.Root>
+        <Dialog.Root
+          open={details && (!wide || !["chat", "group"].includes(view))}
+          onOpenChange={setDetails}
+        >
+          <Dialog.Content className="details-dialog" maxWidth="460px">
+            <Dialog.Title className="sr-only">会话详情</Dialog.Title>
+            <Dialog.Description className="sr-only">
+              Bot 任务、运行状态和电脑
+            </Dialog.Description>
+            {detailContent}
+          </Dialog.Content>
+        </Dialog.Root>
+        <Dialog.Root open={adding} onOpenChange={setAdding}>
+          <Dialog.Content maxWidth="380px">
+            <Dialog.Title>新建 bot</Dialog.Title>
+            <Dialog.Description size="2" mb="4">
+              给助手取个名字。
+            </Dialog.Description>
+            <TextField.Root
+              aria-label="名称"
+              placeholder="名称"
+              maxLength={60}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <Flex gap="3" justify="end" mt="5">
+              <Dialog.Close>
+                <Button variant="soft">取消</Button>
+              </Dialog.Close>
+              <Button
+                onClick={async () => {
+                  try {
+                    const { bot: b } = await mutate(
+                      api.bot.create({
+                        name,
+                      }),
+                    );
+                    setSelected(b.id);
+                    setView("chat");
+                    setName("");
+                    setAdding(false);
+                  } catch (e) {
+                    setNotice(errorText(e));
+                  }
+                }}
+              >
+                创建
+              </Button>
+            </Flex>
+          </Dialog.Content>
+        </Dialog.Root>
+        <PiSettingsDialog
+          open={piSettingsOpen}
+          onOpenChange={setPiSettingsOpen}
+        />
+      </div>
+    </Theme>
+  );
 }
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById("root")).render(<App />);
