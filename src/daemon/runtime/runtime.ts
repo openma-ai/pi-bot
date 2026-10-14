@@ -503,6 +503,10 @@ export class BotRuntime implements BotHost {
                 throw new PiBotError('conflict', 'Question already answered');
             return;
         }
+        const source = this.store.get<Envelope>('inbox', q.messageId);
+        if (!source)
+            throw new PiBotError('taskCancelled', 'Question source is unavailable');
+        this.assertTaskCurrent(source);
         this.store.transaction(() => {
             this.accept({
                 to: q.botId, text: JSON.stringify({
@@ -541,6 +545,7 @@ export class BotRuntime implements BotHost {
                     botId: e.to, tool, args, taskId: e.taskId
                 }))
                     throw new PiBotError('forbidden', 'Permission denied');
+                this.assertTaskCurrent(e);
                 const value = await execute();
                 this.settleJob(j, 'completed', JSON.stringify(value) ?? 'null');
             }

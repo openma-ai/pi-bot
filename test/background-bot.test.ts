@@ -8,7 +8,8 @@ import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialSto
 import { BotRuntime } from '../src/daemon/runtime/runtime.ts';
 import { piSessionFactory } from '../src/pi/session-factory.ts';
 import type { Envelope, Job, Outbound } from '../src/daemon/runtime/store.ts';
-for (const variant of ['reply', 'nested', 'cancel', 'peer'])
+import { RequestBroker } from '../src/daemon/requests/request-broker.ts';
+for (const variant of ['reply', 'nested', 'cancel', 'peer', 'approval'])
     test(`background cell uses durable bot jobs/inbox: ${variant}`, {
         timeout: 15000
     }, async () => {
@@ -83,6 +84,9 @@ for (const variant of ['reply', 'nested', 'cancel', 'peer'])
                 directory: join(dir, 'executions'), yieldTimeMs: 10000
             }
         }));
+        const broker = variant === 'approval' ? new RequestBroker(runtime, new Map()) : undefined;
+        if (broker) runtime.approvals = { request: input => broker.approval(input) };
+        let approving: ReturnType<typeof setInterval> | undefined;
         const until = async (f: () => boolean) => {
             const end = Date.now() + 3000;
             while (!f()) {
@@ -107,7 +111,7 @@ for (const variant of ['reply', 'nested', 'cancel', 'peer'])
                     replyTo: parent.id
                 } : {})
             }).id;
-            assert.equal(await until(() => started === 1), true, 'codemode must call a real native tool');
+            assert.equal(await until(() => broker ? broker.list().some(r => r.status === 'pending') : started === 1), true, 'execution must reach its scoped wait');
             if (variant === 'peer')
                 runtime.sendToBot(parent, bot.id, 'Priority observation only; no reply', 'late', {
                     priority: true
@@ -119,6 +123,15 @@ for (const variant of ['reply', 'nested', 'cancel', 'peer'])
                     }, taskControl: cancel ? 'cancel' : undefined, text: cancel ? 'cancel work' : 'Incidental chatter, no reply', key: 'late'
                 });
             assert.equal(await until(() => contexts.some(s => s.includes('Script running with cell ID'))), true);
+            if (broker) {
+                assert.equal(await until(() => contexts.some(s => s.includes('Incidental chatter, no reply'))), true, 'same bot must consume B while A is awaiting approval');
+                assert.equal(started, 0, 'approval must gate native effects');
+                approving = setInterval(() => {
+                    for (const request of broker.list()) if (request.status === 'pending')
+                        broker.resolve(request.id, { decision: 'approve' }, 'isolated-test');
+                }, 5);
+                assert.equal(await until(() => started === 1), true);
+            }
             assert.equal(signal?.aborted, false);
             assert.equal(runtime.store.list<Job>('jobs').length, 1);
             assert.equal(runtime.store.list<Job>('jobs')[0].state, 'running');
@@ -135,6 +148,8 @@ for (const variant of ['reply', 'nested', 'cancel', 'peer'])
                 assert.deepEqual(out[0].route, route);
         }
         finally {
+            if (approving) clearInterval(approving);
+            broker?.close();
             release();
             await runtime.close();
             await rm(dir, {

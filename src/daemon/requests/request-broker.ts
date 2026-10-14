@@ -69,9 +69,10 @@ export class RequestBroker {
         tool: string;
         args: unknown;
     }) {
-        const source = this.runtime.store.list<any>('inbox').find(e => e.to === input.botId && e.taskId === input.taskId && e.state === 'processing');
+        const source = this.runtime.store.list<any>('inbox').find(e => e.to === input.botId && e.taskId === input.taskId);
         if (!source)
             throw new PiBotError('taskCancelled', 'Task is no longer active');
+        this.runtime.assertTaskCurrent(source);
         const r = this.create('approval', source, input, Date.now() + this.timeout);
         return new Promise<boolean>(resolve => {
             this.waiting.set(r.id, resolve);
