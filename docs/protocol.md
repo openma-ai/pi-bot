@@ -17,6 +17,7 @@ JSON-RPC 2.0 over in-process, HTTP + SSE, or stdio JSONL. Initialize, acknowledg
 | `bot/read` | [params / result](../dist/protocol/schema.json) |
 | `bot/create` | [params / result](../dist/protocol/schema.json) |
 | `bot/update` | [params / result](../dist/protocol/schema.json) |
+| `bot/avatarUpload` | [params / result](../dist/protocol/schema.json) |
 | `group/list` | [params / result](../dist/protocol/schema.json) |
 | `group/create` | [params / result](../dist/protocol/schema.json) |
 | `group/update` | [params / result](../dist/protocol/schema.json) |

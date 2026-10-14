@@ -1,5 +1,6 @@
 # App-server 实现与验收交接
 
+当前命名 Runtime 设置、SSH 原生部署与可选一体镜像见 [Runtime 连接指南](runtime-connections.md)。以下保留历史验收。
 2026-10-14。实现依据 [daemon-app-server 提案 v2](daemon-app-server.md)。远程 main 的分层与设计提交已合并到 local-behavior，本地合并提交为 b06e682；保留既有 bot、群聊、消息、原生 Pi sessions 和 Linux 桌面功能。
 
 ## 已实现

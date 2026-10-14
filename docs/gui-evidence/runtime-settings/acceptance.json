@@ -1,0 +1,157 @@
+{
+  "date": "2026-10-14",
+  "offline": {
+    "passed": 256,
+    "failed": 0,
+    "skipped": 0,
+    "typeCheck": true,
+    "guiLint": true,
+    "guiBuild": true
+  },
+  "ssh": {
+    "realOpenSSH": true,
+    "host": "controlled Debian 13 arm64 fixture",
+    "remoteModelRequests": 0,
+    "screen": [
+      1280,
+      900
+    ],
+    "takeoverReturn": true,
+    "nativeDesktopRestart": true,
+    "productionVpsBootVerified": false
+  },
+  "gui": {
+    "addDoesNotEnable": true,
+    "remoteSnapshotIsolated": true,
+    "piAuthIsolated": true,
+    "mobileViewport": [
+      390,
+      844
+    ],
+    "noHorizontalOverflow": true,
+    "avatarShapeColorReload": true
+  },
+  "realApi": {
+    "model": "deepseek-v4-flash",
+    "thinking": "high",
+    "task": "7*9 and uname, native bash then send_message",
+    "inbox": {
+      "id": "cf89e3f6-ed78-470b-9cfd-9b16b171869d",
+      "text": "Runtime client 验收：用原生 bash 实际计算 7*9，并读取 uname -s。只通过 send_message 回复 RUNTIME-CLIENT-20261014=63 和操作系统名称；不要写文件、不要确认、不要新建任务或 worker。"
+    },
+    "outbox": [
+      {
+        "id": "208bd91b-a431-4056-9e64-8268401a8764",
+        "botId": "d8147f56-a724-48d9-9211-745e557547ea",
+        "replyTo": "cf89e3f6-ed78-470b-9cfd-9b16b171869d",
+        "text": "RUNTIME-CLIENT-20261014=63；操作系统名称=Darwin",
+        "state": "delivered"
+      }
+    ],
+    "trace": [
+      {
+        "type": "toolCall",
+        "name": "bash",
+        "arguments": {
+          "command": "echo $((7*9)); uname -s",
+          "source_message_id": "cf89e3f6-ed78-470b-9cfd-9b16b171869d"
+        }
+      },
+      {
+        "type": "toolResult",
+        "name": "bash",
+        "text": "63\nDarwin\n"
+      },
+      {
+        "type": "toolCall",
+        "name": "send_message",
+        "arguments": {
+          "key": "runtime-client-20261014-reply",
+          "source_message_id": "cf89e3f6-ed78-470b-9cfd-9b16b171869d",
+          "text": "RUNTIME-CLIENT-20261014=63；操作系统名称=Darwin"
+        }
+      }
+    ],
+    "requests": 3,
+    "nativeUsage": [
+      {
+        "input": 20465,
+        "output": 105,
+        "cacheRead": 4864,
+        "cacheWrite": 0,
+        "reasoning": 18,
+        "totalTokens": 25434,
+        "cost": {
+          "input": 0.0061395,
+          "output": 0.000126,
+          "cacheRead": 2.9184e-05,
+          "cacheWrite": 0,
+          "total": 0.006294684
+        }
+      },
+      {
+        "input": 20611,
+        "output": 118,
+        "cacheRead": 5248,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 25977,
+        "cost": {
+          "input": 0.0061833,
+          "output": 0.0001416,
+          "cacheRead": 3.1488e-05,
+          "cacheWrite": 0,
+          "total": 0.006356388
+        }
+      },
+      {
+        "input": 21391,
+        "output": 86,
+        "cacheRead": 5376,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 26853,
+        "cost": {
+          "input": 0.0064173,
+          "output": 0.0001032,
+          "cacheRead": 3.2256e-05,
+          "cacheWrite": 0,
+          "total": 0.006552756
+        }
+      }
+    ],
+    "totals": {
+      "input": 62467,
+      "output": 309,
+      "cacheRead": 15488,
+      "cacheWrite": 0,
+      "reasoning": 18,
+      "totalTokens": 78264
+    },
+    "estimatedCostUsd": 0.019203828,
+    "costNote": "Pi model catalog estimate; not provider invoice",
+    "isFloodBenchmark": false
+  },
+  "docker": {
+    "image": "pi-bot-runtime:settings",
+    "nativeServerAndDesktopSameContainer": true,
+    "guiBotCreation": true,
+    "restartReadback": true,
+    "finalImageReadback": true,
+    "modelRequests": 0
+  },
+  "fixes": [
+    "SSH Host forwarding",
+    "desktop profile lock inheritance",
+    "container work permissions",
+    "cookie isolation by port",
+    "stale browser session recovery",
+    "scoped SDK auth bootstrap uses GUI origin"
+  ],
+  "designReview": {
+    "warnings": 0,
+    "errors": 0,
+    "info": 123,
+    "note": "Existing fixed messenger colors and explicit avatar palette; new layout uses Radix primitives"
+  }
+}

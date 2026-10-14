@@ -258,6 +258,36 @@
                 "sessionFile"
               ],
               "properties": {
+                "avatar": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "shape",
+                        "color"
+                      ],
+                      "properties": {
+                        "shape": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 12
+                        },
+                        "color": {
+                          "type": "string",
+                          "pattern": "^#[a-fA-F0-9]{6}$"
+                        },
+                        "picture": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "id": {
                   "type": "string",
                   "minLength": 1,
@@ -1322,6 +1352,36 @@
                 "sessionFile"
               ],
               "properties": {
+                "avatar": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "shape",
+                        "color"
+                      ],
+                      "properties": {
+                        "shape": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 12
+                        },
+                        "color": {
+                          "type": "string",
+                          "pattern": "^#[a-fA-F0-9]{6}$"
+                        },
+                        "picture": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "id": {
                   "type": "string",
                   "minLength": 1,
@@ -1408,6 +1468,36 @@
               "sessionFile"
             ],
             "properties": {
+              "avatar": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "shape",
+                      "color"
+                    ],
+                    "properties": {
+                      "shape": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 12
+                      },
+                      "color": {
+                        "type": "string",
+                        "pattern": "^#[a-fA-F0-9]{6}$"
+                      },
+                      "picture": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "id": {
                 "type": "string",
                 "minLength": 1,
@@ -1611,6 +1701,36 @@
               "sessionFile"
             ],
             "properties": {
+              "avatar": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "shape",
+                      "color"
+                    ],
+                    "properties": {
+                      "shape": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 12
+                      },
+                      "color": {
+                        "type": "string",
+                        "pattern": "^#[a-fA-F0-9]{6}$"
+                      },
+                      "picture": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "id": {
                 "type": "string",
                 "minLength": 1,
@@ -1675,6 +1795,36 @@
             "minLength": 1,
             "maxLength": 512
           },
+          "avatar": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "shape",
+                  "color"
+                ],
+                "properties": {
+                  "shape": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 12
+                  },
+                  "color": {
+                    "type": "string",
+                    "pattern": "^#[a-fA-F0-9]{6}$"
+                  },
+                  "picture": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -1704,6 +1854,164 @@
               "sessionFile"
             ],
             "properties": {
+              "avatar": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "shape",
+                      "color"
+                    ],
+                    "properties": {
+                      "shape": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 12
+                      },
+                      "color": {
+                        "type": "string",
+                        "pattern": "^#[a-fA-F0-9]{6}$"
+                      },
+                      "picture": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sessionFile": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sessionFiles": {
+                "type": "object",
+                "patternProperties": {
+                  "^.*$": {
+                    "type": "string"
+                  }
+                }
+              },
+              "channelId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "groupIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "bot/avatarUpload": {
+      "params": {
+        "type": "object",
+        "required": [
+          "botId",
+          "mime",
+          "data"
+        ],
+        "properties": {
+          "botId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "mime": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ]
+          },
+          "data": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 699052,
+            "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "bot"
+        ],
+        "properties": {
+          "bot": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "description",
+              "createdAt",
+              "sessionFile"
+            ],
+            "properties": {
+              "avatar": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "shape",
+                      "color"
+                    ],
+                    "properties": {
+                      "shape": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 12
+                      },
+                      "color": {
+                        "type": "string",
+                        "pattern": "^#[a-fA-F0-9]{6}$"
+                      },
+                      "picture": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "id": {
                 "type": "string",
                 "minLength": 1,
@@ -4352,6 +4660,36 @@
             "sessionFile"
           ],
           "properties": {
+            "avatar": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "shape",
+                    "color"
+                  ],
+                  "properties": {
+                    "shape": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 12
+                    },
+                    "color": {
+                      "type": "string",
+                      "pattern": "^#[a-fA-F0-9]{6}$"
+                    },
+                    "picture": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "id": {
               "type": "string",
               "minLength": 1,
@@ -4418,6 +4756,36 @@
             "sessionFile"
           ],
           "properties": {
+            "avatar": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "shape",
+                    "color"
+                  ],
+                  "properties": {
+                    "shape": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 12
+                    },
+                    "color": {
+                      "type": "string",
+                      "pattern": "^#[a-fA-F0-9]{6}$"
+                    },
+                    "picture": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "id": {
               "type": "string",
               "minLength": 1,

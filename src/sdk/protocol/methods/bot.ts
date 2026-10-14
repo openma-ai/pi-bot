@@ -1,4 +1,5 @@
 import { Type } from 'typebox';
+import { AvatarSchema } from '../models.ts';
 import { Id, Time, Json, BotSchema, GroupSchema, ThreadSchema, TurnSchema, ItemSchema, PendingRequestSchema, RoutineSchema, JobSummarySchema, SnapshotSchema, DaemonStatusSchema, RequestKindSchema } from '../models.ts';
 import { literals } from '../literals.ts';
 import { O, empty, optId, limit, page, ok, filter } from './shared.ts';
@@ -28,7 +29,7 @@ export const botMethods = {
     },
     'bot/update': {
         params: O({
-            botId: Id, name: Type.Optional(Type.String({
+            botId: Id, avatar: Type.Optional(Type.Union([AvatarSchema, Type.Null()])), name: Type.Optional(Type.String({
                 minLength: 1, maxLength: 100, pattern: '\\S'
             })), description: Type.Optional(Type.String({
                 maxLength: 2000
@@ -37,4 +38,14 @@ export const botMethods = {
             bot: BotSchema
         })
     },
+    'bot/avatarUpload': {
+        params: O({
+            botId: Id, mime: literals(['image/png', 'image/jpeg', 'image/webp']), data: Type.String({
+                minLength: 1, maxLength: 699052, pattern: '^[A-Za-z0-9+/]+={0,2}$'
+            })
+        }),
+        result: O({
+            bot: BotSchema
+        })
+    }
 } as const;

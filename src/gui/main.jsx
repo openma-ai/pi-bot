@@ -1,3 +1,4 @@
+import { AvatarEditor } from "./AvatarEditor.jsx";
 import { ErrorBoundary } from "./ErrorBoundary.jsx";
 import { useConversationDraft } from "./hooks/use-conversation-draft.js";
 import { Notification, ServiceNotice } from "./Notification.jsx";
@@ -8,7 +9,12 @@ import { MessengerSidebar } from "./MessengerSidebar.jsx";
 import { SidebarProvider, SidebarTrigger } from "./ui/sidebar.jsx";
 import { Textarea as ComposerTextarea } from "./ui/textarea.jsx";
 import "./components.css";
-import { BotAvatar, GroupAvatar, activityLabels } from "./BotAvatar.jsx";
+import {
+  BotAvatar,
+  GroupAvatar,
+  activityLabels,
+  AvatarContext,
+} from "./BotAvatar.jsx";
 import { MessageBody } from "./MessageBody.jsx";
 import { botActivity, messageFailures } from "./presentation.ts";
 import {
@@ -25,7 +31,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { Tabs } from "@radix-ui/themes";
-import { PiSettingsDialog } from "./PiSettingsDialog.jsx";
+import { SettingsPage } from "./SettingsPage.jsx";
+import { useRuntime } from "./useRuntime.js";
 import { DesktopPanel } from "./DesktopPanel.jsx";
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
@@ -104,8 +111,13 @@ function Picker({ value, onChange, items, label }) {
     </Select.Root>
   );
 }
-function App() {
-  const { data, client: api, error: connectionError } = useDaemon();
+function App({ runtime, setPiSettingsOpen }) {
+  const activeRuntime = runtime.status.active;
+  const {
+    data,
+    client: api,
+    error: connectionError,
+  } = useDaemon(activeRuntime?.baseUrl ?? null);
   const [view, setView] = useState("chat"),
     [selected, setSelected] = useState(""),
     [groupId, setGroupId] = useState(""),
@@ -114,13 +126,19 @@ function App() {
     [peerB, setPeerB] = useState(""),
     [peerScope, setPeerScope] = useState("direct");
   const [draft, setDraft] = useConversationDraft(
-      view === "peers"
-        ? JSON.stringify([view, peerA, peerB, peerScope])
-        : `${view}:${view === "group" ? groupId : selected}`,
+      JSON.stringify([
+        activeRuntime?.scope,
+        view === "peers"
+          ? [view, peerA, peerB, peerScope]
+          : `${view}:${view === "group" ? groupId : selected}`,
+      ]),
     ),
     [searchOpen, setSearchOpen] = useState(false),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (runtime.error) setNotice(runtime.error);
+  }, [runtime.error]);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     try {
       return Math.max(
@@ -189,8 +207,8 @@ function App() {
     [newGroup, setNewGroup] = useState(false),
     [members, setMembers] = useState([]),
     [details, setDetails] = useState(false);
-  const [piSettingsOpen, setPiSettingsOpen] = useState(false),
-    [routineOwner, setRoutineOwner] = useState("");
+  const [avatarOpen, setAvatarOpen] = useState(false);
+  const [routineOwner, setRoutineOwner] = useState("");
   const [routineKind, setRoutineKind] = useState(""),
     [prompt, setPrompt] = useState(""),
     [when, setWhen] = useState(""),
@@ -748,13 +766,23 @@ function App() {
       ) : (
         <>
           <div className="profile">
-            <BotAvatar
-              id={bot?.id}
-              name={bot?.name}
-              size={88}
-              activity={activity(selected)}
-              animated
-            />
+            <button
+              className="edit-avatar"
+              aria-label="编辑 bot 头像"
+              onClick={() => {
+                setDetails(false);
+                setAvatarOpen(true);
+              }}
+            >
+              <BotAvatar
+                id={bot?.id}
+                name={bot?.name}
+                size={88}
+                activity={activity(selected)}
+                animated
+              />
+              <span>编辑头像</span>
+            </button>
             <Heading size="4">{bot?.name}</Heading>
             <Text color="gray" size="2">
               {bot?.description || "你的工作伙伴"}
@@ -771,6 +799,8 @@ function App() {
                 botId={selected}
                 name={bot?.name || "Bot"}
                 enabled={data.desktop}
+                baseUrl={activeRuntime?.baseUrl || ""}
+                registerBeforeSwitch={runtime.registerBeforeSwitch}
                 api={(path, body) =>
                   api.desktop[path.endsWith("/bind") ? "bind" : "control"](body)
                 }
@@ -781,7 +811,9 @@ function App() {
       )}
     </>
   );
-  return (
+  return React.createElement(
+    AvatarContext.Provider,
+    { value: { baseUrl: activeRuntime?.baseUrl || "", bots: data.bots } },
     <Theme
       appearance="dark"
       accentColor="amber"
@@ -816,6 +848,7 @@ function App() {
           }}
           onRequests={() => setView("requests")}
           onSettings={() => setPiSettingsOpen(true)}
+          runtime={runtime}
         />
         <SearchDialog
           open={searchOpen}
@@ -996,7 +1029,7 @@ function App() {
                     )}
                     {r.kind === "credential" && r.params.formUrl && (
                       <a
-                        href={r.params.formUrl}
+                        href={(activeRuntime?.baseUrl || "") + r.params.formUrl}
                         target="_blank"
                         rel="noreferrer"
                       >
@@ -1700,6 +1733,12 @@ function App() {
             </Flex>
           </Dialog.Content>
         </Dialog.Root>
+        <AvatarEditor
+          open={avatarOpen}
+          onOpenChange={setAvatarOpen}
+          bot={bot}
+          api={api}
+        />
         <Dialog.Root open={serviceDetails} onOpenChange={setServiceDetails}>
           <Dialog.Content maxWidth="420px">
             <Dialog.Title>服务状态</Dialog.Title>
@@ -1719,16 +1758,38 @@ function App() {
             </Flex>
           </Dialog.Content>
         </Dialog.Root>
-        <PiSettingsDialog
-          open={piSettingsOpen}
-          onOpenChange={setPiSettingsOpen}
-        />
       </SidebarProvider>
-    </Theme>
+    </Theme>,
+  );
+}
+
+function RuntimeShell() {
+  const runtime = useRuntime();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  return (
+    <>
+      <App
+        key={runtime.status.active?.id || "disconnected"}
+        runtime={runtime}
+        setPiSettingsOpen={setSettingsOpen}
+      />
+      <Theme
+        appearance="dark"
+        accentColor="amber"
+        grayColor="sand"
+        radius="large"
+      >
+        <SettingsPage
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          runtime={runtime}
+        />
+      </Theme>
+    </>
   );
 }
 createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
-    <App />
+    <RuntimeShell />
   </ErrorBoundary>,
 );

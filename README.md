@@ -6,6 +6,8 @@
 
 ## 本地 GUI
 
+命名 Runtime、SSH 原生 Linux 和可选 Docker 一体运行见 [当前设置与连接指南](docs/design/runtime-connections.md)。
+
 `npm run gui` 后访问 http://127.0.0.1:4317/。React + Radix Themes，连接真实 Pi、现有 bot 与消息记录，支持群聊 @ / @全体、bot 间协作和 schedule / monitor 管理。触发交接复用固定源码的 OpenMatter DurableInbox；Pi 仍负责工具和模型执行。参见 [GUI 使用说明](docs/gui.md) 和 [当前交接、验收与边界](docs/gui-openmatter-handoff-20261013.md)。
 
 ## 快速验证（无需 API key）
@@ -93,7 +95,7 @@ evals ──► 任意层（层外评测工具）
 | ④ GUI 层 | `src/gui/` | React + Radix 前端，只通过 `PiBotClient` 访问 daemon |
 | 层外 | `src/evals/` | evaluation、benchmark、`demo.ts`、smoke provider |
 
-常用入口：`npm start`（SDK 附着现有 daemon，没有宿主才嵌入）、`npm run daemon`（app-server）、`npm run gui`（构建 GUI 并启动 daemon）。GUI 支持 Pi 原生登录和默认模型选择；定时任务、监控按 bot 绑定管理。GUI/CLI 的正常操作只走协议。
+常用入口：`npm start`（SDK 附着现有 daemon，没有宿主才嵌入）、`npm run daemon`（app-server）、`npm run gui`（构建 GUI 并启动独立 client，复用或启动 server）。GUI 支持 Pi 原生登录和默认模型选择；定时任务、监控按 bot 绑定管理。GUI/CLI 的正常操作只走协议。
 
 实现、迁移、36 次真实 API 调用及验证边界见 [app-server 交接](docs/design/app-server-implementation-20261014.md)。协议表见 [docs/protocol.md](docs/protocol.md)。
 

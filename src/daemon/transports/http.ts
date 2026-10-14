@@ -5,6 +5,7 @@ import { join, resolve, extname } from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { PiBotDaemon } from '../core/daemon.ts';
 import type { DaemonConnection } from '../core/connection.ts';
+import { avatarFile } from '../avatar-media.ts';
 export async function listenHttp(daemon: PiBotDaemon, options: {
     port?: number;
     staticDir?: string;
@@ -328,6 +329,24 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
                 c.close('disconnected');
                 owners.delete(c.id);
             });
+            return;
+        }
+        const avatar = url.pathname.match(/^\/api\/bot\/([^/]+)\/avatar\/([a-f0-9]{64})$/);
+        if (req.method === 'GET' && avatar) {
+            if (!authenticate(req))
+                return json({
+                    error: 'Authentication required'
+                }, 401);
+            const bot = daemon.runtime.listBots().find(b => b.id === avatar[1]);
+            const file = bot?.avatar?.picture === avatar[2] ? avatarFile(daemon.dataDir, avatar[2]) : undefined;
+            if (!file)
+                return json({
+                    error: 'Avatar unavailable'
+                }, 404);
+            res.writeHead(200, {
+                'content-type': file.mime, 'cache-control': 'private, max-age=3600', 'x-content-type-options': 'nosniff'
+            });
+            res.end(readFileSync(file.path));
             return;
         }
         if (req.method === 'GET' && url.pathname.match(/^\/api\/desktop\/[^/]+\/screen$/)) {

@@ -9,14 +9,20 @@ import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager
 import { InMemoryCredentialStore, fauxProvider, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { DesktopOwnership } from './desktop-ownership.ts';
-const root = resolve('/data');
+const option = (name: string) => {
+    const i = process.argv.indexOf(name);
+    return i < 0 ? undefined : process.argv[i + 1];
+};
+const root = resolve(option('--root') ?? '/data');
+const port = Number(option('--port') ?? 8080);
+const controlUrl = option('--url') ?? 'http://127.0.0.1:6090';
 mkdirSync(root, {
     recursive: true
 });
 const tokenFile = join(root, 'control.json');
 const token = existsSync(tokenFile) ? JSON.parse(readFileSync(tokenFile, 'utf8')).token : randomBytes(32).toString('hex');
 writeFileSync(tokenFile, JSON.stringify({
-    url: 'http://127.0.0.1:6090', token
+    url: controlUrl, token, sameRuntime: process.argv.includes('--same-runtime')
 }), {
     mode: 0o600
 });
@@ -101,8 +107,14 @@ async function dispatch(tool: string, args: Record<string, unknown>) {
         throw Error('Plugin dispatch did not produce a result');
     return {
         content: result.content, details: result.details, isError: result.isError || result.content.some(c => {
-            if (c.type !== "text") return false;
-            try { return JSON.parse(c.text).ok === false; } catch { return false; }
+            if (c.type !== "text")
+                return false;
+            try {
+                return JSON.parse(c.text).ok === false;
+            }
+            catch {
+                return false;
+            }
         })
     };
 }
@@ -158,7 +170,7 @@ async function binding(botId: string) {
     if (owners.bindings.size >= 4)
         throw Error('Screen capacity reached');
     const { targetId } = await admin._call('Target.createTarget', {
-        url: `http://127.0.0.1:8080/fixture?bot=${botId}`, newWindow: true, background: true
+        url: `http://127.0.0.1:${port}/fixture?bot=${botId}`, newWindow: true, background: true
     }) as any;
     const { windowId } = await admin._call('Browser.getWindowForTarget', {
         targetId
@@ -362,11 +374,13 @@ const api = createServer(async (req, res) => {
                 }
                 if (data.tool === 'drag') {
                     for (const key of ['start_x', 'end_x']) {
-                        if (!Number.isInteger(args[key]) || args[key] < 0 || args[key] >= b.width) throw Error('Coordinates outside owned screen');
+                        if (!Number.isInteger(args[key]) || args[key] < 0 || args[key] >= b.width)
+                            throw Error('Coordinates outside owned screen');
                         args[key] += b.x;
                     }
                     for (const key of ['start_y', 'end_y']) {
-                        if (!Number.isInteger(args[key]) || args[key] < 0 || args[key] >= b.height) throw Error('Coordinates outside owned screen');
+                        if (!Number.isInteger(args[key]) || args[key] < 0 || args[key] >= b.height)
+                            throw Error('Coordinates outside owned screen');
                         args[key] += b.y;
                     }
                 }
@@ -434,4 +448,4 @@ setInterval(() => {
     }).catch(() => {
     });
 }, 1000).unref();
-api.listen(8080, '0.0.0.0', () => console.log('Desktop ready; Pi browser/computer plugins loaded'));
+api.listen(port, option('--bind') ?? '0.0.0.0', () => console.log('Desktop ready; Pi browser/computer plugins loaded'));

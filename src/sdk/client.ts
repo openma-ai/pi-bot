@@ -4,6 +4,7 @@ import { methods, PROTOCOL_VERSION, type EventEnvelope, type Snapshot } from './
 import { InProcessTransport } from './transports/in-process.ts';
 import { HttpSseTransport } from './transports/http-sse.ts';
 import type { RpcTransport } from './transports/types.ts';
+import { browserCsrf } from './browser-session.ts';
 export class PiBotApiError extends Error {
     constructor(message: string, readonly reason: string, readonly retryable = false, readonly details?: unknown) {
         super(message);
@@ -102,7 +103,7 @@ export class PiBotClient {
             const http = t && 'http' in t ? t : {
                 http: ''
             };
-            const csrf = options.csrf ?? (typeof document !== 'undefined' ? document.querySelector('meta[name="pibot-csrf"]')?.getAttribute('content') ?? undefined : undefined);
+            const csrf = options.csrf ?? browserCsrf(http.http);
             transport = new HttpSseTransport(http.http, http.token, globalThis.fetch.bind(globalThis), csrf, options.auth);
         }
         const client = new PiBotClient(transport, options);

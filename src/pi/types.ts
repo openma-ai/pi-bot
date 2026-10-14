@@ -12,6 +12,11 @@ export type Bot = {
     channelId?: string;
     groupIds?: string[];
     sessionFiles?: Record<string, string>;
+    avatar?: {
+        shape: number;
+        color: string;
+        picture?: string;
+    } | null;
 };
 export type ChatGroup = {
     id: string;
@@ -49,7 +54,7 @@ export type Envelope = {
     consumedAt?: number;
     resolvedAt?: number;
     resolution?: {
-        attempt?:number;
+        attempt?: number;
         owner: string;
         evidence: string[];
         note?: string;

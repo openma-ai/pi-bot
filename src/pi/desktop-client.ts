@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { Type } from 'typebox';
 import type { ExtensionFactory } from '@earendil-works/pi-coding-agent';
 export class DesktopClient {
-    constructor(readonly url: string, private token: string) {
+    constructor(readonly url: string, private token: string, readonly sameRuntime = false) {
         const u = new URL(url);
         if (u.protocol !== 'http:' || u.hostname !== '127.0.0.1')
             throw Error('Desktop endpoint must be loopback');
@@ -11,7 +11,7 @@ export class DesktopClient {
         if (!existsSync(file))
             return;
         const v = JSON.parse(readFileSync(file, 'utf8'));
-        return new DesktopClient(v.url, v.token);
+        return new DesktopClient(v.url, v.token, v.sameRuntime === true);
     }
     headers() {
         return {
@@ -50,7 +50,7 @@ export function createDesktopExtension(client: DesktopClient, botId: string, ass
 }, authorize?: (tool: string, args: unknown, source?: string) => Promise<boolean>): ExtensionFactory {
     return pi => {
         pi.registerTool({
-            name: 'desktop_list', label: 'My desktop', description: 'Get this bot’s Linux container desktop (separate from host bash), owned browser window, virtual screen and native Pi computer-use tool schemas. One shared Chromium profile; operate only this window. Human takeover pauses actions.', parameters: Type.Object({
+            name: 'desktop_list', label: 'My desktop', description: 'Get this bot’s Linux desktop, its environment relative to shell tools, owned browser window, virtual screen and native Pi computer-use tool schemas. One shared Chromium profile; operate only this window. Human takeover pauses actions.', parameters: Type.Object({
                 source_message_id: Type.Optional(Type.String())
             }), async execute(_id, p) {
                 assertCurrent(p.source_message_id);
@@ -61,7 +61,9 @@ export function createDesktopExtension(client: DesktopClient, botId: string, ass
                 return {
                     content: [{
                             type: 'text', text: JSON.stringify({
-                                environment:{os:'linux',location:'container',hostShellIsSeparate:true}, binding, ...tools
+                                environment: {
+                                    os: 'linux', location: client.sameRuntime ? 'runtime' : 'container', hostShellIsSeparate: !client.sameRuntime
+                                }, binding, ...tools
                             })
                         }], details: {
                         binding

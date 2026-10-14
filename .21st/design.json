@@ -75,6 +75,12 @@
       "direction": "Mature Sidebar and cmdk; resize-only desktop, one conversation list and search",
       "errors": "Connection/configuration at service scope; execution at originating message; normal tasks have no review gate",
       "source": "User screenshot corrections and actual GUI/native Pi vision acceptance"
+    },
+    {
+      "date": "2026-10-14",
+      "direction": "Named runtime cards with separate Add and Enable actions",
+      "components": "Radix Dialog, Tabs, Card, DropdownMenu, SegmentedControl",
+      "behavior": "Current runtime only; independent Pi auth and drafts; 13 original avatar shapes, 11 colors, raster upload"
     }
   ],
   "evidence": [

@@ -13,6 +13,51 @@ export async function main(args = process.argv.slice(2)) {
     };
     const command = args[0] ?? 'daemon';
     const dataDir = resolve(option('--data-dir') ?? process.env.PI_BOT_DIR ?? 'work/gui/demo');
+    if (command === 'ensure') {
+        const { ensureServer } = await import('./transports/server-start.ts');
+        const endpoint = await ensureServer({
+            dataDir, projectDir: process.cwd(), port: Number(new URL(option('--listen') ?? 'http://127.0.0.1:4318').port)
+        });
+        // Private SSH bootstrap output, consumed in memory by the client launcher.
+        process.stdout.write('PI_BOT_SERVER=' + JSON.stringify({
+            url: endpoint.url, token: endpoint.token
+        }) + '\n');
+        return;
+    }
+    if (command === 'client') {
+        const { RuntimeManager } = await import('./transports/runtime-manager.ts');
+        const { listenClientHost } = await import('./transports/client-host.ts');
+        const manager = new RuntimeManager({
+            file: resolve(option('--client-dir') ?? 'work/gui/client', 'client.json'), defaults: {
+                local: {
+                    mode: 'local', dataDir
+                }, ssh: null
+            }
+        });
+        const bind = option('--bind') ?? '127.0.0.1';
+        if (!['127.0.0.1', '0.0.0.0'].includes(bind))
+            throw Error('Client bind must be loopback or an explicit container listener');
+        const host = await listenClientHost(manager, {
+            port: Number(option('--port') ?? 4317), staticDir: option('--static'), bind: bind as '127.0.0.1' | '0.0.0.0'
+        });
+        console.error('Pi Bot client: ' + host.url);
+        // Local is the first-run default. Connection failures leave Settings accessible.
+        try {
+            await manager.connect(manager.initialProfile());
+        }
+        catch (e) {
+            console.error((e as Error).message);
+        }
+        const close = async () => {
+            await manager.close();
+            await host.close();
+        };
+        process.once('SIGINT', () => void close());
+        process.once('SIGTERM', () => void close());
+        return {
+            close
+        };
+    }
     if (command === 'status' || command === 'stop') {
         if (!existsSync(join(dataDir, 'daemon.json')))
             throw Error('No running daemon was discovered');
@@ -38,10 +83,12 @@ export async function main(args = process.argv.slice(2)) {
         });
     }
     if (command !== 'daemon')
-        throw Error('Usage: pi-bot daemon|status|stop|chat');
+        throw Error('Usage: pi-bot daemon|client|status|stop|chat');
     const listen = option('--listen') ?? 'http://127.0.0.1:' + Number(process.env.PI_BOT_GUI_PORT ?? 4317);
     const daemon = await PiBotDaemon.create({
-        dataDir, approvalRequired: args.includes('--approval-required'), drainTimeoutMs: Number(option('--drain-timeout') ?? 30000)
+        dataDir, piOptions: option('--pi-dir') ? {
+            agentDir: resolve(option('--pi-dir')!)
+        } : undefined, approvalRequired: args.includes('--approval-required'), drainTimeoutMs: Number(option('--drain-timeout') ?? 30000)
     });
     let transport: {
         close(): Promise<void> | void;
@@ -57,7 +104,7 @@ export async function main(args = process.argv.slice(2)) {
         });
         const http = transport as Awaited<ReturnType<typeof listenHttp>>;
         writeFileSync(join(dataDir, 'daemon.json'), JSON.stringify({
-            pid: process.pid, protocolVersion: PROTOCOL_VERSION, http: http.url, tokenFile: join(dataDir, 'daemon.token'), startedAt: daemon.startedAt
+            pid: process.pid, agentDir: option('--pi-dir') ? resolve(option('--pi-dir')!) : undefined, protocolVersion: PROTOCOL_VERSION, http: http.url, tokenFile: join(dataDir, 'daemon.token'), startedAt: daemon.startedAt
         }), {
             mode: 0o600
         });

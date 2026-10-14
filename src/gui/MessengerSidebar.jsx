@@ -12,6 +12,7 @@ import {
   useSidebar,
 } from "./ui/sidebar.jsx";
 import { Button } from "./ui/button.jsx";
+import { RuntimePicker } from "./SettingsPage.jsx";
 import { BotAvatar, GroupAvatar } from "./BotAvatar.jsx";
 import { botActivity, conversationList } from "./presentation.ts";
 
@@ -28,6 +29,7 @@ export function MessengerSidebar({
   onNewGroup,
   onRequests,
   onSettings,
+  runtime,
   error,
 }) {
   const { setOpenMobile } = useSidebar();
@@ -154,14 +156,15 @@ export function MessengerSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={onSettings}
-              aria-label="Pi 登录与模型"
-              title="Pi 登录与模型"
+              aria-label="设置"
+              title="设置"
             >
               <Settings2 size={16} />
-              <span>Pi 登录与模型</span>
+              <span>设置</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        {runtime && <RuntimePicker runtime={runtime} />}
         <div className="mode">
           <span
             className={

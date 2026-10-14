@@ -1,4 +1,5 @@
 import type { RpcTransport } from './types.ts';
+import { refreshBrowserCsrf } from '../browser-session.ts';
 export class HttpSseTransport implements RpcTransport {
     private connection = '';
     private stream?: AbortController;
@@ -15,16 +16,7 @@ export class HttpSseTransport implements RpcTransport {
             return;
         }
         if (this.token === undefined) {
-            const response = await this.fetchImpl(this.baseUrl + '/', {
-                credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(5000)
-            });
-            if (!response.ok)
-                throw Error('Browser session unavailable');
-            const html = await response.text();
-            const csrf = html.match(/name="pibot-csrf" content="([a-f0-9]+)"/)?.[1];
-            if (!csrf)
-                throw Error('Browser session unavailable');
-            this.csrf = csrf;
+            this.csrf = await refreshBrowserCsrf(this.baseUrl, this.fetchImpl);
         }
     }
     headers() {
@@ -40,11 +32,16 @@ export class HttpSseTransport implements RpcTransport {
         this.connection = id;
     }
     async request(frame: any) {
-        const r = await this.fetchImpl(this.baseUrl + '/rpc', {
+        const send = () => this.fetchImpl(this.baseUrl + '/rpc', {
             method: 'POST', headers: {
                 ...this.headers(), 'content-type': 'application/json'
             }, body: JSON.stringify(frame), credentials: 'same-origin', signal: AbortSignal.timeout(30000)
         });
+        let r = await send();
+        if (r.status === 401) {
+            await this.refreshAuth();
+            r = await send();
+        }
         if (!r.ok)
             throw Error('Daemon connection rejected (' + r.status + ')');
         return r.status === 204 ? undefined : r.json();

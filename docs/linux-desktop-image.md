@@ -1,5 +1,6 @@
 # Linux 桌面与共享浏览器镜像
 
+当前命名 Runtime 设置、SSH 原生部署与可选一体镜像见 [Runtime 连接指南](design/runtime-connections.md)。以下保留历史验收。
 使用现成 Pi 插件，不自行实现 browser/computer 操作引擎：
 
 - `pi-chrome-use@1.1.1`：连接现有 Chromium，执行页面导航、页面 JS 和截图。

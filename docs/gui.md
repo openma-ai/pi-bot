@@ -1,5 +1,6 @@
 # Local Pi GUI
 
+当前命名 Runtime 设置、SSH 原生部署与可选一体镜像见 [Runtime 连接指南](design/runtime-connections.md)。以下保留历史验收。
 当前导航和报错验收：[2026-10-14 Sidebar / Cmd+K / 原生读图与恢复](gui-navigation-errors-20261014.md)。下文更早的测试数量为历史记录。
 
 Current visual implementation follows the installed Grok Bot messenger: compact contacts, original animated SVG avatars, centered conversation identity, and an optional bot-owned details/computer pane. File paths are copyable without cutting message contents; reading earlier history does not force-scroll to new messages. See [REA analysis and GUI acceptance, 2026-10-14](grok-ui-analysis-20261014.md) for the 232 offline checks, separate real Pi GUI task, desktop takeover readback, and screenshots.

@@ -118,8 +118,8 @@ export function searchEverything(data: any, query = ""): Array<any> {
   const actions = [
     {
       id: "settings",
-      name: "Pi 登录与模型",
-      keywords: "login model settings auth 登录 模型 设置",
+      name: "设置",
+      keywords: "login model settings auth runtime ssh cloud 本机 登录 模型 设置",
     },
     { id: "new-bot", name: "新建 bot", keywords: "create bot 助手" },
     { id: "new-group", name: "新建群聊", keywords: "create group 群聊" },

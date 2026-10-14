@@ -11,7 +11,19 @@ export const DaemonStatusSchema = literals(['starting', 'recovering', 'ready', '
 export type DaemonStatus = Static<typeof DaemonStatusSchema>;
 export const RequestKindSchema = literals(['approval', 'question', 'credential']);
 export type RequestKind = Static<typeof RequestKindSchema>;
+export const AvatarSchema = Type.Object({
+    shape: Type.Integer({
+        minimum: 0, maximum: 12
+    }), color: Type.String({
+        pattern: '^#[a-fA-F0-9]{6}$'
+    }), picture: Type.Optional(Type.String({
+        pattern: '^[a-f0-9]{64}$'
+    }))
+}, {
+    additionalProperties: false
+});
 export const BotSchema = Type.Object({
+    avatar: Type.Optional(Type.Union([AvatarSchema, Type.Null()])),
     id: Id, name: Type.String(), description: Type.String(), createdAt: Time, sessionFile: Type.Union([Type.String(), Type.Null()]), sessionFiles: Type.Optional(Type.Record(Type.String(), Type.String())), channelId: Type.Optional(Id), groupIds: Type.Optional(Type.Array(Id))
 });
 export const GroupSchema = Type.Object({
@@ -54,9 +66,13 @@ export const JobSummarySchema = Type.Object({
 }, {
     additionalProperties: true
 });
-export const TriggerStatusSchema=Type.Object({implementation:Type.String(),halted:Type.Boolean(),queued:Type.Integer({minimum:0})});
+export const TriggerStatusSchema = Type.Object({
+    implementation: Type.String(), halted: Type.Boolean(), queued: Type.Integer({
+        minimum: 0
+    })
+});
 export const SnapshotSchema = Type.Object({
-    trigger:Type.Optional(TriggerStatusSchema), seq: Time, bots: Type.Array(BotSchema), groups: Type.Array(GroupSchema), threads: Type.Array(ThreadSchema), turns: Type.Array(TurnSchema), activeTurns: Type.Array(TurnSchema), items: Type.Array(ItemSchema), pendingRequests: Type.Array(PendingRequestSchema), requests: Type.Array(PendingRequestSchema), routines: Type.Array(RoutineSchema), jobs: Type.Array(JobSummarySchema), budget: Type.Optional(Json), usage: UsageSchema, status: DaemonStatusSchema
+    trigger: Type.Optional(TriggerStatusSchema), seq: Time, bots: Type.Array(BotSchema), groups: Type.Array(GroupSchema), threads: Type.Array(ThreadSchema), turns: Type.Array(TurnSchema), activeTurns: Type.Array(TurnSchema), items: Type.Array(ItemSchema), pendingRequests: Type.Array(PendingRequestSchema), requests: Type.Array(PendingRequestSchema), routines: Type.Array(RoutineSchema), jobs: Type.Array(JobSummarySchema), budget: Type.Optional(Json), usage: UsageSchema, status: DaemonStatusSchema
 }, {
     additionalProperties: true
 });
