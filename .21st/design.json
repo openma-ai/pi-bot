@@ -87,6 +87,14 @@
       "direction": "Model use is primary; provider authentication lives behind Manage authentication in a secondary page",
       "components": "Existing Radix Popover and cmdk model picker, compact reasoning row and scoped feedback",
       "behavior": "Browsing auth providers never changes the selected model; only credentialed provider models are offered for use; returning cancels an unfinished login"
+    },
+    {
+      "date": "2026-10-14",
+      "direction": "Desktop remembered expanded list/collapsed avatar rail; explicit pinned conversations, never a forced primary bot",
+      "navigation": "Phone separate hash routes for list and chat, per-runtime drafts and conversation scroll; pins scoped to runtime",
+      "components": "Existing Sidebar, Radix ScrollArea/HoverCard, BotAvatar and GroupAvatar",
+      "source": "User-provided sidebar screenshots and explicit pinned-area correction",
+      "toolbar": "Mac native titlebar overlay search/new with traffic-light inset; no visible collapse button, no footer connection or duplicate plus; divider/keyboard mode switch. Phone avatar-like settings/search/new top bar and right-aligned message timestamps."
     }
   ],
   "evidence": [

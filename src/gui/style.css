@@ -1030,6 +1030,70 @@ button:disabled {
 .runtime-switcher { width:100%; justify-content:flex-start !important; margin:0 !important; min-height:34px; }
 .runtime-switcher span { flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .messenger-sidebar[data-compact="true"] .runtime-switcher span { display:none; }
+.messenger-sidebar[data-slot="sidebar"] { position:relative; flex-shrink:0; border-right:1px solid #222; min-width:0; }
+.sidebar-mode-toggle { color:#aaa; flex-shrink:0; }
+.sidebar-profile { display:flex; align-items:center; gap:10px; color:#aaa; padding:6px 0; background:none; border:0; font:inherit; font-size:12px; cursor:pointer; }
+[data-compact="true"] .sidebar-profile>span:last-child { display:none; }
+.sidebar-mode-toggle:focus-visible,.sidebar-profile:focus-visible { outline:2px solid #aaa; outline-offset:2px; border-radius:8px; }
+[data-compact="true"] .brand { flex-direction:column; height:auto!important; gap:8px; }
+[data-compact="true"] .brand [data-slot="button"] { display:none; }
+.conversation-link { position:relative; }
+.rail-pending { position:absolute; top:4px; right:5px; min-width:14px; height:14px; padding:0 3px; border-radius:8px; background:#b58b46; color:#111; font-size:9px; line-height:14px; text-align:center; }
+.conversation-hover { max-width:260px; font-size:13px; }
+.conversation-hover p { color:#999; margin:6px 0 0; overflow-wrap:anywhere; }
+.messenger-sidebar-header { padding:12px 12px 8px; }
+.sidebar-toolbar { display:flex; align-items:center; justify-content:flex-end; gap:8px; width:100%; }
+.sidebar-toolbar button { display:flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0; border:1px solid #292929; border-radius:50%; background:#1b1b1b; color:#ddd; cursor:pointer; }
+.sidebar-toolbar button:focus-visible { outline:2px solid #aaa; outline-offset:2px; }
+.contact-heading { display:flex; align-items:center; gap:8px; min-width:0; padding-right:18px; }
+.contact-heading .contact-name { flex:1; min-width:0; }
+.contact-heading time { color:#777; font-size:10px; flex-shrink:0; }
+.app[data-native-titlebar="true"] { padding-top:32px; }
+.native-titlebar { position:fixed; top:0; left:0; width:100%; height:32px; z-index:10; background:#101010; user-select:none; }
+.app[data-native-titlebar="true"][data-phone="false"] .messenger-sidebar-header { position:fixed; top:0; left:0; width:max(var(--sidebar-width),168px); height:32px; padding:0 8px; z-index:20; pointer-events:none; }
+.app[data-native-titlebar="true"][data-phone="false"] .sidebar-toolbar { height:32px; gap:6px; justify-content:flex-end; padding-left:84px; pointer-events:none; }
+.app[data-native-titlebar="true"][data-phone="false"] .sidebar-toolbar button { width:24px; height:24px; pointer-events:auto; }
+.app[data-native-titlebar="true"][data-phone="false"] .sidebar-toolbar svg { width:17px; height:17px; }
+[data-compact="true"] .messenger-sidebar-header { padding:12px 8px 8px; }
+[data-compact="true"] .sidebar-toolbar { gap:4px; justify-content:center; }
+[data-compact="true"] .sidebar-toolbar button { width:26px; height:26px; }
+[data-compact="true"] .sidebar-toolbar svg { width:17px; height:17px; }
+@media(max-width:767px) {
+  .sidebar-toolbar { padding:6px 0; }
+  .sidebar-toolbar button { width:38px; height:38px; }
+  .sidebar-toolbar .toolbar-profile { margin-right:auto; }
+  .app[data-phone="true"] .messenger-sidebar-footer { display:none; }
+  .contact-heading time { font-size:11px; }
+}
+.pinned-conversations { display:flex; flex-wrap:wrap; gap:8px; padding:8px 0 14px; margin-bottom:8px; border-bottom:1px solid #282828; }
+.pinned-item { position:relative; flex:1; min-width:70px; max-width:120px; }
+.pinned-conversation { position:relative; display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; border:0; padding:12px 6px; border-radius:12px; background:none; color:inherit; cursor:pointer; }
+.pinned-conversation[aria-current="page"] { background:#242424; }
+.pinned-name { max-width:100%; font-size:12px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.conversation-navigation [data-slot="sidebar-menu-item"] { position:relative; }
+.pin-toggle { position:absolute; top:3px; right:3px; padding:3px; border:0; background:#202020; color:#999; border-radius:5px; cursor:pointer; opacity:0; }
+.pinned-item:hover .pin-toggle,[data-slot="sidebar-menu-item"]:hover .pin-toggle,.pin-toggle:focus-visible { opacity:1; }
+.pin-toggle:focus-visible,.pinned-conversation:focus-visible { outline:2px solid #aaa; }
+[data-compact="true"] .pinned-conversations { flex-direction:column; }
+[data-compact="true"] .pinned-item { min-width:0; width:100%; }
+[data-compact="true"] .pinned-name { display:none; }
+@media(max-width:767px) { .pin-toggle { opacity:1; } .pinned-item { max-width:100px; } }
+@media(max-width:767px) {
+  .app[data-phone="true"] { height:var(--phone-height,100dvh); padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
+  .app[data-native-titlebar="true"][data-phone="true"] { padding-top:calc(32px + env(safe-area-inset-top)); }
+  .app[data-phone-page="list"]>.main { display:none; }
+  .app[data-phone-page="chat"]>.messenger-sidebar { display:none; }
+  .app[data-phone-page="list"]>.messenger-sidebar { width:100%; border:0; }
+  .app[data-phone="true"] .sidebar-resize-handle { display:none; }
+  .app[data-phone="true"] .messenger-sidebar-header { padding-top:12px; }
+  .app[data-phone="true"] .messenger-sidebar-footer { padding-bottom:10px; flex-direction:row; flex-wrap:wrap; align-items:center; gap:12px; }
+  .app[data-phone="true"] .messenger-sidebar-footer .mode { flex-basis:100%; }
+  .app[data-phone="true"] .sidebar-profile { margin-left:auto; }
+  .app[data-phone="true"] .header { min-height:56px; }
+  .app[data-phone="true"] .composer { padding-bottom:10px; }
+  .app[data-phone="true"] textarea { font-size:16px; }
+  .phone-back { min-width:44px; min-height:44px; }
+}
 .edit-avatar { position:relative; display:grid; justify-items:center; gap:6px; padding:0; background:none; border:0; cursor:pointer; }
 .edit-avatar>span:last-child { font-size:11px; color:var(--gray-11); }
 .edit-avatar:focus-visible { outline:2px solid var(--gray-8); outline-offset:5px; border-radius:12px; }

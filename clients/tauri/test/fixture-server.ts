@@ -18,6 +18,13 @@ const daemon=await PiBotDaemon.create({dataDir:root,piOptions:{agentDir:join(roo
 })});
 daemon.piSettings=undefined;
 if (!daemon.runtime.listBots().length) daemon.runtime.createBot('Fixture Bot','Disposable deterministic client test');
+if (process.argv.includes('--navigation') && daemon.runtime.listBots().length === 1) {
+  for (let i=1;i<=7;i++) daemon.runtime.createBot(`Fixture Bot ${i+1}`,'Disposable navigation fixture');
+}
+if (process.argv.includes('--navigation')) {
+  for (const bot of daemon.runtime.listBots()) daemon.runtime.accept({to:bot.id,text:'Navigation fixture history for '+bot.name,key:'navigation-seed:'+bot.id});
+  await daemon.runtime.idle();
+}
 const mockRequests:any[]=process.argv.includes('--requests') ? ['question','approval','credential'].map(kind=>({
   id:'fixture-request-'+kind,kind,botId:daemon.runtime.listBots()[0].id,threadId:'fixture-request-thread',turnId:null,status:'pending',createdAt:Date.now(),expiresAt:null,
   params:kind==='question'?{text:'Fixture question: choose an answer',questionId:'fixture-question',choices:['Fixture A','Fixture B']}:kind==='approval'?{tool:'fixture_no_execution',args:{operation:'inert fixture action'}}:{label:'Dummy fixture credential',formUrl:'/credential/fixture-form'},

@@ -6,7 +6,9 @@ import { TaskFailure } from "./TaskFailure.jsx";
 import { ConversationRequests } from "./ConversationRequests.jsx";
 import { SearchDialog } from "./SearchDialog.jsx";
 import { MessengerSidebar } from "./MessengerSidebar.jsx";
-import { SidebarProvider, SidebarTrigger } from "./ui/sidebar.jsx";
+import { SidebarProvider } from "./ui/sidebar.jsx";
+import { useIsMobile } from "./hooks/use-mobile.js";
+import { useConversationRoute } from "./hooks/use-conversation-route.js";
 import { Textarea as ComposerTextarea } from "./ui/textarea.jsx";
 import "./components.css";
 import {
@@ -29,6 +31,7 @@ import {
   Radar,
   MessagesSquare,
   ChevronDown,
+  ChevronLeft,
 } from "lucide-react";
 import { Tabs } from "@radix-ui/themes";
 import { SettingsPage } from "./SettingsPage.jsx";
@@ -113,6 +116,9 @@ function Picker({ value, onChange, items, label }) {
 }
 function App({ runtime, setPiSettingsOpen }) {
   const activeRuntime = runtime.status.active;
+  const phone = useIsMobile();
+  const nativeMac = Boolean(window.__PIBOT_NATIVE__) && /^Mac/.test(navigator.platform) && navigator.maxTouchPoints < 2;
+  const navigation = useConversationRoute();
   const {
     data,
     client: api,
@@ -166,11 +172,15 @@ function App({ runtime, setPiSettingsOpen }) {
         e.preventDefault();
         setSearchOpen((v) => !v);
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b" && window.innerWidth >= 768) {
+        e.preventDefault(); resizeSidebar(sidebarWidth < 156 ? 260 : 76);
+      }
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, []);
+  }, [sidebarWidth]);
   const chooseConversation = (row) => {
+    if (phone) navigation.open(row.kind, row.id);
     if (row.kind === "group") {
       setGroupId(row.id);
       setSelected(row.group.memberIds[0]);
@@ -183,6 +193,24 @@ function App({ runtime, setPiSettingsOpen }) {
     setInspectTask("");
     setRuntimeDetailsOpen(false);
   };
+  useEffect(() => {
+    if (navigation.route.page !== "chat") { setDetails(false); return; }
+    const { kind, id } = navigation.route;
+    if (data.status === "ready" && !(kind === "group" ? data.groups : data.bots).some((row) => row.id === id)) {
+      setNotice("会话不存在或不属于当前 runtime。"); navigation.list(); return;
+    }
+    if (kind === "group") {
+      const row = data.groups.find((group) => group.id === id);
+      if (row) { setGroupId(id); setSelected(row.memberIds[0]); setView("group"); }
+    } else if (data.bots.some((bot) => bot.id === id)) { setSelected(id); setView("chat"); }
+  }, [navigation.route, data.bots, data.groups]);
+  useEffect(() => {
+    if (!phone) return;
+    const viewport = window.visualViewport;
+    const update = () => document.documentElement.style.setProperty("--phone-height", `${viewport?.height || window.innerHeight}px`);
+    update(); viewport?.addEventListener("resize", update); window.addEventListener("resize", update);
+    return () => { viewport?.removeEventListener("resize", update); window.removeEventListener("resize", update); document.documentElement.style.removeProperty("--phone-height"); };
+  }, [phone]);
   useLayoutEffect(() => {
     if (!searchTarget) return;
     const message = Array.from(
@@ -224,6 +252,7 @@ function App({ runtime, setPiSettingsOpen }) {
     conversation = useRef(null),
     pinnedToEnd = useRef(true),
     lastScope = useRef("");
+  const scrollPositions = useRef(new Map());
   const [atBottom, setAtBottom] = useState(true),
     [wide, setWide] = useState(() => matchMedia("(min-width: 1100px)").matches);
   useEffect(() => {
@@ -347,14 +376,25 @@ function App({ runtime, setPiSettingsOpen }) {
   }
   const scrollKey = messages.map((m) => m.direction + m.messageId).join("|");
   useEffect(() => {
-    const scope = [view, selected, groupId, peerA, peerB, peerScope].join(":");
-    if (scope !== lastScope.current || pinnedToEnd.current) {
+    const scope = [activeRuntime?.scope, view, selected, groupId, peerA, peerB, peerScope].join(":");
+    const saved = scrollPositions.current.get(scope);
+    if (scope !== lastScope.current && saved) {
+      if (conversation.current) conversation.current.scrollTop = saved.top;
+      pinnedToEnd.current = saved.bottom;
+      setAtBottom(saved.bottom);
+    } else if (pinnedToEnd.current || scope !== lastScope.current) {
       end.current?.scrollIntoView({ behavior: "instant", block: "end" });
       pinnedToEnd.current = true;
       setAtBottom(true);
     }
     lastScope.current = scope;
-  }, [view, selected, groupId, peerA, peerB, peerScope, scrollKey]);
+  }, [activeRuntime?.scope, view, selected, groupId, peerA, peerB, peerScope, scrollKey]);
+  useLayoutEffect(() => {
+    if (!phone || navigation.route.page !== "chat") return;
+    const saved = scrollPositions.current.get(lastScope.current);
+    if (saved && conversation.current) conversation.current.scrollTop = saved.top;
+    else end.current?.scrollIntoView({ behavior: "instant", block: "end" });
+  }, [phone, navigation.route]);
   /** Run an SDK write, then refresh the snapshot. */
   async function mutate(write) {
     const v = await write;
@@ -823,12 +863,17 @@ function App({ runtime, setPiSettingsOpen }) {
     >
       <SidebarProvider
         className="app"
+        data-phone={phone}
+        data-native-titlebar={nativeMac}
+        data-phone-page={navigation.route.page}
         open={true}
         style={{ "--sidebar-width": `${sidebarWidth}px` }}
       >
+        {nativeMac && <div className="native-titlebar" data-tauri-drag-region aria-hidden="true" />}
         <MessengerSidebar
           data={data}
           width={sidebarWidth}
+          phone={phone}
           onResize={resizeSidebar}
           onSearch={() => setSearchOpen(true)}
           selected={selected}
@@ -877,10 +922,7 @@ function App({ runtime, setPiSettingsOpen }) {
         />
         <main className="main">
           <header className="header">
-            <SidebarTrigger
-              className="sidebar-toggle"
-              aria-label="打开会话列表"
-            />
+            {phone && <button className="sidebar-toggle phone-back" aria-label="返回会话列表" onClick={() => { composer.current?.blur(); navigation.back(); }}><ChevronLeft size={22} /></button>}
             <button
               className="conversation-identity"
               onClick={() => setDetails((v) => !v)}
@@ -1131,6 +1173,7 @@ function App({ runtime, setPiSettingsOpen }) {
                     el.scrollHeight - el.scrollTop - el.clientHeight < 80;
                   pinnedToEnd.current = bottom;
                   setAtBottom(bottom);
+                  scrollPositions.current.set(lastScope.current, { top: el.scrollTop, bottom });
                 }}
               >
                 <ConversationRequests data={data} kind={view === "group" ? "group" : "bot"} id={view === "group" ? groupId : selected} api={api} baseUrl={activeRuntime?.baseUrl || ""} />
