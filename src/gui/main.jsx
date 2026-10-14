@@ -815,6 +815,7 @@ function App({ runtime, setPiSettingsOpen }) {
     AvatarContext.Provider,
     { value: { baseUrl: activeRuntime?.baseUrl || "", bots: data.bots } },
     <Theme
+      className="app-theme"
       appearance="dark"
       accentColor="amber"
       grayColor="sand"

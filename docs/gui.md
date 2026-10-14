@@ -1,5 +1,6 @@
 # Local Pi GUI
 
+模型使用主页面、认证二级页及下拉菜单/断线提醒验收见 [2026-10-14 模型设置改进](pi-settings-ui-20261014.md)。
 当前命名 Runtime 设置、SSH 原生部署与可选一体镜像见 [Runtime 连接指南](design/runtime-connections.md)。以下保留历史验收。
 当前导航和报错验收：[2026-10-14 Sidebar / Cmd+K / 原生读图与恢复](gui-navigation-errors-20261014.md)。下文更早的测试数量为历史记录。
 

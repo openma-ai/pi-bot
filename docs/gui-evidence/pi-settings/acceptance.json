@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-14",
+  "offlineTests": 258,
+  "failed": 0,
+  "skipped": 0,
+  "typeCheck": true,
+  "guiLint": true,
+  "guiBuild": true,
+  "uiReviewFindings": 0,
+  "layout": {
+    "primary": "Model use",
+    "secondary": "Manage authentication",
+    "authIsPeerTab": false,
+    "modelSearchInsidePicker": true,
+    "authProviderSelectionIndependent": true
+  },
+  "browserChecks": {
+    "nativeConfigurationLoaded": true,
+    "keyboardModelSearch": true,
+    "unchangedSelectionSaveDisabled": true,
+    "thinkingChangeSaveEnabled": true,
+    "pendingLoginCancelledOnReturn": true,
+    "clientStoppedAndRecovered": true,
+    "rawFetchErrorHidden": true,
+    "mobileViewport": [
+      390,
+      844
+    ],
+    "mobilePageWidth": 390,
+    "thinkingMenuHeightDesktop": 240,
+    "thinkingMenuHeightMobile": 240,
+    "menuWithinViewport": true
+  },
+  "currentModel": {
+    "provider": "deepseek",
+    "model": "deepseek-v4-flash",
+    "thinking": "high"
+  },
+  "credentialsEntered": false,
+  "newModelApiBenchmark": false,
+  "causeOfTallMenu": "Global .radix-themes height:100% matched portal content",
+  "fix": "Height is scoped to the app shell; select uses content size and available viewport"
+}

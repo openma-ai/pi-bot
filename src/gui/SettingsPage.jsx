@@ -514,7 +514,7 @@ export function SettingsPage({ open, onOpenChange, runtime }) {
               Runtime
             </Tabs.Trigger>
             <Tabs.Trigger value="pi" disabled={!active}>
-              Pi 登录与模型
+              Pi 模型
             </Tabs.Trigger>
           </Tabs.List>
           <ScrollArea type="auto" className="settings-body">
@@ -525,9 +525,9 @@ export function SettingsPage({ open, onOpenChange, runtime }) {
               {active && (
                 <div className="settings-pane">
                   <div className="settings-pane-heading">
-                    <Heading size="4">Pi 登录与模型</Heading>
+                    <Heading size="4">模型设置</Heading>
                     <Text as="p" size="2" color="gray">
-                      {active.profile?.name || "当前 server"}的认证和默认模型
+                      {active.profile?.name || "当前 server"}的默认模型
                     </Text>
                   </div>
                   <PiSettingsPanel

@@ -81,6 +81,12 @@
       "direction": "Named runtime cards with separate Add and Enable actions",
       "components": "Radix Dialog, Tabs, Card, DropdownMenu, SegmentedControl",
       "behavior": "Current runtime only; independent Pi auth and drafts; 13 original avatar shapes, 11 colors, raster upload"
+    },
+    {
+      "date": "2026-10-14",
+      "direction": "Model use is primary; provider authentication lives behind Manage authentication in a secondary page",
+      "components": "Existing Radix Popover and cmdk model picker, compact reasoning row and scoped feedback",
+      "behavior": "Browsing auth providers never changes the selected model; only credentialed provider models are offered for use; returning cancels an unfinished login"
     }
   ],
   "evidence": [
