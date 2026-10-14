@@ -1775,6 +1775,7 @@ function RuntimeShell() {
         setPiSettingsOpen={setSettingsOpen}
       />
       <Theme
+        className="overlay-theme"
         appearance="dark"
         accentColor="amber"
         grayColor="sand"

@@ -1,0 +1,9 @@
+{
+  "name": "pi-bot-desktop-tauri",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build:gui": "node scripts/build-gui.mjs", "build": "npm run build:gui && tauri build --bundles app", "dev": "tauri dev" },
+  "dependencies": { "@tauri-apps/api": "^2.9.1" },
+  "devDependencies": { "@tauri-apps/cli": "^2.9.1" }
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Pi Bot Desktop",
+  "version": "0.1.0",
+  "identifier": "dev.pibot.desktop",
+  "build": { "frontendDist": "../dist" },
+  "app": {
+    "windows": [{ "label": "main", "title": "Pi Bot", "width": 1100, "height": 760, "minWidth": 360, "minHeight": 420 }],
+    "security": { "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost; font-src 'self' data:" }
+  },
+  "bundle": { "active": true, "targets": ["app"], "icon": [] }
+}

@@ -24,6 +24,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { PiSettingsPanel } from "./PiSettingsDialog.jsx";
+import { NativeRuntimeDownload } from "./NativeRuntimeDownload.jsx";
 const kindLabel = (profile) => (profile.mode === "local" ? "Local" : "Cloud");
 function RuntimeIcon({ profile, size = 20 }) {
   return profile?.mode === "ssh" ? (
@@ -363,6 +364,7 @@ function RuntimeSettings({ runtime }) {
         </Text>
       </div>
       <div className="runtime-cards">
+        <NativeRuntimeDownload />
         {(
           profiles || [{ id: "direct", name: "当前 server", mode: "local" }]
         ).map((profile) => {
