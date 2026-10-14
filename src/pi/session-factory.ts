@@ -1,3 +1,4 @@
+import type { SandboxHost } from './sandbox.ts';
 import { createDesktopExtension, desktopToolNames, type DesktopClient } from './desktop-client.ts';
 import { imageBudgetForModel } from './image-budget.ts';
 import { redactChannelText } from './redact.ts';
@@ -24,6 +25,8 @@ const key = Type.String({
     minLength: 1, maxLength: 256
 });
 export interface PiOptions {
+    /** Official Pi bash sandbox, shared with isolated coding workers. */
+    sandbox?: SandboxHost;
     desktop?: DesktopClient;
     /** Isolated native coding sessions dispatched through durable jobs. */
     codingWorkers?: boolean;
@@ -185,7 +188,8 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
             root: string;
             source: Envelope;
         }>();
-        const additionalTools = options.backgroundTools?.additionalTools ?? [createBashTool(dir) as unknown as ToolDefinition];
+        const sandbox = options.sandbox?.forSession(dir, Boolean(options.backgroundTools));
+        const additionalTools = (options.backgroundTools?.additionalTools ?? [createBashTool(dir) as unknown as ToolDefinition]).map(tool => tool.name === 'bash' && sandbox ? sandbox.bash : tool);
         const background = options.backgroundTools ? createBackgroundCodemodeExtension({
             ...options.backgroundTools, directory: options.backgroundTools.directory ?? join(dir, 'executions'), additionalTools,
             shouldYieldOnInput(text) {
@@ -533,7 +537,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
             }
         });
         const loader = new DefaultResourceLoader({
-            cwd: dir, agentDir: dir, settingsManager: settings, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, extensionFactories: [...(options.extensions ?? []), ...(background ? [background] : []), extension, createContextExtension({
+            cwd: dir, agentDir: dir, settingsManager: settings, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, extensionFactories: [...(options.extensions ?? []), ...(sandbox ? [sandbox.extension] : []), ...(background ? [background] : []), extension, createContextExtension({
                     ...options.context, imageBudget: options.context?.imageBudget ?? imageBudgetForModel(options.model), onCompaction: info => {
                         runtime.events?.emit(bot.id, {
                             type: 'compaction', ...info

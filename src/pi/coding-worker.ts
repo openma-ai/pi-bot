@@ -7,7 +7,7 @@ import { createAgentSession, DefaultResourceLoader, SettingsManager, type Extens
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import type { PiOptions } from './session-factory.ts';
 import { redactTraceValue } from './redact.ts';
-export async function runCodingWorker(options: Pick<PiOptions, 'dir' | 'modelRuntime' | 'model' | 'beforeProviderRequest' | 'inferenceSignal' | 'inferenceRequestTimeoutMs' | 'maxOutputTokens' | 'thinkingLevel' | 'extensions' | 'desktop'> & {
+export async function runCodingWorker(options: Pick<PiOptions, 'dir' | 'modelRuntime' | 'model' | 'beforeProviderRequest' | 'inferenceSignal' | 'inferenceRequestTimeoutMs' | 'maxOutputTokens' | 'thinkingLevel' | 'extensions' | 'desktop' | 'sandbox'> & {
     assertCurrent: () => void;
     permission?: (tool: string, args: unknown) => Promise<boolean>;
 }, task: string, hostTask: unknown) {
@@ -93,7 +93,7 @@ export async function runCodingWorker(options: Pick<PiOptions, 'dir' | 'modelRun
             constructor(config: ConstructorParameters<typeof DefaultResourceLoader>[0]) {
                 super({
                     ...config, noExtensions: true, noSkills: true, noContextFiles: true,
-                    extensionFactories: [...(config.extensionFactories ?? []), ...(options.extensions ?? []), guard]
+                    extensionFactories: [...(config.extensionFactories ?? []), ...(options.extensions ?? []), ...(options.sandbox ? [options.sandbox.forSession(config.cwd ?? options.dir).extension] : []), guard]
                 });
             }
         },

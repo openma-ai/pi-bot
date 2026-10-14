@@ -1,3 +1,4 @@
+import { createSandboxHost } from '../pi/sandbox.ts';
 import { ProviderRequestGuardError } from '../pi/host.ts';
 import { DesktopClient } from '../pi/desktop-client.ts';
 import { resolve } from 'node:path';
@@ -54,7 +55,12 @@ export async function livePiFactory(dir: string, proactive: (host: BotHost) => P
         pi.on('tool_call', event => save('tool_call', event));
         pi.on('tool_result', event => save('tool_result', event));
     };
+    const sandbox = createSandboxHost({
+        cwd: piOptions.cwd ?? process.cwd(),
+        onStatus: (message, level) => console.error(`[sandbox:${level}] ${message}`),
+    });
     const factory = piSessionFactory({
+        sandbox,
         credentials, desktop: DesktopClient.load(resolve('work/gui/desktop/control.json')), codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model, proactive, context: {
             backgroundEnabled: true, outputReserveTokens: 16384, summaryTimeoutMs: 600000
         }, backgroundTools: {}, extensions: [trace], thinkingLevel: configuration.thinkingLevel, maxOutputTokens: 16384, maxRequestsPerWake: 16, inferenceRequestTimeoutMs: 600000, inferenceSignal: lifetime,
@@ -73,6 +79,9 @@ export async function livePiFactory(dir: string, proactive: (host: BotHost) => P
         } : undefined
     });
     return {
-        factory, budget, model: model.id, configuration: configuration.public, dispose: configuration.dispose
+        factory, budget, model: model.id, configuration: configuration.public, dispose: async () => {
+            await sandbox.dispose();
+            configuration.dispose();
+        }
     };
 }

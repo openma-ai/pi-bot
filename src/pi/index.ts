@@ -7,4 +7,5 @@ export { createBackgroundCodemodeExtension, type BackgroundCodemodeOptions } fro
 export { createProactiveExtension, proactiveToolNames } from './proactive-extension.ts';
 export { runCodingWorker } from './coding-worker.ts';
 export { loadPiConfiguration } from './config.ts';
+export { createSandboxHost, type SandboxHost } from './sandbox.ts';
 export { redactChannelText, redactTraceValue } from './redact.ts';

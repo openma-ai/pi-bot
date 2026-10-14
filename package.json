@@ -33,6 +33,7 @@
     "gui:check": "eslint src/gui"
   },
   "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.26",
     "@earendil-works/pi-agent-core": "1.1.0",
     "@earendil-works/pi-ai": "1.1.0",
     "@earendil-works/pi-coding-agent": "1.1.0",

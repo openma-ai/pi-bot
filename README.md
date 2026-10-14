@@ -149,3 +149,8 @@ evals ──► 任意层（层外评测工具）
 Linux 桌面、共享浏览器 profile、Computer 实时画面与人工接管，见 [运行及验收说明](docs/linux-desktop-image.md)。
 
 Real flood, natural-language correction/cancellation and concurrent background compaction acceptance: [2026-10-14 report](docs/real-flood-compaction-20261014.md).
+
+## 官方 Pi bash 沙箱
+
+真实 daemon 默认加载 Pi 官方 sandbox 示例扩展，覆盖后台 bash 和 coding worker 的 bash；不改变原生 Pi 登录与模型设置。
+它不覆盖所有工具，且保留上游初始化失败时退回普通 bash 的行为。安装、配置、日志确认与限制见 [沙箱说明](docs/sandbox.md)。
