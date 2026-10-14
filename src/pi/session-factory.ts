@@ -465,7 +465,15 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
             if (options.desktop)
                 createDesktopExtension(options.desktop, bot.id, sourceId => runtime.assertTaskCurrent(own(sourceId, true)), async (tool, args, sourceId) => await authorize(runtime, {
                     botId: bot.id, taskId: own(sourceId, true).taskId, tool, args
-                }))(pi);
+                }), async (tool, args, callId, execute) => {
+                    // A codemode cell already has its own yieldable execution boundary.
+                    if (executionSource.getStore()) return execute(false);
+                    const source = own((args as { source_message_id?: string }).source_message_id, true);
+                    const job = runtime.startJob(source, tool, args, `desktop:${source.id}:${callId}`, () =>
+                        executionSource.run(source, () => execute(true)));
+                    return result({ jobId: job.id, state: job.state, taskId: job.taskId,
+                        note: 'Desktop operation queued; wait for its completion inbox and read job_result. Receipt is not completion.' });
+                })(pi);
             if (options.codingWorkers)
                 pi.registerTool({
                     name: 'subagent', label: 'Pi coding worker', exposure: 'model-only',
