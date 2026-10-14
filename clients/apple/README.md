@@ -1,4 +1,10 @@
-# Minimal Apple clients (development preview)
+# Pi Bot desktop (development build)
+
+**Current scope is desktop only. iOS is paused.** Earlier iOS compile helpers remain as inactive source; no iOS distribution or remote gateway is being developed.
+
+The macOS app now owns a Node GUI host on an automatically assigned loopback port and loads the existing React messenger in its own WKWebView window. Opening the app starts no bot runtime, creates no persistent daemon access token, and contacts no SSH host. Configure/enable a local or SSH runtime through the messenger's existing Settings when authorized. App termination stops its own GUI host and its managed tunnel; independent daemons remain independent.
+
+This development bundle uses the checkout and installed Node path recorded at build time. It is not a portable redistributable application. Node dependencies must be available in the checkout, and `dist/gui` must be built. No browser is needed to use it.
 
 One SwiftUI/WKWebView shell for macOS 14+ and iOS 17+, using installed Apple tools and no third-party native dependencies. It reuses the existing React messenger and its HTTP/SSE protocol rather than duplicating conversations, streaming, task state, or runtime management. This is a shell preview, not a completed remote iOS integration.
 
@@ -18,7 +24,7 @@ bash scripts/build.sh ios-device
 
 Device output is unsigned and cannot be installed as-is. Device installation requires an Xcode app target, provisioning/signing identity, and a trusted device. No Apple enrollment, signing account, TestFlight, or Store submission is included. These commands build an arm64 development application bundle without installing SDKs.
 
-For desktop, start the existing GUI/client from a separate development checkout using `npm run gui`, then enter `http://127.0.0.1:4317`. The GUI's existing connection settings support local or SSH remote runtimes. The native shell does not spawn, stop, or reconfigure a daemon automatically. Do not restart any currently running original runtime as part of testing this client.
+For desktop, build the GUI once from the repository root (`npm run gui:build`), then build/open the app with the commands above. The app starts `clients/apple/desktop-host.ts` with its own `work/desktop` client state and random loopback port. The GUI's existing Settings support local or SSH remote runtimes. Do not restart any currently running original runtime as part of testing this client. In this execution workspace dependencies are a read-only symlink to the installed integration checkout; the default Vite bundled config loader attempts to write there, so the equivalent successful build command was `node node_modules/vite/bin/vite.js build src/gui --outDir ../../dist/gui --emptyOutDir --configLoader runner`.
 
 ## Remote gap
 
@@ -40,4 +46,4 @@ build/policy-tests
 
 Estimated work: 1–2 engineering days for shell/local desktop integration and device QA; a further 1–3 days for authenticated remote gateway integration and reconnect tests, depending on deployment/auth choice. Packaging/signing/distribution is separate.
 
-Observed checkpoint: Xcode 26.6 with macOS/iOS/Simulator 26.5 SDKs; arm64 macOS, simulator and unsigned device compilation succeeded. Connection-policy tests passed 12 checks. Desktop connection UI was opened and screenshot-verified through native UI tooling. Simulator execution is unverified because sandbox access to CoreSimulatorService/device inventory failed. No live daemon, SSH configuration, credentials, or public listener was changed. The iOS shell is not yet a usable Pi Bot remote client without a selected and tested transport.
+Observed checkpoint: Xcode 26.6 with macOS/iOS/Simulator 26.5 SDKs; arm64 macOS, simulator and unsigned device compilation succeeded before iOS was paused. Connection-policy tests passed 12 checks. Desktop app automatically loaded the embedded messenger; messenger and Runtime Settings were verified through native UI tooling, including a screenshot. Node GUI-host smoke passed bootstrap, CSRF session and read-only runtime/status, with no active runtime. App Quit closed its own loopback port in a follow-up smoke check. Repository TS check, GUI lint and GUI production build passed (existing bundle-size and library directive warnings). No live daemon, SSH configuration, persistent credentials, or public listener was changed. Actual local bot/SSH conversation remains to be verified with an explicitly selected existing runtime; no remote host was specified or contacted.

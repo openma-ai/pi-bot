@@ -38,5 +38,9 @@ cat > "$plist" <<'PLIST'
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
 PLIST
+if [ "$platform" = macos ]; then
+  /usr/libexec/PlistBuddy -c "Add :PiBotProject string $(cd ../.. && pwd)" "$plist"
+  /usr/libexec/PlistBuddy -c "Add :PiBotNode string $(command -v node)" "$plist"
+fi
 if [ "$platform" != ios-device ]; then /usr/bin/codesign --force --sign - "$app"; fi
 echo "$PWD/$app"

@@ -9,6 +9,9 @@ struct PiBotApp: App {
 }
 
 struct ClientView: View {
+    #if os(macOS)
+    @StateObject private var host = DesktopHost()
+    #endif
     @AppStorage("serverOrigin") private var origin = ""
     @State private var endpoint: URL?
     @State private var error = ""
@@ -40,6 +43,11 @@ struct ClientView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         Text("Connect to your bots").font(.title2.bold())
+                        #if os(macOS)
+                        Button(host.starting ? "Starting desktop…" : "Start desktop") { host.start() }
+                            .buttonStyle(.borderedProminent).disabled(host.starting)
+                        if !host.error.isEmpty { Text(host.error).foregroundStyle(.red) }
+                        #endif
                         Text(allowLocal ? "Reuse your existing Pi Bot messenger. Its connection settings support local and SSH remote runtimes." : "Connect to an authenticated remote Pi Bot web gateway. No bot or agent runs on this device.")
                             .foregroundStyle(.secondary)
                         TextField(allowLocal ? "http://127.0.0.1:4317" : "https://your-server.example", text: $origin)
@@ -68,6 +76,12 @@ struct ClientView: View {
         }
         #if os(macOS)
         .frame(minWidth: 640, minHeight: 480)
+        .onAppear { host.start() }
+        .onReceive(host.$endpoint) { value in
+            endpoint = value
+            if value != nil { status = "Connecting…"; revision = UUID() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in host.stop() }
         #endif
     }
 }
