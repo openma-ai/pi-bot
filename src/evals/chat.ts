@@ -1,5 +1,5 @@
-import { BotRuntime } from '../daemon/runtime.ts';
-import type { Bot, Envelope, Outbound } from '../daemon/store.ts';
+import { BotRuntime } from '../daemon/runtime/runtime.ts';
+import type { Bot, Envelope, Outbound } from '../daemon/runtime/store.ts';
 export interface Channel {
     id: string;
     members: string[];

@@ -1,0 +1,31 @@
+test_01_persistence (test_contract.Contract.test_01_persistence) ... ok
+test_02_duplicate_atomic (test_contract.Contract.test_02_duplicate_atomic) ... ok
+test_03_unknown_dependency_atomic (test_contract.Contract.test_03_unknown_dependency_atomic) ... ok
+test_04_blocked_dependency (test_contract.Contract.test_04_blocked_dependency) ... ok
+test_05_dependency_unlock (test_contract.Contract.test_05_dependency_unlock) ... ok
+test_06_complete_idempotent (test_contract.Contract.test_06_complete_idempotent) ... ok
+test_07_cancel_idempotent (test_contract.Contract.test_07_cancel_idempotent) ... ok
+test_08_cancel_running (test_contract.Contract.test_08_cancel_running) ... ok
+test_09_done_cannot_cancel (test_contract.Contract.test_09_done_cannot_cancel) ... ok
+test_10_pending_cannot_complete (test_contract.Contract.test_10_pending_cannot_complete) ... ok
+test_11_atomic_batch_rollback (test_contract.Contract.test_11_atomic_batch_rollback) ... ok
+test_12_atomic_batch_success (test_contract.Contract.test_12_atomic_batch_success) ... ok
+test_13_unknown_task (test_contract.Contract.test_13_unknown_task) ... ok
+test_14_filters_sort (test_contract.Contract.test_14_filters_sort) ... ok
+test_15_sql_parameterization (test_contract.Contract.test_15_sql_parameterization) ... ok
+test_16_multiple_connections (test_contract.Contract.test_16_multiple_connections) ... ok
+test_17_empty_fields (test_contract.Contract.test_17_empty_fields) ... ok
+test_18_duplicate_dependency (test_contract.Contract.test_18_duplicate_dependency) ... ok
+test_19_migration_preserves (test_contract.Contract.test_19_migration_preserves) ... ok
+test_20_events_reopen (test_contract.Contract.test_20_events_reopen) ... ok
+test_21_cli_add_list (test_contract.Contract.test_21_cli_add_list) ... ok
+test_22_cli_lifecycle (test_contract.Contract.test_22_cli_lifecycle) ... ok
+test_23_cli_dependency_error (test_contract.Contract.test_23_cli_dependency_error) ... ok
+test_24_cli_csv (test_contract.Contract.test_24_cli_csv) ... ok
+test_25_cli_help (test_contract.Contract.test_25_cli_help) ... ok
+test_26_cli_cancel (test_contract.Contract.test_26_cli_cancel) ... ok
+
+----------------------------------------------------------------------
+Ran 26 tests in 0.328s
+
+OK

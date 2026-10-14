@@ -1,0 +1,26 @@
+export type ChannelMessage = {
+    messageId: string;
+    channelId: string;
+    conversationId: string;
+    threadId: string | null;
+    direction: 'inbound' | 'outbound';
+    sourceKind: string;
+    sender: string;
+    recipient: string;
+    botId: string;
+    taskId: string;
+    causationId: string | null;
+    text: string;
+    status: string;
+    receivedAt: number;
+    admittedAt?: number;
+    consumedAt?: number;
+    resolvedAt?: number;
+    deliveredAt?: number;
+    deliveryTarget?: string;
+    peerPriority?: string;
+    groupMessageId?: string;
+    mentions?: string[];
+    groupAttention?: string;
+    error?: string;
+};

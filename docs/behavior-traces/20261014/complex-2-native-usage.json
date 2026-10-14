@@ -1,0 +1,347 @@
+{
+  "guardedRequests": 35,
+  "usageRecords": 34,
+  "note": "Native responses only; missing usage is unknown, not zero. Reasoning is included in output.",
+  "responses": [
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/2026-10-14T01-33-04-933Z_01a1380a-a824-74d2-bf2f-cd174d6860b2.jsonl",
+      "entry": 6,
+      "input": 6233,
+      "output": 529,
+      "cacheRead": 0,
+      "totalTokens": 6762,
+      "reasoning": 214,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/2026-10-14T01-33-04-933Z_01a1380a-a824-74d2-bf2f-cd174d6860b2.jsonl",
+      "entry": 9,
+      "input": 8619,
+      "output": 2057,
+      "cacheRead": 4992,
+      "totalTokens": 15668,
+      "reasoning": 235,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/2026-10-14T01-33-04-933Z_01a1380a-a824-74d2-bf2f-cd174d6860b2.jsonl",
+      "entry": 26,
+      "input": 17220,
+      "output": 239,
+      "cacheRead": 4992,
+      "totalTokens": 22451,
+      "reasoning": 132,
+      "stopReason": "stop"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/2026-10-14T01-33-04-933Z_01a1380a-a824-74d2-bf2f-cd174d6860b2.jsonl",
+      "entry": 28,
+      "input": 17560,
+      "output": 38,
+      "cacheRead": 5504,
+      "totalTokens": 23102,
+      "reasoning": 10,
+      "stopReason": "stop"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/2026-10-14T01-33-04-933Z_01a1380a-a824-74d2-bf2f-cd174d6860b2.jsonl",
+      "entry": 30,
+      "input": 17057,
+      "output": 149,
+      "cacheRead": 4992,
+      "totalTokens": 22198,
+      "reasoning": 70,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/2026-10-14T01-33-04-933Z_01a1380a-a824-74d2-bf2f-cd174d6860b2.jsonl",
+      "entry": 32,
+      "input": 17726,
+      "output": 87,
+      "cacheRead": 5248,
+      "totalTokens": 23061,
+      "reasoning": 44,
+      "stopReason": "stop"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/2026-10-14T01-33-04-933Z_01a1380a-a824-74d2-bf2f-cd174d6860b2.jsonl",
+      "entry": 34,
+      "input": 19312,
+      "output": 226,
+      "cacheRead": 4992,
+      "totalTokens": 24530,
+      "reasoning": 65,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/2026-10-14T01-33-04-933Z_01a1380a-a824-74d2-bf2f-cd174d6860b2.jsonl",
+      "entry": 36,
+      "input": 21333,
+      "output": 315,
+      "cacheRead": 4992,
+      "totalTokens": 26640,
+      "reasoning": 55,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/2026-10-14T01-33-04-933Z_01a1380a-a824-74d2-bf2f-cd174d6860b2.jsonl",
+      "entry": 39,
+      "input": 23330,
+      "output": 97,
+      "cacheRead": 5248,
+      "totalTokens": 28675,
+      "reasoning": 48,
+      "stopReason": "stop"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/workers/154745ca98eb4c465e7d9538/2026-10-14T01-33-18-364Z_01a1380a-dc9c-74d2-bf2f-cd18466f2c58.jsonl",
+      "entry": 6,
+      "input": 4002,
+      "output": 174,
+      "cacheRead": 0,
+      "totalTokens": 4176,
+      "reasoning": 9,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/workers/154745ca98eb4c465e7d9538/2026-10-14T01-33-18-364Z_01a1380a-dc9c-74d2-bf2f-cd18466f2c58.jsonl",
+      "entry": 9,
+      "input": 1056,
+      "output": 233,
+      "cacheRead": 4096,
+      "totalTokens": 5385,
+      "reasoning": 13,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/workers/154745ca98eb4c465e7d9538/2026-10-14T01-33-18-364Z_01a1380a-dc9c-74d2-bf2f-cd18466f2c58.jsonl",
+      "entry": 13,
+      "input": 1987,
+      "output": 7545,
+      "cacheRead": 5376,
+      "totalTokens": 14908,
+      "reasoning": 5132,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/workers/154745ca98eb4c465e7d9538/2026-10-14T01-33-18-364Z_01a1380a-dc9c-74d2-bf2f-cd18466f2c58.jsonl",
+      "entry": 15,
+      "input": 247,
+      "output": 371,
+      "cacheRead": 14720,
+      "totalTokens": 15338,
+      "reasoning": 10,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/workers/154745ca98eb4c465e7d9538/2026-10-14T01-33-18-364Z_01a1380a-dc9c-74d2-bf2f-cd18466f2c58.jsonl",
+      "entry": 17,
+      "input": 659,
+      "output": 323,
+      "cacheRead": 15232,
+      "totalTokens": 16214,
+      "reasoning": 166,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/52e1532c-8be5-42e5-928b-cda1e86cc1b5/dca009a9415c94730a27cab5/workers/154745ca98eb4c465e7d9538/2026-10-14T01-33-18-364Z_01a1380a-dc9c-74d2-bf2f-cd18466f2c58.jsonl",
+      "entry": 19,
+      "input": 633,
+      "output": 1518,
+      "cacheRead": 16128,
+      "totalTokens": 18279,
+      "reasoning": 170,
+      "stopReason": "stop"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/2026-10-14T01-33-18-376Z_01a1380a-dca7-74d2-bf2f-cd1bf1f15063.jsonl",
+      "entry": 6,
+      "input": 7058,
+      "output": 585,
+      "cacheRead": 0,
+      "totalTokens": 7643,
+      "reasoning": 383,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/2026-10-14T01-33-18-376Z_01a1380a-dca7-74d2-bf2f-cd1bf1f15063.jsonl",
+      "entry": 9,
+      "input": 9292,
+      "output": 638,
+      "cacheRead": 4992,
+      "totalTokens": 14922,
+      "reasoning": 325,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/2026-10-14T01-33-18-376Z_01a1380a-dca7-74d2-bf2f-cd1bf1f15063.jsonl",
+      "entry": 15,
+      "input": 20469,
+      "output": 2416,
+      "cacheRead": 4992,
+      "totalTokens": 27877,
+      "reasoning": 1184,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/2026-10-14T01-33-18-376Z_01a1380a-dca7-74d2-bf2f-cd1bf1f15063.jsonl",
+      "entry": 18,
+      "input": 24676,
+      "output": 126,
+      "cacheRead": 4992,
+      "totalTokens": 29794,
+      "reasoning": 86,
+      "stopReason": "stop"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/2026-10-14T01-33-18-376Z_01a1380a-dca7-74d2-bf2f-cd1bf1f15063.jsonl",
+      "entry": 20,
+      "input": 25268,
+      "output": 384,
+      "cacheRead": 4992,
+      "totalTokens": 30644,
+      "reasoning": 54,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/2026-10-14T01-33-18-376Z_01a1380a-dca7-74d2-bf2f-cd1bf1f15063.jsonl",
+      "entry": 24,
+      "input": 33266,
+      "output": 368,
+      "cacheRead": 4992,
+      "totalTokens": 38626,
+      "reasoning": 248,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/2026-10-14T01-33-18-376Z_01a1380a-dca7-74d2-bf2f-cd1bf1f15063.jsonl",
+      "entry": 27,
+      "input": 36609,
+      "output": 721,
+      "cacheRead": 4992,
+      "totalTokens": 42322,
+      "reasoning": 82,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/2026-10-14T01-33-18-376Z_01a1380a-dca7-74d2-bf2f-cd1bf1f15063.jsonl",
+      "entry": 30,
+      "input": 38815,
+      "output": 179,
+      "cacheRead": 5248,
+      "totalTokens": 44242,
+      "reasoning": 71,
+      "stopReason": "stop"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/workers/3bb1d99336fe6e93ee16efda/2026-10-14T01-33-41-309Z_01a1380b-363d-74d2-bf2f-cd1ce76f80f8.jsonl",
+      "entry": 6,
+      "input": 4162,
+      "output": 172,
+      "cacheRead": 0,
+      "totalTokens": 4334,
+      "reasoning": 10,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/workers/3bb1d99336fe6e93ee16efda/2026-10-14T01-33-41-309Z_01a1380b-363d-74d2-bf2f-cd1ce76f80f8.jsonl",
+      "entry": 9,
+      "input": 887,
+      "output": 292,
+      "cacheRead": 4224,
+      "totalTokens": 5403,
+      "reasoning": 0,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/workers/3bb1d99336fe6e93ee16efda/2026-10-14T01-33-41-309Z_01a1380b-363d-74d2-bf2f-cd1ce76f80f8.jsonl",
+      "entry": 14,
+      "input": 2016,
+      "output": 5627,
+      "cacheRead": 5376,
+      "totalTokens": 13019,
+      "reasoning": 4394,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/workers/3bb1d99336fe6e93ee16efda/2026-10-14T01-33-41-309Z_01a1380b-363d-74d2-bf2f-cd1ce76f80f8.jsonl",
+      "entry": 16,
+      "input": 151,
+      "output": 207,
+      "cacheRead": 12928,
+      "totalTokens": 13286,
+      "reasoning": 11,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/workers/3bb1d99336fe6e93ee16efda/2026-10-14T01-33-41-309Z_01a1380b-363d-74d2-bf2f-cd1ce76f80f8.jsonl",
+      "entry": 18,
+      "input": 182,
+      "output": 1633,
+      "cacheRead": 13184,
+      "totalTokens": 14999,
+      "reasoning": 0,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/workers/3bb1d99336fe6e93ee16efda/2026-10-14T01-33-41-309Z_01a1380b-363d-74d2-bf2f-cd1ce76f80f8.jsonl",
+      "entry": 20,
+      "input": 211,
+      "output": 150,
+      "cacheRead": 14848,
+      "totalTokens": 15209,
+      "reasoning": 0,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/workers/3bb1d99336fe6e93ee16efda/2026-10-14T01-33-41-309Z_01a1380b-363d-74d2-bf2f-cd1ce76f80f8.jsonl",
+      "entry": 22,
+      "input": 284,
+      "output": 1025,
+      "cacheRead": 15104,
+      "totalTokens": 16413,
+      "reasoning": 77,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/workers/3bb1d99336fe6e93ee16efda/2026-10-14T01-33-41-309Z_01a1380b-363d-74d2-bf2f-cd1ce76f80f8.jsonl",
+      "entry": 24,
+      "input": 203,
+      "output": 213,
+      "cacheRead": 16256,
+      "totalTokens": 16672,
+      "reasoning": 0,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/workers/3bb1d99336fe6e93ee16efda/2026-10-14T01-33-41-309Z_01a1380b-363d-74d2-bf2f-cd1ce76f80f8.jsonl",
+      "entry": 26,
+      "input": 235,
+      "output": 302,
+      "cacheRead": 16640,
+      "totalTokens": 17177,
+      "reasoning": 54,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/workers/3bb1d99336fe6e93ee16efda/2026-10-14T01-33-41-309Z_01a1380b-363d-74d2-bf2f-cd1ce76f80f8.jsonl",
+      "entry": 28,
+      "input": 734,
+      "output": 479,
+      "cacheRead": 17152,
+      "totalTokens": 18365,
+      "reasoning": 332,
+      "stopReason": "toolUse"
+    },
+    {
+      "file": "sessions/69cd8a2c-b2b5-4788-b30d-a6b8a0d8df7f/dca009a9415c94730a27cab5/workers/3bb1d99336fe6e93ee16efda/2026-10-14T01-33-41-309Z_01a1380b-363d-74d2-bf2f-cd1ce76f80f8.jsonl",
+      "entry": 30,
+      "input": 345,
+      "output": 1665,
+      "cacheRead": 18304,
+      "totalTokens": 20314,
+      "reasoning": 249,
+      "stopReason": "stop"
+    }
+  ]
+}

@@ -4,10 +4,10 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore } from '@earendil-works/pi-ai';
-import { BotRuntime } from '../src/daemon/runtime.ts';
+import { BotRuntime } from '../src/daemon/runtime/runtime.ts';
 import { piSessionFactory } from '../src/pi/session-factory.ts';
-import { ProactiveService } from '../src/daemon/proactive.ts';
-import type { Envelope, Outbound } from '../src/daemon/store.ts';
+import { ProactiveService } from '../src/daemon/runtime/proactive.ts';
+import type { Envelope, Outbound } from '../src/daemon/runtime/store.ts';
 test('native Pi creates a durable schedule and responds through send_message on fire', {
     timeout: 15000
 }, async () => {

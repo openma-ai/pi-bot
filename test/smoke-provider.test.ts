@@ -137,7 +137,7 @@ test('thinking wire: streamed reasoning survives two sequential tool calls and l
     }
 });
 test('native Pi thinking: paired ordinary tools, send_message and next-user replay retain all reasoning', async () => {
-    const { BotRuntime } = await import('../src/daemon/runtime.ts');
+    const { BotRuntime } = await import('../src/daemon/runtime/runtime.ts');
     const { piSessionFactory } = await import('../src/pi/session-factory.ts');
     const { RequestBudget } = await import('../src/evals/evaluation.ts');
     const { hasValidToolPairs } = await import('../src/pi/context.ts');

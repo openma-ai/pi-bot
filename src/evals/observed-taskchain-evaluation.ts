@@ -7,13 +7,13 @@ import { Type } from 'typebox';
 import { ModelRuntime, SessionManager, type ToolDefinition, type ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore, type Model, type Api, type TranscriptContext } from '@earendil-works/pi-ai';
 import { gradeTaskChain, gradeProgressCsv, TASKCHAIN_SPEC, PROGRESS_SPEC, type WorkEvaluationReport, type CodeGrade } from './taskchain-evaluation.ts';
-import { BotRuntime } from '../daemon/runtime.ts';
+import { BotRuntime } from '../daemon/runtime/runtime.ts';
 import { piSessionFactory, createModelSummarizer } from '../pi/session-factory.ts';
 import { SimulatedChat } from './chat.ts';
 import { RequestBudget, SMOKE_CAP } from './evaluation.ts';
 import { hasValidToolPairs } from '../pi/context.ts';
 import { redactTraceValue, inboxIds, observeEvaluationTools, type EvaluationTrace } from './evaluation-trace.ts';
-import type { Bot, Envelope, Job, Outbound } from '../daemon/store.ts';
+import type { Bot, Envelope, Job, Outbound } from '../daemon/runtime/store.ts';
 const chainText = TASKCHAIN_SPEC.split('Submit code using')[0] + `Perform this task yourself. Call codemode once with source_message_id for this task and a script awaiting tools.submit_taskchain({code:<your Python source>}); print its result with text(). The host supplies message_id. Do not wrap in start_job. The real Python test process may pause until independent task B is finished. A running cell receipt is not completion; never rerun the script to obtain output. End your turn while waiting. When completion arrives, collect the saved full final result with codemode_read; if done=false, follow next_offset. Only after all 12 tests pass and the full result is read, use send_message exactly READY TaskChain/solution.py, replying to this task. No acknowledgements, polling or delegation.`;
 const reportText = PROGRESS_SPEC.split('Use start_job tool')[0] + `This is independent task B while TaskChain's Python process is running. Actually observe grade_started and its PID from the existing TaskChain receipt. If the receipt does not already contain it, call codemode_wait (yield_time_ms=1, after_seq set to the previous next_seq); never re-read the entire event history unnecessarily. Then call codemode once with this task's source_message_id, await tools.submit_progress_csv({csv:<your computed CSV>}) and print its result. After validation passes, use send_message exactly READY Reports/progress.csv for this task. Do not wait for TaskChain to finish: the host releases that process after B is validated and replied. Never restart TaskChain. No acknowledgements, polling or delegation.`;
 const requiredChecks = ['empty', 'dependency-start', 'dependency-order', 'complete-before-start', 'duplicate-id', 'unknown-dependency', 'unknown-task', 'duplicate-complete', 'multiple-dependencies', 'collaboration-comments', 'notification-contract', 'reports-and-diagram'];
@@ -108,7 +108,7 @@ export async function runObservedTaskChainEvaluation(options: {
     const root = await createEvaluationDirectory('pi-observed-work-');
     const releasePath = join(root, 'grade-release');
     const executionDir = join(root, 'executions');
-    const budget = options.budget ?? new RequestBudget();
+    const budget = options.budget ?? new RequestBudget(SMOKE_CAP, 'context', { reserveInput: false });
     const lifetime = new AbortController();
     const deadline = setTimeout(() => lifetime.abort(), SMOKE_CAP.deadlineMs);
     const trace: EvaluationTrace = {
@@ -142,7 +142,7 @@ export async function runObservedTaskChainEvaluation(options: {
         prefixInboxIds?: string[];
         characters?: number;
     }[] = [];
-    let summaryInFlight = 0, foregroundOverlap = 0, lateId: string | undefined, summaryTailInjected = false;
+    let summaryInFlight = 0, foregroundOverlap = 0, lateId: string | undefined, summaryTailInjected = false, lateCancelId: string | undefined;
     const compactions: unknown[] = [];
     const releaseTag = 'audit-20261013-v3';
     let runtime!: BotRuntime, chat!: SimulatedChat, flood: Promise<void> | undefined, cancelId: string | undefined;
@@ -306,7 +306,7 @@ export async function runObservedTaskChainEvaluation(options: {
                                         cancelId = chat.send({
                                             channelId: 'alpha', senderId: 'alice', threadId: 'build', taskId: 'taskchain', key: 'cancel-running-taskchain', taskControl: 'cancel', text: 'Cancel TaskChain publication. Keep the already-started validation running; inspect its final observations, but do not start another TaskChain action or send a TaskChain reply. Independent CSV task B remains valid.'
                                         }).id;
-                                    for (let i = 0; i < 8; i++)
+                                    for (let i = 0; i < 24; i++)
                                         chat.send({
                                             channelId: i % 2 ? 'alpha' : 'beta', senderId: i % 2 ? 'bob' : 'eve', threadId: 'lounge', taskId: 'live-noise-' + i, key: 'live-noise-' + i, text: 'Incidental group chatter while tests run; no task or reply. Keep valid commitments.'
                                         });
@@ -428,7 +428,7 @@ export async function runObservedTaskChainEvaluation(options: {
                     order: ++order, botId: bot.id, inboxIds: inboxIds(context)
                 });
             }, context: {
-                backgroundEnabled: !!options.backgroundSummary && bot.channelId === 'alpha', maxContextTokens: 256000, outputReserveTokens: 16384, thresholdTokens: 12000, recentMessages: 2, canSummarize: () => summaries.every(e => e.kind !== 'started') && processEvents.some(e => e.event === 'grade_started') && !processEvents.some(e => e.event === 'grade_finished'), summaryTimeoutMs: 600000, summaryMaxAttempts: 1, summarize: async (snapshot) => {
+                backgroundEnabled: !!options.backgroundSummary && bot.channelId === 'alpha', maxContextTokens: (faux?.getModel() ?? options.model!).contextWindow, outputReserveTokens: 16384, thresholdTokens: 12000, recentMessages: 2, canSummarize: () => summaryInFlight === 0 && processEvents.some(e => e.event === 'grade_started') && !processEvents.some(e => e.event === 'grade_finished'), summaryTimeoutMs: 600000, summaryMaxAttempts: 1, summarize: async (snapshot) => {
                     const prefixInboxIds = inboxIds({
                         messages: snapshot.messages
                     });
@@ -440,9 +440,15 @@ export async function runObservedTaskChainEvaluation(options: {
                         lateId = chat.send({
                             channelId: 'alpha', senderId: 'alice', threadId: 'build', taskId: 'taskchain', key: 'taskchain-v3', taskControl: 'replace', text: `Late correction: keep the complete API and add module constant RELEASE_TAG='${releaseTag}'. Previous version must not be published. ` + chainText
                         }).id;
+                    chat.send({
+                        channelId: 'alpha', senderId: 'alice', threadId: 'late-export', taskId: 'cancelled-late-export', key: 'late-export-prepare', text: 'Prepare an export plan only; wait for my choice. No tools or reply.'
+                    });
+                    lateCancelId = chat.send({
+                        channelId: 'alpha', senderId: 'alice', threadId: 'late-export', taskId: 'cancelled-late-export', key: 'late-export-cancel', taskControl: 'cancel', text: 'Cancel that export plan. No action or reply. TaskChain and the independent CSV remain valid.'
+                    }).id;
                     try {
                         const summarize = createModelSummarizer(models, faux?.getModel() ?? options.model!, {
-                            maxTokens: 8192, beforeRequest: (ctx, max) => {
+                            maxTokens: 16384, beforeRequest: (ctx, max) => {
                                 if (budget.accounting === 'wire')
                                     budget.assertRequestAllowance(max);
                                 else
@@ -521,9 +527,10 @@ export async function runObservedTaskChainEvaluation(options: {
         const completed = expected.filter(d => artifacts.get(d.task)?.grade.pass && (d.task !== 'taskchain' || artifacts.get(d.task)!.originId === active) && trace.outbox.filter(o => o.taskId === d.task && o.state === 'delivered' && o.text === d.text && o.route?.channelId === 'alpha' && o.route.threadId === d.thread && o.route.senderId === d.sender).length === 1).length;
         const duplicates = expected.reduce((n, d) => n + Math.max(0, trace.outbox.filter(o => o.taskId === d.task).length - 1), 0) + submissions.length - new Set(submissions.map(s => JSON.stringify([s.task, s.originId, s.sha256]))).size;
         const score = {
-            completedTasks: completed, expectedTasks: expected.length, missedTasks: expected.length - completed, noiseReplies: trace.outbox.filter(o => o.taskId.includes('noise')).length, cancelledActions: trace.jobs.filter(j => j.taskId === 'cancelled-export').length + trace.outbox.filter(o => o.taskId === 'cancelled-export' || options.cancelDuringExecution && o.taskId === 'taskchain').length + (options.cancelDuringExecution && artifacts.has('taskchain') ? 1 : 0), wrongRecipients: trace.outbox.filter(o => !expected.some(d => d.task === o.taskId && o.route?.channelId === 'alpha' && o.route.threadId === d.thread && o.route.senderId === d.sender) && !o.taskId.includes('noise') && o.taskId !== 'cancelled-export' && !(options.cancelDuringExecution && o.taskId === 'taskchain')).length, duplicateActions: duplicates, obsoleteFinalArtifacts: artifacts.get('taskchain') && artifacts.get('taskchain')!.originId !== active ? 1 : 0
+            completedTasks: completed, expectedTasks: expected.length, missedTasks: expected.length - completed, noiseReplies: trace.outbox.filter(o => o.taskId.includes('noise')).length, cancelledActions: trace.jobs.filter(j => ['cancelled-export', 'cancelled-late-export'].includes(j.taskId)).length + trace.outbox.filter(o => ['cancelled-export', 'cancelled-late-export'].includes(o.taskId) || options.cancelDuringExecution && o.taskId === 'taskchain').length + (options.cancelDuringExecution && artifacts.has('taskchain') ? 1 : 0), wrongRecipients: trace.outbox.filter(o => !expected.some(d => d.task === o.taskId && o.route?.channelId === 'alpha' && o.route.threadId === d.thread && o.route.senderId === d.sender) && !o.taskId.includes('noise') && !['cancelled-export', 'cancelled-late-export'].includes(o.taskId) && !(options.cancelDuringExecution && o.taskId === 'taskchain')).length, duplicateActions: duplicates, obsoleteFinalArtifacts: artifacts.get('taskchain') && artifacts.get('taskchain')!.originId !== active ? 1 : 0
         };
         const pending = trace.inbox.filter(e => e.state !== 'processed').length;
+        clearInterval(monitor);
         await runtime.close();
         runtimeClosed = true;
         const cells = await collectCells(executionDir);
@@ -548,9 +555,9 @@ export async function runObservedTaskChainEvaluation(options: {
                 });
             }
         const compaction = {
-            started: summaries.filter(e => e.kind === 'started').length, completed: summaries.filter(e => e.kind === 'completed').length, adopted: compactions.length, foregroundOverlap, lateCorrectionExcluded: !!lateId && summaries.some(e => e.kind === 'started' && !e.prefixInboxIds?.includes(lateId!)), blockedStaleActions: trace.results.filter(e => e.name === 'save_artifact' && e.isError && JSON.stringify(e.content).includes('superseded')).length, lateCorrectionId: lateId, summaries, entries: compactions
+            started: summaries.filter(e => e.kind === 'started').length, completed: summaries.filter(e => e.kind === 'completed').length, adopted: compactions.length, foregroundOverlap, lateCorrectionExcluded: !!lateId && summaries.some(e => e.kind === 'started' && !e.prefixInboxIds?.includes(lateId!)), lateCancellationExcluded: !!lateCancelId && summaries.some(e => e.kind === 'started' && !e.prefixInboxIds?.includes(lateCancelId!)), lateCancelId, blockedStaleActions: trace.results.filter(e => e.name === 'save_artifact' && e.isError && JSON.stringify(e.content).includes('superseded')).length, lateCorrectionId: lateId, summaries, entries: compactions
         };
-        const compressionPass = !options.backgroundSummary || compaction.started > 0 && compaction.completed > 0 && compaction.adopted > 0 && foregroundOverlap > 0 && compaction.lateCorrectionExcluded && compaction.blockedStaleActions > 0;
+        const compressionPass = !options.backgroundSummary || compaction.started > 0 && compaction.completed > 0 && compaction.adopted > 0 && foregroundOverlap > 0 && compaction.lateCorrectionExcluded && compaction.lateCancellationExcluded && compaction.blockedStaleActions > 0;
         return {
             mode, backgroundExecution: true, compaction, provenance: {
                 benchmark: 'MARBLE TaskChain adapted subset plus computed CSV companion', upstreamCommit: '8d60fa17b5596b44458a52d4296061b9fc13d6f2', taskId: 46, adaptations: ['one active Pi bot handles two independent member tasks', 'native codemode -> submit_taskchain -> executable validator', 'controlled validation pause for observable overlapping input', 'not the original MARBLE orchestration or score']

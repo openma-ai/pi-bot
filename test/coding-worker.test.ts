@@ -60,9 +60,9 @@ test('coding worker refuses tools after task invalidation', async () => {
     }), /obsolete/);
     assert.equal(existsSync(join(dir, 'stale.txt')), false);
 });
-import { BotRuntime } from '../src/daemon/runtime.ts';
+import { BotRuntime } from '../src/daemon/runtime/runtime.ts';
 import { piSessionFactory } from '../src/pi/session-factory.ts';
-import type { Job } from '../src/daemon/store.ts';
+import type { Job } from '../src/daemon/runtime/store.ts';
 test('bot subagent returns durable receipt, completes isolated coding job and deduplicates dispatch', async () => {
     const dir = mkdtempSync(resolve('work/worker-tests/case-'));
     const models = await ModelRuntime.create({

@@ -1,137 +1,110 @@
 import { createInterface } from 'node:readline';
-import { resolve, join } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
-import { ProactiveService } from './proactive.ts';
-import { createFileChangeDetector } from './proactive-detectors.ts';
-import { createModelBackgroundWorker } from './proactive-model-worker.ts';
-import { loadPiConfiguration } from '../pi/config.ts';
-import { OpenMatterTrigger } from './openmatter-trigger.ts';
-import { BotRuntime } from './runtime.ts';
-import { piSessionFactory } from '../pi/session-factory.ts';
-import type { Outbound } from './store.ts';
-const dir = resolve(process.env.PI_BOT_DIR ?? '.pi-bot');
-mkdirSync(dir, {
-    recursive: true
-});
-{
-    const configuration = await loadPiConfiguration();
-    const { models, model } = configuration;
-    let proactive: ProactiveService | undefined;
-    const proactiveOptions: ConstructorParameters<typeof ProactiveService>[1] = {
-        detectors: process.env.PI_BOT_WATCH_FILE ? {
-            file: createFileChangeDetector(resolve(process.env.PI_BOT_WATCH_FILE))
-        } : {}, ...(process.env.PI_BOT_BACKGROUND_WORK === '1' ? {
-            workers: {
-                memory: createModelBackgroundWorker(models, model, 'memory'), research: createModelBackgroundWorker(models, model, 'research')
-            }
-        } : {})
-    };
-    const trigger = new OpenMatterTrigger(join(dir, 'triggers.db'));
-    const runtime: BotRuntime = new BotRuntime(join(dir, 'runtime.db'), piSessionFactory({
-        codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model,
-        ...(process.env.PI_BOT_PROACTIVE === '1' ? {
-            // The daemon owns the concrete runtime; the plugin only sees the ProactivePort.
-            proactive: () => proactive ??= new ProactiveService(runtime, proactiveOptions)
-        } : {}),
-        ...(process.env.PI_BOT_BACKGROUND_TOOLS === '1' ? {
-            backgroundTools: {}
-        } : {})
-    }), {
-        activation: trigger, isolateConversations: true
+import { connectAuto } from './transports/auto.ts';
+export async function chat(options: {
+    dataDir?: string;
+    botId?: string;
+} = {}) {
+    const host = await connectAuto({
+        dataDir: options.dataDir, clientInfo: {
+            name: 'pi-bot-cli', version: '0.2.0'
+        }, capabilities: {
+            serverRequests: ['approval', 'question', 'credential'], streamingReplies: true
+        }
     });
-    trigger.bind(id => runtime.activateInbox(id));
-    const bot = runtime.listBots()[0] ?? runtime.createBot('main', 'Personal assistant');
-    runtime.start();
-    if (process.env.PI_BOT_PROACTIVE === '1') {
-        proactive ??= new ProactiveService(runtime, proactiveOptions);
-        proactive.start();
-    }
-    const print = async (o: Outbound) => {
-        console.log(JSON.stringify({
-            type: 'message', ...o
-        }));
-    };
-    let timer: ReturnType<typeof setInterval> | undefined;
-    let closing = false;
+    const client = host.client;
+    const bots = await client.bot.list({});
+    let botId = options.botId ?? bots.bots[0]?.id;
+    if (!botId)
+        botId = (await client.bot.create({
+            name: '助手'
+        })).bot.id;
+    const snapshot = await client.daemon.snapshot({});
     const rl = createInterface({
-        input: process.stdin, crlfDelay: Infinity
+        input: process.stdin, output: process.stdout, crlfDelay: Infinity
     });
-    console.log(JSON.stringify({
-        type: 'ready', botId: bot.id, commands: ['/bots', '/new NAME', '/to BOT_ID TEXT', '/answer QUESTION_ID TEXT', '/reconcile INBOX_ID DELIVERED_OUTBOX_ID', '/state', '/quit'], note: 'Plain lines go to main bot. Outbox delivered means written to local console only.'
-    }));
-    timer = setInterval(() => {
-        if (!runtime.store.db.isTransaction)
-            trigger.flush();
-        void runtime.deliver(print).catch(e => console.error(String(e)));
-    }, 100);
+    await client.events.subscribe({
+        after: snapshot.seq, filter: {
+            botIds: [botId]
+        }
+    }, event => {
+        const item = event.params.item;
+        if (item?.type === 'agentMessage' && item.delivery === 'delivered')
+            console.log(item.text);
+    });
+    console.error('Connected. /bots · /new NAME · /to ID TEXT · /quit');
+    let stopping = false;
     const stop = async () => {
-        if (closing)
+        if (stopping)
             return;
-        closing = true;
+        stopping = true;
         rl.close();
-        clearInterval(timer);
-        await proactive?.close();
-        await runtime.idle();
-        await runtime.deliver(print);
-        for (const error of runtime.errors)
-            console.error('RUNTIME', String(error));
-        await runtime.close();
-        trigger.close();
+        client.close();
+        await host.close();
     };
+    client.on('request', frame => {
+        const request = frame.params.request;
+        console.error('Pending ' + request.kind + ' ' + request.id + ': ' + JSON.stringify(request.params));
+        console.error('Use /answer REQUEST_ID TEXT or /approve REQUEST_ID or /deny REQUEST_ID.');
+    });
     rl.on('line', line => {
-        try {
-            if (line === '/quit') {
-                void stop();
-                return;
+        void (async () => {
+            try {
+                if (line === '/quit')
+                    return stop();
+                if (line === '/bots') {
+                    console.log(JSON.stringify(await client.bot.list({})));
+                    return;
+                }
+                if (line.startsWith('/new ')) {
+                    console.log(JSON.stringify(await client.bot.create({
+                        name: line.slice(5)
+                    })));
+                    return;
+                }
+                if (line === '/state') {
+                    console.log(JSON.stringify(await client.daemon.status({})));
+                    return;
+                }
+                if (line.startsWith('/answer ')) {
+                    const [, id, ...text] = line.split(' ');
+                    await client.request.resolve({
+                        requestId: id, response: {
+                            text: text.join(' ')
+                        }
+                    });
+                    return;
+                }
+                if (line.startsWith('/approve ') || line.startsWith('/deny ')) {
+                    const [verb, id] = line.split(' ');
+                    await client.request.resolve({
+                        requestId: id, response: {
+                            decision: verb === '/approve' ? 'approve' : 'deny'
+                        }
+                    });
+                    return;
+                }
+                if (line.startsWith('/reconcile ')) {
+                    await client.task.reconcile({
+                        inputId: line.slice(11).trim()
+                    });
+                    return;
+                }
+                let to = botId!, text = line;
+                if (line.startsWith('/to ')) {
+                    const [, id, ...rest] = line.split(' ');
+                    to = id;
+                    text = rest.join(' ');
+                }
+                console.log(JSON.stringify(await client.turn.start({
+                    botId: to, text, key: crypto.randomUUID()
+                })));
             }
-            if (line === '/bots') {
-                console.log(JSON.stringify(runtime.listBots()));
-                return;
+            catch (e) {
+                console.error(e instanceof Error ? e.message : 'Request failed');
             }
-            if (line === '/state') {
-                console.log(JSON.stringify(runtime.store.state(bot.id)));
-                return;
-            }
-            if (line.startsWith('/new ')) {
-                console.log(JSON.stringify(runtime.createBot(line.slice(5))));
-                return;
-            }
-            if (line.startsWith('/reconcile ')) {
-                const parts = line.trim().split(/\s+/);
-                if (parts.length !== 3)
-                    throw Error('Expected inbox ID and delivered outbox ID');
-                runtime.reconcileInbox(parts[1], {
-                    outcome: 'processed', evidence: [parts[2]]
-                });
-                console.log(JSON.stringify({
-                    type: 'reconciled', messageId: parts[1]
-                }));
-                return;
-            }
-            if (line.startsWith('/answer ')) {
-                const [, id, ...text] = line.split(' ');
-                runtime.answer(id, text.join(' '), randomUUID());
-                return;
-            }
-            let to = bot.id, text = line;
-            if (line.startsWith('/to ')) {
-                const [, id, ...rest] = line.split(' ');
-                to = id;
-                text = rest.join(' ');
-            }
-            const e = runtime.accept({
-                to, text, key: randomUUID()
-            });
-            console.log(JSON.stringify({
-                type: 'accepted', messageId: e.id, state: e.state
-            }));
-        }
-        catch (error) {
-            console.error(String(error));
-        }
+        })();
     });
-    rl.on('close', () => {
-        void stop();
-    });
+    rl.on('close', () => void stop());
+    process.once('SIGINT', () => void stop());
+    process.once('SIGTERM', () => void stop());
 }

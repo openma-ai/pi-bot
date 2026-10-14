@@ -11,12 +11,16 @@
   },
   "sources": {
     "tokens": [
-      "gui/style.css"
+      "src/gui/style.css"
     ],
     "components": [
-      "gui/main.jsx"
+      "src/gui/main.jsx",
+      "src/gui/BotAvatar.jsx",
+      "src/gui/MessageBody.jsx"
     ],
-    "assets": [],
+    "assets": [
+      "Original inline SVG bot characters"
+    ],
     "instructions": []
   },
   "design": {
@@ -51,7 +55,15 @@
       "Technical dispatch controls in group composer"
     ]
   },
-  "decisions": [],
+  "decisions": [
+    {
+      "date": "2026-10-14",
+      "direction": "Grok Bot messenger, using existing Radix components",
+      "reference": "Observed installed Grok Bot via computer use; REA static ASAR/renderer analysis",
+      "motion": "Small original SVG avatars; blink, hover tilt and native working state; reduced motion disables animations",
+      "content": "Existing native Pi messages and routes; no demo replacements"
+    }
+  ],
   "evidence": [
     {
       "fact": "project.stack:react",

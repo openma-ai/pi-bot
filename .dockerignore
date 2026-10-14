@@ -1,0 +1,11 @@
+.git
+node_modules
+work
+.pi-bot
+.21st
+gui/dist
+*.db
+*.db-wal
+*.db-shm
+*.lock
+.env*

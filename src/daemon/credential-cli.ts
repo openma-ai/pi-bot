@@ -1,4 +1,4 @@
-import { CredentialBroker } from './credentials.ts';
+import { CredentialBroker } from './runtime/credentials.ts';
 import { enterCredential } from './hidden-entry.ts';
 const broker = new CredentialBroker();
 try {

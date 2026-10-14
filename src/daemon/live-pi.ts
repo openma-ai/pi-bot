@@ -1,42 +1,50 @@
+import { ProviderRequestGuardError } from '../pi/host.ts';
+import { DesktopClient } from '../pi/desktop-client.ts';
+import { resolve } from 'node:path';
 import { join } from 'node:path';
 import { getAgentDir, type ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { piSessionFactory } from '../pi/session-factory.ts';
 import { loadPiConfiguration } from '../pi/config.ts';
-import { estimateContextTokens } from '../pi/context.ts';
-import type { BotHost, ProactivePort, SessionFactory } from '../pi/host.ts';
+import type { BotHost, ProactivePort, SessionFactory, CredentialPort } from '../pi/host.ts';
 import { redactTraceValue } from '../pi/redact.ts';
-import { appendFileSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-export async function livePiFactory(dir: string, proactive: (host: BotHost) => ProactivePort) {
+import { appendFileSync, writeFileSync } from 'node:fs';
+export async function livePiFactory(dir: string, proactive: (host: BotHost) => ProactivePort, credentials?: CredentialPort, piOptions: {
+    agentDir?: string;
+    cwd?: string;
+} = {}, onBudget?: (budget: Record<string, number>) => void, modelRound?: {
+    maxRequests: number;
+    durationMs: number;
+}) {
     let configuration;
     try {
-        configuration = await loadPiConfiguration();
+        configuration = await loadPiConfiguration(piOptions);
     }
     catch {
         const factory: SessionFactory = async () => {
-            throw Error('Pi 配置不可用，请在 Pi 中完成 /login 和 /model 后重启 GUI');
+            throw Error('Pi 配置不可用，请在 GUI 的「Pi 登录与模型」中登录并选择模型');
         };
         return {
             factory, model: '未配置', configuration: {
-                auth: 'Pi native', agentDir: getAgentDir(), setupRequired: true, message: '请在 Pi 中完成 /login 和 /model，然后重启 GUI'
+                auth: 'Pi native', agentDir: getAgentDir(), setupRequired: true, message: '请在 GUI 的「Pi 登录与模型」中登录并选择模型'
             }, dispose: () => {
             }, budget: undefined
         };
     }
     const { models, model } = configuration;
-    const budgetFile = join(dir, 'gui-budget.json');
-    const fresh = {
-        requests: 0, inputReserved: 0, maxRequests: 32, maxInput: 384000, expiresAt: Date.now() + 3600000
+    // Aggregate limits are opt-in for evaluators, never the normal GUI lifetime.
+    if (modelRound && (!Number.isSafeInteger(modelRound.maxRequests) || modelRound.maxRequests < 1 || !Number.isSafeInteger(modelRound.durationMs) || modelRound.durationMs < 1))
+        throw Error('Invalid model round limits');
+    const budget = modelRound ? {
+        requests: 0, maxRequests: modelRound.maxRequests, expiresAt: Date.now() + modelRound.durationMs
+    } : undefined;
+    const saveBudget = () => {
+        if (budget)
+            writeFileSync(join(dir, 'model-round.json'), JSON.stringify(budget), {
+                mode: 0o600
+            });
     };
-    const budget = existsSync(budgetFile) && process.env.PI_BOT_NEW_ROUND !== '1' ? JSON.parse(readFileSync(budgetFile, 'utf8')) as typeof fresh : fresh;
-    if (!Number.isSafeInteger(budget.requests) || !Number.isSafeInteger(budget.inputReserved) || !Number.isSafeInteger(budget.expiresAt) || budget.requests < 0 || budget.requests > 32 || budget.inputReserved < 0 || budget.inputReserved > 384000)
-        throw Error('Invalid persisted GUI budget');
-    budget.maxRequests = 32;
-    budget.maxInput = 384000;
-    const saveBudget = () => writeFileSync(budgetFile, JSON.stringify(budget), {
-        mode: 0o600
-    });
     saveBudget();
-    const lifetime = AbortSignal.timeout(Math.max(1, budget.expiresAt - Date.now()));
+    const lifetime = budget ? AbortSignal.timeout(Math.max(1, budget.expiresAt - Date.now())) : undefined;
     const trace: ExtensionFactory = pi => {
         const save = (type: string, event: unknown) => appendFileSync(join(dir, 'tools.jsonl'), JSON.stringify(redactTraceValue({
             at: Date.now(), type, event
@@ -47,21 +55,22 @@ export async function livePiFactory(dir: string, proactive: (host: BotHost) => P
         pi.on('tool_result', event => save('tool_result', event));
     };
     const factory = piSessionFactory({
-        codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model, proactive, context: {
-            backgroundEnabled: false
-        }, backgroundTools: {}, extensions: [trace], thinkingLevel: 'high', maxOutputTokens: 16384, maxRequestsPerWake: 16, inferenceRequestTimeoutMs: 600000, inferenceSignal: lifetime,
-        beforeProviderRequest(context) {
-            const c = context as {
-                messages: Parameters<typeof estimateContextTokens>[0];
-                systemPrompt?: string;
-            };
-            const tokens = estimateContextTokens(c.messages) + Buffer.byteLength(c.systemPrompt ?? '');
-            if (Date.now() >= budget.expiresAt || budget.requests >= 32 || budget.inputReserved + tokens > 384000)
-                throw Error('GUI bounded model budget exhausted');
+        credentials, desktop: DesktopClient.load(resolve('work/gui/desktop/control.json')), codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model, proactive, context: {
+            backgroundEnabled: true, outputReserveTokens: 16384, summaryTimeoutMs: 600000
+        }, backgroundTools: {}, extensions: [trace], thinkingLevel: configuration.thinkingLevel, maxOutputTokens: 16384, maxRequestsPerWake: 16, inferenceRequestTimeoutMs: 600000, inferenceSignal: lifetime,
+        beforeProviderRequest: budget ? () => {
+            if (Date.now() >= budget.expiresAt || budget.requests >= budget.maxRequests)
+                throw new ProviderRequestGuardError('budgetExhausted', 'Evaluation request or time limit reached');
             budget.requests++;
-            budget.inputReserved += tokens;
             saveBudget();
-        }
+            try {
+                onBudget?.({
+                    ...budget
+                });
+            }
+            catch { /* Observer cannot break provider execution. */
+            }
+        } : undefined
     });
     return {
         factory, budget, model: model.id, configuration: configuration.public, dispose: configuration.dispose

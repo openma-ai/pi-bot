@@ -47,7 +47,8 @@ test('TaskChain background execution retains native cells, observes grading prog
         mode: 'scripted', backgroundExecution: true
     });
     assert.equal(report.backgroundExecution, true);
-    assert.equal(report.pass, true, JSON.stringify(report.score));
+    assert.equal(report.budget.inputReserved, 0, 'default background evaluation must mirror request-count-only real mode');
+    assert.equal(report.pass, true, JSON.stringify({ score: report.score, pending: report.pendingEvents, errors: report.runtimeErrors, budget: report.budget, progress: report.background }));
     assert.ok(report.trace.calls.some(c => c.name === 'codemode'));
     assert.ok(report.trace.results.some(c => ['codemode', 'codemode_wait'].includes(c.name) && JSON.stringify(c.content).includes('grade_started')));
     assert.ok(report.background!.observedProgress);
@@ -132,6 +133,12 @@ test('background compaction overlaps native foreground, excludes late correction
     assert.ok(report.compaction!.adopted > 0);
     assert.ok(report.compaction!.foregroundOverlap > 0);
     assert.equal(report.compaction!.lateCorrectionExcluded, true);
+    const lateCancel = report.trace.inbox.find(e => e.taskId === 'cancelled-late-export' && e.taskControl === 'cancel');
+    assert.ok(lateCancel, 'cancellation must arrive while the background summary is active');
+    assert.equal(report.trace.inbox.filter(e => e.taskId.startsWith('live-noise-')).length, 24);
+    assert.equal(report.compaction!.lateCancellationExcluded, true);
+    assert.ok(!report.trace.outbox.some(o => o.taskId === 'cancelled-late-export'));
+    assert.ok(!report.trace.jobs.some(o => o.taskId === 'cancelled-late-export'));
     assert.ok(report.compaction!.blockedStaleActions > 0);
 });
 test('release-tag oracle verifies the real generated module value for the late task revision', async () => {

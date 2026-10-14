@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { BotRuntime } from '../src/daemon/runtime.ts';
-import { ProactiveService } from '../src/daemon/proactive.ts';
-import type { Envelope } from '../src/daemon/store.ts';
+import { BotRuntime } from '../src/daemon/runtime/runtime.ts';
+import { ProactiveService } from '../src/daemon/runtime/proactive.ts';
+import type { Envelope } from '../src/daemon/runtime/store.ts';
 async function fixture(run?: (e: Envelope) => Promise<void>) {
     await mkdir(resolve('work/proactive-tests'), {
         recursive: true
@@ -471,14 +471,32 @@ test('enable requires successful dry-run; definition conflicts and detector erro
         await h.close();
     }
 });
-test('paused schedules survive restart and do not fire until resumed', async()=>{
- const h=await fixture();
- try{
-  let service=new ProactiveService(h.runtime,{now:h.now});
-  const s=service.createSchedule(h.source,{key:'pause-restart',prompt:'report',at:2000,timezone:'Asia/Shanghai'});
-  service.pauseSchedule(h.source.to,s.id);h.time(3000);await service.tick();assert.equal(service.listFires(h.source.to).length,0);
-  service=new ProactiveService(await h.restart(),{now:h.now});await service.tick();assert.equal(service.listSchedules(h.source.to)[0].state,'paused');
-  service.resumeSchedule(h.source.to,s.id);await service.tick();await h.runtime.idle();assert.equal(service.listFires(h.source.to).length,1);
-  await service.tick();assert.equal(service.listFires(h.source.to).length,1);
- }finally{await h.close();}
+test('paused schedules survive restart and do not fire until resumed', async () => {
+    const h = await fixture();
+    try {
+        let service = new ProactiveService(h.runtime, {
+            now: h.now
+        });
+        const s = service.createSchedule(h.source, {
+            key: 'pause-restart', prompt: 'report', at: 2000, timezone: 'Asia/Shanghai'
+        });
+        service.pauseSchedule(h.source.to, s.id);
+        h.time(3000);
+        await service.tick();
+        assert.equal(service.listFires(h.source.to).length, 0);
+        service = new ProactiveService(await h.restart(), {
+            now: h.now
+        });
+        await service.tick();
+        assert.equal(service.listSchedules(h.source.to)[0].state, 'paused');
+        service.resumeSchedule(h.source.to, s.id);
+        await service.tick();
+        await h.runtime.idle();
+        assert.equal(service.listFires(h.source.to).length, 1);
+        await service.tick();
+        assert.equal(service.listFires(h.source.to).length, 1);
+    }
+    finally {
+        await h.close();
+    }
 });

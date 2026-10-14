@@ -337,7 +337,8 @@ test('default model summarizer makes a separate tool-free request with the snaps
     assert.equal(request[1].tools, undefined);
     assert.match(request[1].messages[0].content, /old request 0/);
     assert.match(request[1].systemPrompt, /actually delivered/);
-    assert.equal(request[2].maxTokens, 2048);
+    assert.equal(request[2].maxTokens, 16384);
+    assert.equal(request[2].reasoning, 'high');
 });
 test('host summary eligibility defers background launch without changing or blocking foreground context', async () => {
     let eligible = false, calls = 0;
@@ -358,4 +359,32 @@ test('host summary eligibility defers background launch without changing or bloc
     await tick();
     assert.equal(calls, 1);
     manager.reset();
+});
+test('context guard counts provider content while retaining large SDK-only tool diagnostics intact', () => {
+    const call = fauxAssistantMessage([{
+            type: 'toolCall', id: 'diagnostic', name: 'run', arguments: {}
+        }]);
+    const details = {
+        diagnosticCopy: 'x'.repeat(300000)
+    };
+    const messages: any[] = [{
+            role: 'user', content: 'Keep the valid task.', timestamp: 1
+        }, call, {
+            role: 'toolResult', toolCallId: 'diagnostic', toolName: 'run', content: [{
+                    type: 'text', text: 'Actual provider-visible result.'
+                }], details, isError: false, timestamp: 2
+        }];
+    const manager = new NonBlockingContextManager({
+        getState: () => ({}), maxContextTokens: 20000, outputReserveTokens: 4096
+    });
+    const preserved = manager.preserveContext({
+        sessionId: 'diagnostic-copy', messages, historyRef: 'native'
+    });
+    assert.equal((preserved.find(m => m.role === 'toolResult') as any).details, details);
+    assert.equal(details.diagnosticCopy.length, 300000);
+    assert.throws(() => manager.preserveContext({
+        sessionId: 'diagnostic-copy', messages: [{
+                role: 'user', content: 'x'.repeat(300000), timestamp: 1
+            }], historyRef: 'native'
+    }), ContextBudgetError);
 });

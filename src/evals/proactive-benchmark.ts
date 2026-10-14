@@ -3,12 +3,12 @@ import { join } from 'node:path';
 import { Type } from 'typebox';
 import { ModelRuntime, type ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore } from '@earendil-works/pi-ai';
-import { BotRuntime } from '../daemon/runtime.ts';
+import { BotRuntime } from '../daemon/runtime/runtime.ts';
 import { piSessionFactory } from '../pi/session-factory.ts';
-import { ProactiveService } from '../daemon/proactive.ts';
+import { ProactiveService } from '../daemon/runtime/proactive.ts';
 import { scoreResponseBenchmark, type ResponseExpectation } from './response-benchmark.ts';
 import { observeEvaluationTools, redactTraceValue, type EvaluationTrace } from './evaluation-trace.ts';
-import type { Envelope, Job, Outbound } from '../daemon/store.ts';
+import type { Envelope, Job, Outbound } from '../daemon/runtime/store.ts';
 /** Calibrates host scheduling with actual Pi/tools/file effects and scripted decisions.
  * This is explicitly not a real-model speed or intelligence benchmark. */
 export async function runProactiveBenchmark(directory: string) {

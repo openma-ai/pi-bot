@@ -19,7 +19,7 @@ export interface ContextOptions {
     /** Explicitly disable background requests for a capped smoke evaluation. */
     backgroundEnabled?: boolean;
     /** Host scheduling predicate; false never blocks or changes foreground history. */
-    canSummarize?:()=>boolean;
+    canSummarize?: () => boolean;
     summaryTimeoutMs?: number;
     summaryRetryMs?: number;
     summaryMaxAttempts?: number;
@@ -29,6 +29,10 @@ export interface ContextOptions {
     onError?: (error: Error) => void;
     /** Observational only: a background failure must never fail a foreground wake. */
     onSummaryError?: (error: Error) => void;
+    onCompaction?: (info: {
+        tokensBefore: number;
+        tokensAfter: number;
+    }) => void;
 }
 export class ContextBudgetError extends Error {
     constructor(message: string) {
@@ -39,7 +43,17 @@ export class ContextBudgetError extends Error {
 const bytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value) ?? 'null', 'utf8');
 // Deliberately conservative, tokenizer-independent text/JSON accounting. Images
 // need a provider-specific bound; never omit them to make a request fit.
-export const estimateContextTokens = (messages: readonly AgentMessage[]): number => messages.reduce((sum, message) => sum + bytes(message) + 32, 0);
+export const estimateContextTokens = (messages: readonly AgentMessage[]): number => messages.reduce((sum, message) => {
+    // Native providers transmit tool-result content, not SDK details. Count the
+    // content in full and retain the original diagnostic object in native history.
+    if (message.role === 'toolResult') {
+        const { details: _diagnostics, ...providerPayload } = message as Extract<AgentMessage, {
+            role: 'toolResult';
+        }>;
+        return sum + bytes(providerPayload) + 32;
+    }
+    return sum + bytes(message) + 32;
+}, 0);
 const fingerprint = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const hasImages = (message: AgentMessage): boolean => Array.isArray((message as any).content) &&
     (message as any).content.some((part: any) => part.type === 'image');
@@ -360,10 +374,19 @@ export function createContextExtension(options: ContextOptions): ExtensionFactor
             };
         }, ctx: ExtensionContext): BoundaryResult | undefined => {
             const ready = manager.adoptReady(ctx.sessionManager.getSessionId(), event.context.contextEntries);
-            if (ready)
+            if (ready) {
+                const before = visibleEntries(event.context.contextEntries).flatMap(entry => entry.messages);
+                try {
+                    options.onCompaction?.({
+                        tokensBefore: estimateContextTokens(before), tokensAfter: Math.ceil(JSON.stringify(ready).length / 4)
+                    });
+                }
+                catch { /* observer only */
+                }
                 return {
                     entries: [...event.entries, ready]
                 };
+            }
             schedule(ctx);
         };
         pi.on('turn_end', (event, ctx) => boundary(event, ctx));
