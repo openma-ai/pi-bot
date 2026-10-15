@@ -4,6 +4,27 @@
 
 核心依赖固定到 `@earendil-works/pi-coding-agent@1.1.0`。模型、工具 schema、extension hooks、工具权限链与会话文件复用 Pi。Node.js 24+（内置 SQLite），不需要外部数据库。
 
+## 客户端与打包
+
+桌面 Preview、生产候选包与移动端使用同一套聊天界面；回复完整后一次显示，运行中的 bot 独立显示 Running，支持按 runtime 保存会话置顶。
+
+| 平台 | 当前验证状态 |
+| --- | --- |
+| macOS arm64 | 独立 Preview 打包流程；临时签名，无正式公证 |
+| iOS | 仅 remote；iPhone 17 模拟器测试、未签名设备归档；未上 TestFlight |
+| Android arm64 | 仅 remote；debug APK 与本地 Android 15 模拟器验证；凭据仅在本次进程内存中 |
+| Windows / Linux / Intel Mac | 尚未构建验证，不声称安装包 ready |
+
+```sh
+npm --prefix clients/tauri run package:preview
+# 正式流程先检查已有签名与公证配置，缺失时直接失败：
+npm --prefix clients/tauri run package:prod
+```
+
+Preview 的应用标识为 `dev.pibot.desktop.preview`，与正式应用的数据隔离，不替换已有包。正式签名、公证及发布仍需已有 Apple 配置和明确授权。
+
+详见 [桌面 Preview/Prod 流程](docs/clients/DESKTOP-RELEASE.md)、[Android 测试包](docs/clients/ANDROID-TEST-BUILD.md)、[iOS 与 TestFlight](docs/clients/IOS-TESTFLIGHT-PREPARATION.md)、[移动端 SSH 能力与限制](docs/clients/SSH-CLIENT-AUTH.md)。客户端要求独立运行的兼容 daemon；手机不执行本地 agent。
+
 ## 本地 GUI
 
 命名 Runtime、SSH 原生 Linux 和可选 Docker 一体运行见 [当前设置与连接指南](docs/design/runtime-connections.md)。

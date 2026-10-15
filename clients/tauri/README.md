@@ -101,3 +101,7 @@ Native titlebar correction: macOS main window uses Tauri `titleBarStyle: Overlay
 All four Library screenshots were replaced in place and confirmed at version 2 with the titlebar correction. Pixel fidelity measurement against the full new reference and investigation of the user's unspecified loading symptom are queued as a separate milestone. No exact-pixel claim is made by this navigation checkpoint.
 
 The shared chat UI shows complete assistant messages atomically; event deltas stay internal. Each bot's Running indicator follows its turn/job lifecycle, including after navigation or snapshot reconciliation. Long-press conversations on iOS (right-click on desktop) to pin/unpin; multiple bot/group pins are saved per runtime. Actual iPhone 17 evidence and current distribution limits are recorded in [UI verification](../../docs/clients/IOS-SIMULATOR-UI-VERIFICATION.md).
+
+## Preview and production packages
+
+Use `npm run package:preview` for the isolated `Pi Bot Preview` macOS arm64 app. Use `npm run package:prod` only with existing Developer ID/notary profile references; it fails early when unavailable and produces a signed candidate until explicit `--notarize` succeeds. No automatic notarization is performed for preview. See [release workflow](../../docs/clients/DESKTOP-RELEASE.md) and [Android](../../docs/clients/ANDROID-TEST-BUILD.md). Windows/Linux/Intel installers have not been verified.

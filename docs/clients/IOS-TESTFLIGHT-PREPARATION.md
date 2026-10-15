@@ -154,9 +154,9 @@ Xcode's saved production Apple account lists were empty and `security find-ident
 directory exists. The user has a developer account but must log in personally and
 confirm the Team/app destination. No Apple setting or resource was changed.
 
-Android initialization failed because no SDK/NDK was installed; JDK 17/21 already
-exist. Installation was subsequently authorized and `aarch64-linux-android` was
-installed. The official SDK download explicitly requires the Google Android SDK
-License Agreement; acceptance is separately pending. Nothing from the Google SDK
-has been downloaded or accepted. No APK or Android native credential backend has
-been validated. Do not present an interface-only Android build as a working client.
+Android now has an arm64 debug APK and a local AOSP Android15 emulator; see
+[Android build and verification](ANDROID-TEST-BUILD.md). The user explicitly
+accepted Google's SDK agreement before installation. Android secrets remain
+session-only in native memory; no Keystore persistence or real-device coverage
+is claimed. Desktop preview/production workflows are documented separately in
+[Desktop releases](DESKTOP-RELEASE.md).

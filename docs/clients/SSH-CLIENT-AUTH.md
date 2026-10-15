@@ -98,9 +98,8 @@ markers, disposable credential values, actual dummy key material, XCTest bundles
 and provisioning profiles. The checked test/build logs had no dummy secret values.
 This proves the specified checks, not a guarantee about every third-party log.
 
-Android tool installation is authorized, and the arm64 Rust target is now present.
-The [official SDK download](https://developer.android.com/studio#terms) requires
-accepting Google's Android SDK License Agreement before download. Its usage scope,
-SDK redistribution/modification limits, sensitive-data duties, warranty/export
-terms were surfaced for explicit confirmation. Acceptance remains pending; SDK/NDK
-download and installation have not started. No APK is claimed or delivered.
+Android tool installation and the disclosed SDK agreement were explicitly approved.
+The arm64 debug client and local AOSP emulator are documented in
+[Android test build](ANDROID-TEST-BUILD.md). Android uses only native session memory,
+with no plaintext persistence or desktop process fallback. iOS Keychain behavior
+remains unchanged.

@@ -1,7 +1,7 @@
 use serde_json::{json, Value};
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 use sha2::{Digest, Sha256};
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 use std::path::Path;
 
 // Release allowlist is explicit. No trusted runtime release has been published yet.
@@ -19,7 +19,7 @@ pub fn install() -> Result<(), String> {
 }
 // Format-neutral verified staging primitive. Only a vetted manifest may call it;
 // it is NOT exposed as an arbitrary URL/path/bytes IPC command.
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 #[allow(dead_code)]
 fn stage_verified(
     root: &Path,

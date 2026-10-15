@@ -1,13 +1,16 @@
 #[cfg(all(debug_assertions, target_os = "ios"))]
 mod ios_probe;
-#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
 mod mobile_ssh;
 mod runtime_distribution;
 #[cfg(target_os = "ios")]
 mod ssh_credentials;
+#[cfg(target_os = "android")]
+#[path = "ssh_credentials_android.rs"]
+mod ssh_credentials;
 #[cfg(feature = "client-fixtures")]
 pub mod ssh_fixture;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 mod ssh_interactive;
 mod transport;
 use serde_json::{json, Value};
@@ -26,7 +29,7 @@ struct State {
 }
 impl State {
     fn status(&self) -> Value {
-        json!({"remoteOnly":cfg!(target_os = "ios"),"profiles":self.profiles,"connecting":false,"active":self.active.as_ref().map(|(id,p,_)|json!({"id":id,"profileId":p.id,"mode":p.mode,"baseUrl":format!("/runtime/{id}"),"scope":p.id,"label":p.name,"profile":p}))})
+        json!({"remoteOnly":cfg!(any(target_os = "ios", target_os = "android")),"credentialStorage":if cfg!(target_os="android") {"session"} else if cfg!(target_os="ios") {"keychain"} else {"system"},"profiles":self.profiles,"connecting":false,"active":self.active.as_ref().map(|(id,p,_)|json!({"id":id,"profileId":p.id,"mode":p.mode,"baseUrl":format!("/runtime/{id}"),"scope":p.id,"label":p.name,"profile":p}))})
     }
     fn retire(&mut self) {
         self.connection_epoch
@@ -112,11 +115,11 @@ async fn ssh_password_store(
         .iter()
         .find(|p| p.id == profile_id)
         .ok_or("Runtime 不存在")?;
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     {
         ssh_credentials::store(p, &password)
     }
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     {
         let _ = (p, password);
         Err("桌面继续使用系统 SSH 配置与密钥".into())
@@ -132,7 +135,7 @@ async fn ssh_credentials_set(
     save: bool,
 ) -> Result<(), String> {
     main_window(&window)?;
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     {
         let s = state.lock().await;
         let p = s
@@ -142,7 +145,7 @@ async fn ssh_credentials_set(
             .ok_or("Runtime 不存在")?;
         ssh_credentials::configure(p, credentials, save)
     }
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     {
         let _ = (state, profile_id, credentials, save);
         Err("桌面使用系统 SSH 配置".into())
@@ -155,11 +158,11 @@ fn ssh_challenge_reply(
     answers: Option<Vec<String>>,
 ) -> Result<(), String> {
     main_window(&window)?;
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     {
         ssh_interactive::respond(&id, answers)
     }
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     {
         let _ = (id, answers);
         Err("仅适用于 iOS".into())
@@ -197,10 +200,10 @@ async fn runtime_control(
             if s.active.as_ref().is_some_and(|(_, p, _)| p.id == id) {
                 return Err("请先断开此 runtime".into());
             }
-            if s.profiles.len() == 1 && !cfg!(target_os = "ios") {
+            if s.profiles.len() == 1 && !cfg!(any(target_os = "ios", target_os = "android")) {
                 return Err("至少保留一个 runtime".into());
             }
-            #[cfg(target_os = "ios")]
+            #[cfg(any(target_os = "ios", target_os = "android"))]
             if let Some(p) = s.profiles.iter().find(|p| p.id == id) {
                 ssh_credentials::forget(p)?;
             }
@@ -214,8 +217,8 @@ async fn runtime_control(
             let mut p: Profile = serde_json::from_value(params["profile"].clone())
                 .map_err(|_| "请检查 runtime 配置")?;
             p.validate()?;
-            if cfg!(target_os = "ios") && p.mode != "ssh" {
-                return Err("iPhone/iPad 仅支持远程 runtime".into());
+            if cfg!(any(target_os = "ios", target_os = "android")) && p.mode != "ssh" {
+                return Err("移动客户端仅支持远程 runtime".into());
             }
             if p.id.is_empty() {
                 p.id = uuid::Uuid::new_v4().to_string();
@@ -241,7 +244,7 @@ async fn runtime_control(
                         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                     }
                 };
-                #[cfg(target_os = "ios")]
+                #[cfg(any(target_os = "ios", target_os = "android"))]
                 let connection = async {
                     let credentials = ssh_credentials::credentials(&p)?;
                     mobile_ssh::connect_authenticated(
@@ -251,7 +254,7 @@ async fn runtime_control(
                     )
                     .await
                 };
-                #[cfg(not(target_os = "ios"))]
+                #[cfg(not(any(target_os = "ios", target_os = "android")))]
                 let connection = async {
                     let _ = app;
                     transport::connect(&p).await
@@ -267,13 +270,13 @@ async fn runtime_control(
             if epoch.load(std::sync::atomic::Ordering::SeqCst) != version {
                 return Err("连接已被更新操作取消".into());
             }
-            #[cfg(target_os = "ios")]
+            #[cfg(any(target_os = "ios", target_os = "android"))]
             if let Some(old) = s.profiles.iter().find(|old| old.id == p.id) {
                 if !ssh_credentials::same_identity(old, &p) {
                     ssh_credentials::forget(old)?;
                 }
             }
-            let changed_active = cfg!(target_os = "ios")
+            let changed_active = cfg!(any(target_os = "ios", target_os = "android"))
                 && s.active.as_ref().is_some_and(|(_, active, _)| {
                     active.id == p.id
                         && (active.host != p.host
@@ -513,14 +516,14 @@ pub fn run() {
                 .ok()
                 .and_then(|b| serde_json::from_slice::<Vec<Profile>>(&b).ok())
                 .filter(|p| {
-                    (cfg!(target_os = "ios") || !p.is_empty())
+                    (cfg!(any(target_os = "ios", target_os = "android")) || !p.is_empty())
                         && p.len() <= 32
                         && p.iter().all(|p| {
-                            p.validate().is_ok() && (!cfg!(target_os = "ios") || p.mode == "ssh")
+                            p.validate().is_ok() && (!cfg!(any(target_os = "ios", target_os = "android")) || p.mode == "ssh")
                         })
                 })
                 .unwrap_or_else(|| {
-                    if cfg!(target_os = "ios") {
+                    if cfg!(any(target_os = "ios", target_os = "android")) {
                         Vec::new()
                     } else {
                         vec![Profile::local(

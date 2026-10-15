@@ -1,0 +1,6 @@
+{
+  "productName": "Pi Bot Preview",
+  "identifier": "dev.pibot.desktop.preview",
+  "app": { "windows": [{ "label": "main", "title": "Pi Bot Preview", "titleBarStyle": "Overlay", "hiddenTitle": true, "width": 1100, "height": 760, "minWidth": 360, "minHeight": 420 }] },
+  "bundle": { "macOS": { "signingIdentity": "-" } }
+}

@@ -90,7 +90,7 @@ function Field({ label, value, onChange, placeholder, type = "text" }) {
     </label>
   );
 }
-function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false }) {
+function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionOnly = false }) {
   const [mode, setMode] = useState(profile?.mode || "ssh"),
     [name, setName] = useState(profile?.name || ""),
     [host, setHost] = useState(profile?.host || "");
@@ -211,8 +211,8 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false }) {
             {authMethod === "password" && <Field label="SSH 密码" value={password} onChange={setPassword} type="password" placeholder={profile?.id ? "留空保留已有凭据" : "输入 SSH 密码"} />}
             {authMethod === "privateKey" && <><label>私钥文件（不会显示正文）<input ref={keyInput} type="file" aria-label="导入 SSH 私钥" /></label><Field label="私钥口令（如已加密）" type="password" value={passphrase} onChange={setPassphrase} /></>}
             {authMethod !== "interactive" && <label><input type="checkbox" checked={interactive} onChange={e=>setInteractive(e.target.checked)} />需要附加交互验证（例如验证码）</label>}
-            <label><input type="checkbox" checked={saveCredentials} onChange={e=>setSaveCredentials(e.target.checked)} />将本次凭据保存到此设备 Keychain</label>
-            <Text size="1" color="gray">默认仅在内存使用；验证码从不保存。保存私钥时其解密口令也受 Keychain 保护。暂不支持硬件密钥、SSH agent、证书或网页登录式 MFA。</Text>
+            {!sessionOnly && <label><input type="checkbox" checked={saveCredentials} onChange={e=>setSaveCredentials(e.target.checked)} />将本次凭据保存到此设备 Keychain</label>}
+            <Text size="1" color="gray">{sessionOnly ? "Android 测试版凭据仅在内存中，关闭进程后需要重新输入/导入；不会写入文件。" : "默认仅在内存使用；可选择 Keychain 保存，保存私钥时口令也受同样保护。"} 验证码从不保存。暂不支持硬件密钥、SSH agent、证书或网页登录式 MFA。</Text>
           </>}
         </>
       )}
@@ -354,6 +354,7 @@ function RuntimeSettings({ runtime }) {
           key={editor.id || "new"}
           profile={editor.id ? editor : undefined}
           remoteOnly={!!runtime.status.remoteOnly}
+          sessionOnly={runtime.status.credentialStorage === "session"}
           onSave={save}
           onCancel={() => setEditor(undefined)}
         />

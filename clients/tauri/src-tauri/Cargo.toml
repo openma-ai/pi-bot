@@ -27,7 +27,7 @@ rand = { version = "0.10", optional = true }
 [target.'cfg(target_os = "ios")'.dependencies]
 security-framework = "3"
 
-[target.'cfg(not(target_os = "ios"))'.dependencies]
+[target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
 tokio = { version = "1", features = ["process"] }
 
 [features]

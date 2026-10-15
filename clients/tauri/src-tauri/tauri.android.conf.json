@@ -1,0 +1,5 @@
+{
+  "productName": "Pi Bot",
+  "identifier": "dev.pibot.android",
+  "bundle": { "android": { "minSdkVersion": 24 } }
+}

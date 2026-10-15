@@ -130,7 +130,7 @@ pub async fn connect_authenticated(
 ) -> Result<Endpoint, String> {
     p.validate()?;
     if p.mode != "ssh" {
-        return Err("iOS 仅支持远程 runtime".into());
+        return Err("移动客户端仅支持远程 runtime".into());
     }
     let (user, host) = destination(p)?;
     let pin = canonical_key(p.host_key.as_deref().ok_or("请先核验并保存 SSH 主机公钥")?)?;
@@ -320,7 +320,7 @@ pub async fn connect_authenticated(
         remote_host,
         token: token.trim().into(),
         client: client()?,
-        #[cfg(not(target_os = "ios"))]
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
         _tunnel: None,
         _embedded: Some(Tunnel { task }),
     };

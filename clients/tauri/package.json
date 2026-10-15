@@ -7,7 +7,9 @@
     "build:gui": "node scripts/build-gui.mjs",
     "build": "npm run build:gui && tauri build --bundles app",
     "dev": "tauri dev",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "package:preview": "node scripts/package-desktop.mjs preview",
+    "package:prod": "node scripts/package-desktop.mjs production"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.9.1"

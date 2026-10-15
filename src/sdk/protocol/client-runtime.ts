@@ -37,6 +37,7 @@ export const RuntimeStatusSchema = Type.Object({
             id: Type.String(), profileId: Type.String(), mode: Type.Union([Type.Literal('local'), Type.Literal('ssh')]), baseUrl: Type.String(), profile: Type.Optional(RuntimeProfileSchema), scope: Type.String(), label: Type.String()
         }), Type.Null()]),
     remoteOnly: Type.Optional(Type.Boolean()),
+    credentialStorage: Type.Optional(Type.Union([Type.Literal("session"),Type.Literal("keychain"),Type.Literal("system")])),
     connecting: Type.Boolean()
 });
 export type RuntimeStatus = Static<typeof RuntimeStatusSchema>;

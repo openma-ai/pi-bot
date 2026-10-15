@@ -2,9 +2,9 @@ use reqwest::{Client, Method, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 use std::{path::PathBuf, process::Stdio};
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 use tokio::process::{Child, Command};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -110,7 +110,7 @@ pub struct Endpoint {
     pub remote_host: String,
     pub(crate) token: String,
     pub(crate) client: Client,
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     pub(crate) _tunnel: Option<Child>,
     pub(crate) _embedded: Option<crate::mobile_ssh::Tunnel>,
 }
@@ -136,7 +136,9 @@ impl Endpoint {
             .header("X-PiBot-Connection", connection)
             .header("Content-Type", "application/json")
             .body(body.to_string());
-        let request = if cfg!(target_os = "ios") && !path.starts_with("/events") {
+        let request = if cfg!(any(target_os = "ios", target_os = "android"))
+            && !path.starts_with("/events")
+        {
             request.timeout(Duration::from_secs(30))
         } else {
             request
@@ -193,7 +195,7 @@ pub(crate) fn remote_path(path: &str) -> String {
         quote(path)
     }
 }
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 fn ssh_args(p: &Profile) -> Vec<String> {
     let mut args = vec![
         "-T",
@@ -221,7 +223,7 @@ fn ssh_args(p: &Profile) -> Vec<String> {
     }
     args
 }
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 fn ssh_error() -> String {
     "SSH 连接失败：请检查已配置的密钥、可信主机指纹、路径和独立 runtime；客户端不会接受未知 host key 或启动远端服务".into()
 }
@@ -242,15 +244,15 @@ pub(crate) async fn ready(endpoint: &Endpoint) -> Result<(), String> {
     }
     Ok(())
 }
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
     if p.mode != "ssh" {
-        return Err("iPhone/iPad 仅支持远程 runtime".into());
+        return Err("移动客户端仅支持远程 runtime".into());
     }
     let password = crate::ssh_credentials::load(p)?;
     crate::mobile_ssh::connect(p, &password).await
 }
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
     p.validate()?;
     if p.mode == "local" {
