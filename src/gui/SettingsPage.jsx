@@ -90,7 +90,7 @@ function Field({ label, value, onChange, placeholder, type = "text" }) {
     </label>
   );
 }
-function RuntimeEditor({ profile, onSave, onCancel }) {
+function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false }) {
   const [mode, setMode] = useState(profile?.mode || "ssh"),
     [name, setName] = useState(profile?.name || ""),
     [host, setHost] = useState(profile?.host || "");
@@ -162,7 +162,7 @@ function RuntimeEditor({ profile, onSave, onCancel }) {
           先保存，再启用。已有任务和数据会留在原来的 server。
         </Text>
       </div>
-      {!profile && (
+      {!profile && !remoteOnly && (
         <SegmentedControl.Root
           aria-label="Runtime 类型"
           value={mode}
@@ -332,6 +332,7 @@ function RuntimeSettings({ runtime }) {
         <RuntimeEditor
           key={editor.id || "new"}
           profile={editor.id ? editor : undefined}
+          remoteOnly={!!runtime.status.remoteOnly}
           onSave={save}
           onCancel={() => setEditor(undefined)}
         />

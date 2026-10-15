@@ -1,0 +1,10 @@
+{
+  "productName": "Pi Bot",
+  "identifier": "dev.pibot.ios",
+  "bundle": {
+    "iOS": {
+      "minimumSystemVersion": "16.0",
+      "bundleVersion": "1"
+    }
+  }
+}

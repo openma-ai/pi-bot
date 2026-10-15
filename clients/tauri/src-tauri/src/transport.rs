@@ -1,7 +1,12 @@
 use reqwest::{Client, Method, Url};
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_os = "ios"))]
 use serde_json::Value;
-use std::{path::PathBuf, process::Stdio, time::Duration};
+#[cfg(not(target_os = "ios"))]
+use std::time::Duration;
+#[cfg(not(target_os = "ios"))]
+use std::{path::PathBuf, process::Stdio};
+#[cfg(not(target_os = "ios"))]
 use tokio::process::{Child, Command};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -97,6 +102,7 @@ pub struct Endpoint {
     pub remote_host: String,
     token: String,
     client: Client,
+    #[cfg(not(target_os = "ios"))]
     _tunnel: Option<Child>,
 }
 impl Endpoint {
@@ -125,6 +131,7 @@ impl Endpoint {
             .map_err(|_| "无法连接 runtime，请检查服务是否已独立启动".into())
     }
 }
+#[cfg(not(target_os = "ios"))]
 fn client() -> Result<Client, String> {
     Client::builder()
         .no_proxy()
@@ -133,6 +140,7 @@ fn client() -> Result<Client, String> {
         .build()
         .map_err(|_| "Cannot initialize transport".into())
 }
+#[cfg(not(target_os = "ios"))]
 fn discovery(text: &str, token: &str) -> Result<(Url, String), String> {
     let d: Value = serde_json::from_str(text).map_err(|_| "Runtime discovery is invalid")?;
     if d["protocolVersion"] != "2026-10-13" {
@@ -161,9 +169,11 @@ fn discovery(text: &str, token: &str) -> Result<(Url, String), String> {
     let host = format!("127.0.0.1:{}", u.port().unwrap());
     Ok((u, host))
 }
+#[cfg(not(target_os = "ios"))]
 fn quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\"'\"'"))
 }
+#[cfg(not(target_os = "ios"))]
 fn remote_path(path: &str) -> String {
     if let Some(tail) = path.strip_prefix("~/") {
         format!("\"$HOME\"/{}", quote(tail))
@@ -171,6 +181,7 @@ fn remote_path(path: &str) -> String {
         quote(path)
     }
 }
+#[cfg(not(target_os = "ios"))]
 fn ssh_args(p: &Profile) -> Vec<String> {
     let mut args = vec![
         "-T",
@@ -198,9 +209,11 @@ fn ssh_args(p: &Profile) -> Vec<String> {
     }
     args
 }
+#[cfg(not(target_os = "ios"))]
 fn ssh_error() -> String {
     "SSH 连接失败：请检查已配置的密钥、可信主机指纹、路径和独立 runtime；客户端不会接受未知 host key 或启动远端服务".into()
 }
+#[cfg(not(target_os = "ios"))]
 async fn ready(endpoint: &Endpoint) -> Result<(), String> {
     let response = tokio::time::timeout(
         Duration::from_secs(5),

@@ -3,6 +3,9 @@ name = "pi-bot-desktop"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -11,11 +14,14 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
-tokio = { version = "1", features = ["process", "sync", "time", "io-util"] }
+tokio = { version = "1", features = ["sync", "time", "io-util"] }
 futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
 sha2 = "0.10"
 semver = "1"
+
+[target.'cfg(not(target_os = "ios"))'.dependencies]
+tokio = { version = "1", features = ["process"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
