@@ -118,16 +118,20 @@ function view(snapshot, state) {
 export function useDaemon(baseUrl = "") {
   const [data, setData] = useState(empty),
     [client, setClient] = useState(),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [phase, setPhase] = useState("disconnected");
   const current = useRef();
   useEffect(() => {
     if (baseUrl === null) {
       setData(empty);
       setClient(undefined);
       setError("未连接 server");
+      setPhase("disconnected");
       return;
     }
+    setData(empty); setClient(undefined); setError(""); setPhase("connecting");
     let stopped = false,
+      initialized = false,
       connection,
       unsubscribe;
     let metadata, store;
@@ -165,6 +169,9 @@ export function useDaemon(baseUrl = "") {
       try {
         connection = await PiBotClient.connect({
           transport: { http: baseUrl },
+          // The native bridge authenticates each request in Rust. It has no browser
+          // session cookie or HTML CSRF bootstrap to refresh after an SSE outage.
+          ...(window.__PIBOT_NATIVE__ ? { auth: async () => ({}) } : {}),
           capabilities: {
             streamingReplies: true,
             serverRequests: ["approval", "question", "credential"],
@@ -176,20 +183,22 @@ export function useDaemon(baseUrl = "") {
           return;
         }
         current.current = connection;
-        setClient(connection);
+        setPhase("loading");
         connection.on("disconnected", () => {
-          if (!stopped) setError("连接中断，正在重连…");
+          if (!stopped) { setError("连接中断，正在重连…"); setPhase("reconnecting"); setClient(undefined); }
         });
         connection.on("connected", () => {
-          if (!stopped) setError("");
+          if (!stopped) { setError(""); if (initialized) { setPhase("ready"); setClient(connection); } }
         });
         connection.on("cursorExpired", () => {
           unsubscribe?.();
           void snapshot().catch((e) => setError(errorText(e)));
         });
         await snapshot();
+        initialized = true;
+        if (!stopped) { setClient(connection); setPhase("ready"); }
       } catch (e) {
-        if (!stopped) setError(errorText(e));
+        if (!stopped) { setError(errorText(e)); setPhase("failed"); }
       }
     })();
     return () => {
@@ -199,5 +208,5 @@ export function useDaemon(baseUrl = "") {
       current.current = undefined;
     };
   }, [baseUrl]);
-  return { data, client, error };
+  return { data, client, error, phase };
 }

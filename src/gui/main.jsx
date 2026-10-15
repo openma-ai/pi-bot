@@ -1,7 +1,7 @@
 import { AvatarEditor } from "./AvatarEditor.jsx";
 import { ErrorBoundary } from "./ErrorBoundary.jsx";
 import { useConversationDraft } from "./hooks/use-conversation-draft.js";
-import { Notification, ServiceNotice } from "./Notification.jsx";
+import { Notification, ServiceNotice, ConnectionFeedback } from "./Notification.jsx";
 import { TaskFailure } from "./TaskFailure.jsx";
 import { ConversationRequests } from "./ConversationRequests.jsx";
 import { SearchDialog } from "./SearchDialog.jsx";
@@ -123,6 +123,7 @@ function App({ runtime, setPiSettingsOpen }) {
     data,
     client: api,
     error: connectionError,
+    phase: connectionPhase,
   } = useDaemon(activeRuntime?.baseUrl ?? null);
   const [view, setView] = useState("chat"),
     [selected, setSelected] = useState(""),
@@ -149,7 +150,7 @@ function App({ runtime, setPiSettingsOpen }) {
     try {
       return Math.max(
         76,
-        Math.min(360, Number(localStorage.getItem("pi-sidebar-width")) || 236),
+        Math.min(520, Number(localStorage.getItem("pi-sidebar-width")) || Math.round(window.innerWidth * .255)),
       );
     } catch {
       return 236;
@@ -160,7 +161,7 @@ function App({ runtime, setPiSettingsOpen }) {
     [serviceDetails, setServiceDetails] = useState(false),
     [runtimeDetailsOpen, setRuntimeDetailsOpen] = useState(false);
   const resizeSidebar = (width) => {
-    const next = Math.max(76, Math.min(360, width));
+    const next = Math.max(76, Math.min(520, width));
     setSidebarWidth(next);
     try {
       localStorage.setItem("pi-sidebar-width", String(next));
@@ -173,7 +174,7 @@ function App({ runtime, setPiSettingsOpen }) {
         setSearchOpen((v) => !v);
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b" && window.innerWidth >= 768) {
-        e.preventDefault(); resizeSidebar(sidebarWidth < 156 ? 260 : 76);
+        e.preventDefault(); resizeSidebar(sidebarWidth < 156 ? Math.min(520, Math.max(236, Math.round(window.innerWidth * .255))) : 76);
       }
     };
     window.addEventListener("keydown", shortcut);
@@ -400,10 +401,15 @@ function App({ runtime, setPiSettingsOpen }) {
     const v = await write;
     return v;
   }
-  async function send() {
-    if (!draft.trim() || busy) return;
+  const [sendFailures, setSendFailures] = useState({});
+  const sendScope = JSON.stringify([activeRuntime?.scope, view, selected, groupId, peerA, peerB, peerScope]);
+  const sendFailure = sendFailures[sendScope];
+  async function send(retry = false) {
+    if (!(retry ? sendFailure?.draft : draft)?.trim() || busy || !api || connectionPhase !== "ready") return;
+    if (sendFailure?.uncertain && (retry || sendFailure.draft === draft)) return;
     setBusy(true);
     setNotice("");
+    const attempt = sendFailure && (retry || sendFailure.draft === draft) ? sendFailure : { key: crypto.randomUUID(), draft };
     try {
       const to =
         view === "group"
@@ -415,13 +421,13 @@ function App({ runtime, setPiSettingsOpen }) {
         throw Error("请选择不同的 bot");
       const text =
         view === "peers"
-          ? `协作任务：${draft}\n请使用 send_to_bot 将任务交给 ${botName(peerB)}（${peerB}）。对方完成后使用 send_to_bot 将结果返回给你（${peerA}）；你核验后使用 send_message 给用户最终结果。你负责最终回复。不要互相发确认或闲聊，不要创建额外任务。`
-          : draft;
+          ? `协作任务：${attempt.draft}\n请使用 send_to_bot 将任务交给 ${botName(peerB)}（${peerB}）。对方完成后使用 send_to_bot 将结果返回给你（${peerA}）；你核验后使用 send_message 给用户最终结果。你负责最终回复。不要互相发确认或闲聊，不要创建额外任务。`
+          : attempt.draft;
       await mutate(
         api.turn.start({
           botId: to,
           text,
-          key: crypto.randomUUID(),
+          key: attempt.key,
           groupId:
             view === "group"
               ? groupId
@@ -430,10 +436,11 @@ function App({ runtime, setPiSettingsOpen }) {
                 : undefined,
         }),
       );
-      setDraft("");
+      setDraft((current) => current === attempt.draft ? "" : current);
+      setSendFailures((old) => { const next = { ...old }; delete next[sendScope]; return next; });
       pinnedToEnd.current = true;
     } catch (e) {
-      setNotice(errorText(e));
+      setSendFailures((old) => ({ ...old, [sendScope]: { ...attempt, message: errorText(e), uncertain: ["reviewRequired", "conflict"].includes(e?.reason) } }));
     } finally {
       setBusy(false);
     }
@@ -953,11 +960,7 @@ function App({ runtime, setPiSettingsOpen }) {
               </Button>
             )}
           </header>
-          {connectionError && (
-            <ServiceNotice kind="connection">
-              与服务的连接已断开，正在重连。草稿已保留。
-            </ServiceNotice>
-          )}
+          <ConnectionFeedback phase={connectionPhase} onSettings={() => setPiSettingsOpen(true)} />
           {data.configuration?.setupRequired && !connectionError && (
             <ServiceNotice
               kind="setup"
@@ -1269,6 +1272,7 @@ function App({ runtime, setPiSettingsOpen }) {
                 <div ref={end} />
               </section>
               <div className="composer-area">
+                {sendFailure && <div className="send-failure" role="status"><p>{sendFailure.draft}</p><span>{sendFailure.message}</span>{!sendFailure.uncertain && <button disabled={busy || connectionPhase !== "ready"} onClick={() => send(true)}>重试发送</button>}{sendFailure.uncertain && <button onClick={() => setServiceDetails(true)}>查看状态</button>}</div>}
                 {!atBottom && (
                   <Button
                     className="scroll-latest"
@@ -1392,12 +1396,13 @@ function App({ runtime, setPiSettingsOpen }) {
                   <Button
                     disabled={
                       !api ||
+                      connectionPhase !== "ready" ||
                       busy ||
                       !draft.trim() ||
                       !!connectionError ||
                       data.configuration?.setupRequired
                     }
-                    onClick={send}
+                    onClick={() => send()}
                     aria-label={view === "peers" ? "发起协作" : "发送"}
                     className="send-button"
                   >

@@ -63,13 +63,17 @@ export function conversationList(data: any, search = ""): Array<any> {
 
 export function botActivity(data: any, id: string): string {
   const owned = (items: any[] = []) => items.filter((i) => i.botId === id);
-  if (owned(data.requests).some((r) => r.status === "pending"))
-    return "attention";
+  const pending = owned(data.requests).filter((r) => r.status === "pending");
+  const waitingTasks = new Set(pending.map((r) => r.params?.taskId).filter(Boolean));
+  const executing = (item: any) => item.taskId ? !waitingTasks.has(item.taskId) : !pending.length;
+  const executingTurn = (turn: any) => executing(turn) || (turn.inputIds || []).some((id: string) =>
+    owned(data.messages).some((m) => m.messageId === id && m.status === "processing" && m.taskId && !waitingTasks.has(m.taskId)));
   if (
-    owned(data.turns).some((t) => t.status === "running") ||
-    owned(data.jobs).some((j) => j.state === "running")
+    owned(data.turns).some((t) => t.status === "running" && executingTurn(t)) ||
+    owned(data.jobs).some((j) => j.state === "running" && executing(j))
   )
     return "working";
+  if (pending.length) return "attention";
   if (
     owned(data.messages).some(
       (m) =>

@@ -1,6 +1,6 @@
 import React from "react";
-import { Plus, Search, Settings2, Pin, PinOff, UserRound } from "lucide-react";
-import { DropdownMenu, ScrollArea, HoverCard } from "@radix-ui/themes";
+import { Plus, Search, Settings2, UserRound } from "lucide-react";
+import { DropdownMenu, ScrollArea, HoverCard, ContextMenu } from "@radix-ui/themes";
 import {
   Sidebar,
   SidebarHeader,
@@ -16,9 +16,31 @@ import { BotAvatar, GroupAvatar } from "./BotAvatar.jsx";
 import { botActivity, conversationList } from "./presentation.ts";
 import { requestsForConversation } from "./conversation-requests.js";
 import { usePinnedConversations, conversationKey } from "./hooks/use-pinned-conversations.js";
-function ConversationHint({ compact, row, children }) {
-  if (!compact) return children;
-  return <HoverCard.Root><HoverCard.Trigger>{children}</HoverCard.Trigger><HoverCard.Content side="right" className="conversation-hover"><strong>{row.name}</strong><p>{row.preview}</p>{row.pending > 0 && <small>需处理 {row.pending}</small>}</HoverCard.Content></HoverCard.Root>;
+function ConversationHint({ compact, row, pinned, onToggle, children }) {
+  const suppressClick = React.useRef(false);
+  const touch = React.useRef(false);
+  const trigger = React.cloneElement(children, {
+    onKeyDown: (event) => {
+      children.props.onKeyDown?.(event);
+      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+        event.preventDefault();
+        touch.current = false;
+        const rect = event.currentTarget.getBoundingClientRect();
+        event.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: rect.left + rect.width / 2, clientY: rect.bottom }));
+      }
+    },
+    onClickCapture: (event) => {
+      if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; }
+    },
+    onPointerDown: (event) => { touch.current = event.pointerType === "touch" || event.pointerType === "pen"; suppressClick.current = false; },
+    "aria-haspopup": "menu",
+    "aria-keyshortcuts": "Shift+F10 ContextMenu",
+  });
+  const menuTrigger = <ContextMenu.Trigger>{trigger}</ContextMenu.Trigger>;
+  return <ContextMenu.Root onOpenChange={(open) => { if (open) suppressClick.current = touch.current; }}>
+    {compact ? <HoverCard.Root><HoverCard.Trigger>{menuTrigger}</HoverCard.Trigger><HoverCard.Content side="right" className="conversation-hover"><strong>{row.name}</strong><p>{row.preview}</p>{row.pending > 0 && <small>需处理 {row.pending}</small>}</HoverCard.Content></HoverCard.Root> : menuTrigger}
+    <ContextMenu.Content aria-label={`${row.name} 会话操作`}><ContextMenu.Item onSelect={onToggle}>{pinned ? "取消置顶" : "置顶会话"}</ContextMenu.Item></ContextMenu.Content>
+  </ContextMenu.Root>;
 }
 
 export function MessengerSidebar({
@@ -48,6 +70,7 @@ export function MessengerSidebar({
       aria-label="会话导航"
       data-compact={compact}
     >
+      {!compact && <>
       <SidebarHeader className="messenger-sidebar-header">
         <div className="sidebar-toolbar">
           {phone && <button className="toolbar-profile" aria-label="设置" title="设置" onClick={onSettings}><UserRound size={22} /></button>}
@@ -55,6 +78,7 @@ export function MessengerSidebar({
           <DropdownMenu.Root><DropdownMenu.Trigger><Button size="icon" variant="ghost" aria-label="新建会话" title="新建会话"><Plus size={21} /></Button></DropdownMenu.Trigger><DropdownMenu.Content><DropdownMenu.Item onSelect={onNewBot}>新建 bot</DropdownMenu.Item><DropdownMenu.Item onSelect={onNewGroup}>新建群聊</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Root>
         </div>
       </SidebarHeader>
+      </>}
       <SidebarContent className="conversation-navigation">
         <ScrollArea
           type="scroll"
@@ -67,17 +91,16 @@ export function MessengerSidebar({
         >
           {pinned.length > 0 && <div className="pinned-conversations" aria-label="置顶会话">
             {pinned.map((row) => <div className="pinned-item" key={conversationKey(row)}>
-              <ConversationHint compact={compact} row={row}><button className="pinned-conversation" aria-label={`置顶 ${row.name}${row.pending ? ` · 需处理 ${row.pending}` : ""}`} aria-current={(row.kind === "bot" ? selected === row.id && view === "chat" : groupId === row.id && view === "group") ? "page" : undefined} onClick={() => { onSelect(row); setOpenMobile(false); }}>
+              <ConversationHint compact={compact} row={row} pinned onToggle={() => pins.toggle(row)}><button className="pinned-conversation" aria-label={`置顶 ${row.name}${row.pending ? ` · 需处理 ${row.pending}` : ""}`} aria-current={(row.kind === "bot" ? selected === row.id && view === "chat" : groupId === row.id && view === "group") ? "page" : undefined} onClick={() => { onSelect(row); setOpenMobile(false); }}>
                 {row.kind === "bot" ? <BotAvatar id={row.id} name={row.name} size={compact ? 36 : 48} activity={botActivity(data, row.id)} /> : <GroupAvatar members={data.bots.filter((bot) => row.group.memberIds.includes(bot.id))} />}
                 <span className="pinned-name">{row.name}</span>{row.pending > 0 && <span className="rail-pending">{row.pending}</span>}
               </button></ConversationHint>
-              <button className="pin-toggle" aria-label={`取消置顶 ${row.name}`} title="取消置顶" onClick={() => pins.toggle(row)}><PinOff size={13} /></button>
             </div>)}
           </div>}
           <SidebarMenu aria-label="会话列表">
             {rows.filter((row) => !pins.keys.includes(conversationKey(row))).map((row) => (
               <SidebarMenuItem key={row.kind + row.id}>
-                <ConversationHint compact={compact} row={row}>
+                <ConversationHint compact={compact} row={row} onToggle={() => pins.toggle(row)}>
                 <SidebarMenuButton
                   size="lg"
                   className="conversation-link"
@@ -108,6 +131,7 @@ export function MessengerSidebar({
                       id={row.id}
                       name={row.name}
                       activity={botActivity(data, row.id)}
+                      size={compact ? 32 : 40}
                     />
                   ) : (
                     <GroupAvatar
@@ -124,7 +148,6 @@ export function MessengerSidebar({
                   </span>
                 </SidebarMenuButton>
                 </ConversationHint>
-                <button className="pin-toggle" aria-label={`置顶 ${row.name}`} title="置顶会话" onClick={() => pins.toggle(row)}><Pin size={13} /></button>
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
@@ -134,6 +157,13 @@ export function MessengerSidebar({
         </ScrollArea>
       </SidebarContent>
       <SidebarFooter className="messenger-sidebar-footer">
+        {compact && <>
+        <div className="sidebar-toolbar">
+          {phone && <button className="toolbar-profile" aria-label="设置" title="设置" onClick={onSettings}><UserRound size={22} /></button>}
+          <button className="toolbar-search" aria-label="搜索全部（⌘K）" title="搜索全部（⌘K）" onClick={onSearch}><Search size={20} /></button>
+          <DropdownMenu.Root><DropdownMenu.Trigger><Button size="icon" variant="ghost" aria-label="新建会话" title="新建会话"><Plus size={21} /></Button></DropdownMenu.Trigger><DropdownMenu.Content><DropdownMenu.Item onSelect={onNewBot}>新建 bot</DropdownMenu.Item><DropdownMenu.Item onSelect={onNewGroup}>新建群聊</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Root>
+        </div>
+        </>}
         <SidebarMenu><SidebarMenuItem><SidebarMenuButton onClick={onSettings} aria-label="设置" title="设置"><Settings2 size={17} /><span>设置</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
       </SidebarFooter>
       <div
@@ -143,7 +173,7 @@ export function MessengerSidebar({
         aria-keyshortcuts="Meta+B Control+B"
         aria-orientation="vertical"
         aria-valuemin={76}
-        aria-valuemax={360}
+        aria-valuemax={520}
         aria-valuenow={width}
         tabIndex={0}
         onKeyDown={(e) => {
@@ -153,7 +183,7 @@ export function MessengerSidebar({
               e.key === "Home"
                 ? 76
                 : e.key === "End"
-                  ? 360
+                  ? 520
                   : width + (e.key === "ArrowLeft" ? -16 : 16),
             );
           }

@@ -104,6 +104,19 @@ test("queued messages remain queued rather than pretending inference started", (
     "idle",
   );
 });
+test("a scoped human wait does not hide independent active work or become a forever-running job", () => {
+  const data: any = { turns: [], messages: [], jobs: [{ botId: "a", taskId: "A", state: "running" }], requests: [{ botId: "a", status: "pending", kind: "approval", params: { taskId: "A" } }] };
+  assert.equal(botActivity(data, "a"), "attention");
+  data.jobs.push({ botId: "a", taskId: "B", state: "running" });
+  assert.equal(botActivity(data, "a"), "working");
+  data.jobs.pop(); data.turns.push({ botId: "a", taskId: "A", status: "running", inputIds: ["B-input"] });
+  data.messages.push({ botId: "a", messageId: "B-input", taskId: "B", status: "processing" });
+  assert.equal(botActivity(data, "a"), "working");
+  data.turns = []; data.messages = []; data.requests[0].status = "resolved";
+  assert.equal(botActivity(data, "a"), "working");
+  data.jobs[0].state = "completed";
+  assert.equal(botActivity(data, "a"), "idle");
+});
 
 test("absolute file paths become copyable segments without losing any text", () => {
   const text =

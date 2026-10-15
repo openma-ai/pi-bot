@@ -1,6 +1,6 @@
 // Explicit disposable test runtime. Never reads the user's Pi profile or generates access grants.
 import { createServer } from 'node:http';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { PiBotDaemon } from '../../../src/daemon/core/daemon.ts';
 const root=resolve(process.argv[2]);
@@ -8,6 +8,11 @@ const token='a'.repeat(64); // Dummy fixture transport value only.
 mkdirSync(root,{recursive:true});
 const daemon=await PiBotDaemon.create({dataDir:root,piOptions:{agentDir:join(root,'empty-pi'),cwd:root},factory:async (bot,host)=>({
   run:async envelope=>{
+    if(process.argv.includes('--visual')) {
+      host.sendMessage(envelope,'这是隔离的界面排版测试。内容用于检查行距、气泡宽度和换行，不会执行任何外部操作。\n\n'+envelope.text,'fixture:'+envelope.id);
+      host.sendMessage(envelope,'测试记录已保留，下一条消息仍可独立处理。','fixture-extra:'+envelope.id);
+      return;
+    }
     const answer='Fixture reply: '+envelope.text;
     for (const piece of ['Fixture ', 'reply: ', envelope.text]) {
       host.events?.emit(bot.id,{type:'replyDelta',toolCallId:'fixture-'+envelope.id,textDelta:piece});
@@ -23,6 +28,11 @@ if (process.argv.includes('--navigation') && daemon.runtime.listBots().length ==
 }
 if (process.argv.includes('--navigation')) {
   for (const bot of daemon.runtime.listBots()) daemon.runtime.accept({to:bot.id,text:'Navigation fixture history for '+bot.name,key:'navigation-seed:'+bot.id});
+  await daemon.runtime.idle();
+}
+if(process.argv.includes('--visual')) {
+  const bot=daemon.runtime.listBots()[6] || daemon.runtime.listBots()[0];
+  for(const [i,text] of ['请比较两种界面排版方式，保留相同的测试数据。','只需要检查消息与状态，不进行外部操作。','排版完成后保留对比图片。'].entries()) daemon.runtime.accept({to:bot.id,text,key:'visual-seed:'+i});
   await daemon.runtime.idle();
 }
 const mockRequests:any[]=process.argv.includes('--requests') ? ['question','approval','credential'].map(kind=>({
@@ -49,19 +59,25 @@ const server=createServer(async(req,res)=>{
     resolveMock(row,{submitted:true}); // Never log or persist the dummy submitted value.
     res.setHeader('content-type','application/json');res.end('{"submitted":true}');return;
   }
+  if (existsSync(join(root,'ui-offline'))) { res.writeHead(503).end(); return; }
   if(url.pathname==='/events') {
     const c=daemon.connections.get(String(req.headers['x-pibot-connection']));
     if(!c) {res.writeHead(404).end();return;}
     res.writeHead(200,{'content-type':'text/event-stream'});res.write(': fixture\n\n');
     const detach=c.attach(frame=>res.write('data: '+JSON.stringify(frame)+'\n\n'));
-    req.on('close',detach);return;
+    const outage = setInterval(() => { if (existsSync(join(root,'ui-offline'))) res.destroy(); }, 200);
+    req.on('close',()=>{clearInterval(outage);detach();});return;
   }
   if(url.pathname==='/rpc') {
     let body='';for await(const chunk of req) body+=chunk;
     const frame=JSON.parse(body);
     let c=daemon.connections.get(String(req.headers['x-pibot-connection']));
-    if(!c && frame.method==='initialize') c=daemon.connect('http');
+    if(frame.method==='initialize') c=daemon.connect('http');
     if(!c) {res.writeHead(404).end();return;}
+    if (frame.method === 'turn/start' && existsSync(join(root,'ui-fail-send'))) {
+      res.setHeader('content-type','application/json');
+      res.end(JSON.stringify({jsonrpc:'2.0',id:frame.id,error:{code:-32000,message:'Controlled fixture send failure',data:{reason:'capacity'}}})); return;
+    }
     let reply;
     const row=mockRequests.find(r=>r.id===frame.params?.requestId);
     if(frame.method==='request/resolve'&&row&&row.kind!=='credential') reply={jsonrpc:'2.0',id:frame.id,result:resolveMock(row,frame.params.response)};
