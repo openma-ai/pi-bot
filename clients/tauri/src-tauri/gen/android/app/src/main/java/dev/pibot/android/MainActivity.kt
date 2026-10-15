@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.graphics.Color
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
+import androidx.core.view.WindowCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
@@ -14,6 +15,8 @@ class MainActivity : TauriActivity() {
       navigationBarStyle = SystemBarStyle.dark(Color.rgb(16, 16, 16))
     )
     super.onCreate(savedInstanceState)
+    WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
+    WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = false
     window.decorView.setBackgroundColor(Color.rgb(16, 16, 16))
     if (android.os.Build.VERSION.SDK_INT >= 29) {
       window.isNavigationBarContrastEnforced = false

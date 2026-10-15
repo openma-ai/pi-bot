@@ -28,12 +28,16 @@ if(channel==='production'){
 const env={...process.env};for(const key of ['APPLE_ID','APPLE_PASSWORD','APPLE_API_ISSUER','APPLE_API_KEY','APPLE_API_KEY_PATH'])delete env[key];
 env.APPLE_SIGNING_IDENTITY=identity;
 const config=join(client,`src-tauri/tauri.${channel}.conf.json`);
-const override=JSON.stringify({bundle:{macOS:{bundleVersion:build,signingIdentity:identity}}});
+const override=JSON.stringify({version,bundle:{macOS:{bundleVersion:build,signingIdentity:identity}}});
 try{
  run('npm',['run','build:gui'],{stdio:'inherit',env});
  run('npm',['run','tauri','--','build','--bundles','app','--config',config,'--config',override],{stdio:'inherit',env});
  const name=channel==='preview'?'Pi Bot Preview':'Pi Bot';const app=join(client,`src-tauri/target/release/bundle/macos/${name}.app`);
  if(!existsSync(app))throw Error('Expected app bundle missing');
+ const expectedId=channel==='preview'?'dev.pibot.desktop.preview':'dev.pibot.desktop';
+ const plist=join(app,'Contents/Info.plist');
+ for(const [key,value] of [['CFBundleIdentifier',expectedId],['CFBundleShortVersionString',version],['CFBundleVersion',String(build)]])if(run('/usr/libexec/PlistBuddy',['-c','Print '+key,plist])!==value)throw Error('Built application metadata mismatch: '+key);
+
  run('codesign',['--verify','--deep','--strict',app]);
  if(channel==='production'){
   const signature=spawnSync('codesign',['-d','--verbose=4',app],{encoding:'utf8'}).stderr||'';

@@ -76,3 +76,14 @@ SSH with a separately verified full server public-key pin, never accept-any trus
   [Android build and verification](ANDROID-TEST-BUILD.md).
 - Completed replies appear atomically, with bot-owned Running state and
   runtime-scoped conversation pins shared across clients.
+
+## Verified Preview (2026-10-15)
+
+`Pi-Bot-Preview-0.1.0-macos-arm64-0e95f03.zip` was built from clean commit
+`0e95f03b90812f8642efc7647d5c48cc9c73bc3f`, version0.1.0/build48. Ad-hoc
+signature and bundle ID were verified and the isolated application launched.
+SHA256: `2abe6781d1376c83cdd3255d053288f874f9ab4caf7ae220def1d1860073c0e9`.
+No desktop visual QA or Gatekeeper-approved distribution is claimed. The original
+Mac test ZIP is unchanged. Production preflight was tested with absent signing
+references and stopped before building or uploading. Subsequent script guards
+check the version/build/identifier after packaging.

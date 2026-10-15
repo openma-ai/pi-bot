@@ -64,3 +64,21 @@ not claimed by this first Android package.
 Native system-bar insets/dark appearance are applied in MainActivity; the WebView
 resizes around the software keyboard. The final verification report and screenshots
 are delivered with the APK rather than inferred from a passing compilation alone.
+
+## Verified development package (2026-10-15)
+
+`Pi-Bot-Android-0.1.0-arm64-debug.apk` was built with the installed official
+SDK/NDK and installed in the local API35 ARM64 emulator. API24 minimum, target36,
+versionCode1000; Android Debug certificate, v2 signature and 16KB zip alignment
+verified. SHA256:
+`5fde6ec1345a7ad8b53e88379d0287fa2ff80cf9f7990b771b3f42aef91b09c5`.
+
+Actual installed-WebView automation through local ADB/CDP entered the disposable
+SSH credentials, loaded conversations, sent messages and received complete replies.
+During processing the UI reported `Running · 正在处理`, zero partial reply bubbles,
+and viewport scale1. Screenshots capture processing and the final reply. Native
+files/WebView persistence and APK contents were scanned for the dummy password;
+none was present. Earlier unsuccessful coordinate gestures are not counted as
+passing checks. Real Internet hosts, physical devices, Android key import and MFA
+remain untested. Shared UI/release checks: 30 passed; GUI and repository typechecks,
+iOS release Cargo check and macOS Preview release build also passed.
