@@ -94,6 +94,9 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false }) {
   const [mode, setMode] = useState(profile?.mode || "ssh"),
     [name, setName] = useState(profile?.name || ""),
     [host, setHost] = useState(profile?.host || "");
+  const [profileId] = useState(() => profile?.id || crypto.randomUUID());
+  const [hostKey, setHostKey] = useState(profile?.hostKey || ""),
+    [password, setPassword] = useState("");
   const [project, setProject] = useState(profile?.projectDir || "~/pi-bot"),
     [localDir, setLocalDir] = useState(
       profile?.mode === "local"
@@ -120,16 +123,17 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false }) {
         mode === "local"
           ? {
               mode,
-              ...(profile?.id ? { id: profile.id } : {}),
+              id: profileId,
               name: name.trim(),
               dataDir: localDir.trim(),
               ...(agentDir.trim() ? { agentDir: agentDir.trim() } : {}),
             }
           : {
               mode,
-              ...(profile?.id ? { id: profile.id } : {}),
+              id: profileId,
               name: name.trim(),
               host: host.trim(),
+              ...(remoteOnly ? { hostKey: hostKey.trim() } : {}),
               projectDir: project.trim(),
               dataDir: remoteDir.trim(),
               node: node.trim(),
@@ -137,7 +141,9 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false }) {
               ...(port ? { sshPort: Number(port) } : {}),
               ...(configFile.trim() ? { configFile: configFile.trim() } : {}),
             },
+        password,
       );
+      setPassword("");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -190,12 +196,15 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false }) {
             label="SSH 主机"
             value={host}
             onChange={setHost}
-            placeholder="user@vps 或 SSH 别名"
+            placeholder={remoteOnly ? "user@hostname" : "user@vps 或 SSH 别名"}
           />
           <Text size="1" color="gray">
-            使用客户端的 SSH 配置与密钥。远程需先安装 Pi Bot，默认目录为
-            ~/pi-bot。
+            {remoteOnly ? "此版本使用 SSH 密码认证；主机公钥必须通过服务器管理员等可信渠道核验，不会自动接受未知主机。" : "使用客户端的 SSH 配置与密钥。远程需先安装并独立启动 Pi Bot。"}
           </Text>
+          {remoteOnly && <>
+            <Field label="已核验的 SSH 主机公钥" value={hostKey} onChange={setHostKey} placeholder="ssh-ed25519 AAAA…（完整公钥，不是 SHA256 指纹）" />
+            <Field label="SSH 密码（仅写入此设备 Keychain）" value={password} onChange={setPassword} type="password" placeholder={profile?.id ? "留空保留已存密码；更改主机或公钥需重新输入" : "输入 SSH 密码"} />
+          </>}
         </>
       )}
       <Button
@@ -256,13 +265,13 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false }) {
                 placeholder="0 为自动选择"
                 type="number"
               />
-              <Field
+              {!remoteOnly && <Field
                 label="SSH 配置文件"
                 value={configFile}
                 onChange={setConfigFile}
                 placeholder="默认 ~/.ssh/config"
-              />
-              <Field label="远程 Node 路径" value={node} onChange={setNode} />
+              />}
+              {!remoteOnly && <Field label="远程 Node 路径" value={node} onChange={setNode} />}
             </>
           )}
         </div>
@@ -311,8 +320,11 @@ function RuntimeSettings({ runtime }) {
       setEnabling("");
     }
   }
-  async function save(profile) {
+  async function save(profile, password) {
     await runtime.configure(profile);
+    if (runtime.status.remoteOnly && password) {
+      await window.__PIBOT_NATIVE__.call("ssh_password_store", { profileId: profile.id, password });
+    }
     setEditor(undefined);
     setNotice("Runtime 已保存，点击启用后使用。");
     setError("");
@@ -409,10 +421,11 @@ function RuntimeSettings({ runtime }) {
                       <DropdownMenu.Item onSelect={() => void enable(profile)}>
                         重新连接
                       </DropdownMenu.Item>
+                      {enabled && <DropdownMenu.Item onSelect={() => void runtime.disconnect().catch(e => setError(e.message))}>断开连接</DropdownMenu.Item>}
                       <DropdownMenu.Separator />
                       <DropdownMenu.Item
                         color="red"
-                        disabled={enabled || profiles.length < 2}
+                        disabled={enabled || (profiles.length < 2 && !runtime.status.remoteOnly)}
                         onSelect={() => void remove(profile)}
                       >
                         移除连接

@@ -1,8 +1,6 @@
 use reqwest::{Client, Method, Url};
 use serde::{Deserialize, Serialize};
-#[cfg(not(target_os = "ios"))]
 use serde_json::Value;
-#[cfg(not(target_os = "ios"))]
 use std::time::Duration;
 #[cfg(not(target_os = "ios"))]
 use std::{path::PathBuf, process::Stdio};
@@ -32,6 +30,8 @@ pub struct Profile {
     pub node: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_key: Option<String>,
 }
 impl Profile {
     pub fn local(id: &str, name: &str, path: &str) -> Self {
@@ -47,6 +47,7 @@ impl Profile {
             server_port: None,
             node: None,
             agent_dir: None,
+            host_key: None,
         }
     }
     pub fn validate(&self) -> Result<(), String> {
@@ -94,16 +95,24 @@ impl Profile {
         {
             return Err("Invalid SSH configuration path".into());
         }
+        if self
+            .host_key
+            .as_ref()
+            .is_some_and(|key| key.len() > 4096 || key.chars().any(|c| c.is_control()))
+        {
+            return Err("Invalid SSH host public key".into());
+        }
         Ok(())
     }
 }
 pub struct Endpoint {
     pub base: Url,
     pub remote_host: String,
-    token: String,
-    client: Client,
+    pub(crate) token: String,
+    pub(crate) client: Client,
     #[cfg(not(target_os = "ios"))]
-    _tunnel: Option<Child>,
+    pub(crate) _tunnel: Option<Child>,
+    pub(crate) _embedded: Option<crate::mobile_ssh::Tunnel>,
 }
 impl Endpoint {
     pub async fn request(
@@ -131,8 +140,7 @@ impl Endpoint {
             .map_err(|_| "无法连接 runtime，请检查服务是否已独立启动".into())
     }
 }
-#[cfg(not(target_os = "ios"))]
-fn client() -> Result<Client, String> {
+pub(crate) fn client() -> Result<Client, String> {
     Client::builder()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
@@ -140,8 +148,7 @@ fn client() -> Result<Client, String> {
         .build()
         .map_err(|_| "Cannot initialize transport".into())
 }
-#[cfg(not(target_os = "ios"))]
-fn discovery(text: &str, token: &str) -> Result<(Url, String), String> {
+pub(crate) fn discovery(text: &str, token: &str) -> Result<(Url, String), String> {
     let d: Value = serde_json::from_str(text).map_err(|_| "Runtime discovery is invalid")?;
     if d["protocolVersion"] != "2026-10-13" {
         return Err(
@@ -169,12 +176,10 @@ fn discovery(text: &str, token: &str) -> Result<(Url, String), String> {
     let host = format!("127.0.0.1:{}", u.port().unwrap());
     Ok((u, host))
 }
-#[cfg(not(target_os = "ios"))]
 fn quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\"'\"'"))
 }
-#[cfg(not(target_os = "ios"))]
-fn remote_path(path: &str) -> String {
+pub(crate) fn remote_path(path: &str) -> String {
     if let Some(tail) = path.strip_prefix("~/") {
         format!("\"$HOME\"/{}", quote(tail))
     } else {
@@ -213,8 +218,7 @@ fn ssh_args(p: &Profile) -> Vec<String> {
 fn ssh_error() -> String {
     "SSH 连接失败：请检查已配置的密钥、可信主机指纹、路径和独立 runtime；客户端不会接受未知 host key 或启动远端服务".into()
 }
-#[cfg(not(target_os = "ios"))]
-async fn ready(endpoint: &Endpoint) -> Result<(), String> {
+pub(crate) async fn ready(endpoint: &Endpoint) -> Result<(), String> {
     let response = tokio::time::timeout(
         Duration::from_secs(5),
         endpoint
@@ -236,7 +240,8 @@ pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
     if p.mode != "ssh" {
         return Err("iPhone/iPad 仅支持远程 runtime".into());
     }
-    Err("共享嵌入式 SSH adapter 尚在验证；iOS 不使用系统 ssh 或执行本地 runtime".into())
+    let password = crate::ssh_credentials::load(p)?;
+    crate::mobile_ssh::connect(p, &password).await
 }
 #[cfg(not(target_os = "ios"))]
 pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
@@ -258,6 +263,7 @@ pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
             token: token.trim().into(),
             client: client()?,
             _tunnel: None,
+            _embedded: None,
         };
         ready(&endpoint).await?;
         return Ok(endpoint);
@@ -313,6 +319,7 @@ pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
         token: token.trim().into(),
         client: client()?,
         _tunnel: Some(child),
+        _embedded: None,
     };
     for _ in 0..40 {
         if tokio::time::timeout(Duration::from_millis(200), ready(&endpoint))
@@ -404,6 +411,7 @@ mod tests {
                 token: "a".repeat(64),
                 client: client().unwrap(),
                 _tunnel: None,
+                _embedded: None,
             };
             let response = endpoint
                 .request(

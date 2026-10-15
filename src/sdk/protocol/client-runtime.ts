@@ -21,7 +21,7 @@ export const RuntimeProfileSchema = Type.Union([
     Type.Object({
         ...identity, mode: Type.Literal('ssh'), host: Type.String({
             minLength: 1, maxLength: 255, pattern: '^(?:[a-zA-Z0-9_][a-zA-Z0-9_.-]*@)?[a-zA-Z0-9_][a-zA-Z0-9_.:-]*$'
-        }), projectDir: path, dataDir: path, node: Type.Optional(path), sshPort: Type.Optional(port), configFile: Type.Optional(path), serverPort: Type.Integer({
+        }), hostKey: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })), projectDir: path, dataDir: path, node: Type.Optional(path), sshPort: Type.Optional(port), configFile: Type.Optional(path), serverPort: Type.Integer({
             minimum: 0, maximum: 65535
         })
     }, {
@@ -31,11 +31,12 @@ export const RuntimeProfileSchema = Type.Union([
 export type RuntimeProfile = Static<typeof RuntimeProfileSchema>;
 export const RuntimeStatusSchema = Type.Object({
     profiles: Type.Array(RuntimeProfileSchema, {
-        minItems: 1, maxItems: 32
+        minItems: 0, maxItems: 32
     }),
     active: Type.Union([Type.Object({
             id: Type.String(), profileId: Type.String(), mode: Type.Union([Type.Literal('local'), Type.Literal('ssh')]), baseUrl: Type.String(), profile: Type.Optional(RuntimeProfileSchema), scope: Type.String(), label: Type.String()
         }), Type.Null()]),
+    remoteOnly: Type.Optional(Type.Boolean()),
     connecting: Type.Boolean()
 });
 export type RuntimeStatus = Static<typeof RuntimeStatusSchema>;

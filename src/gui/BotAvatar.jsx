@@ -52,7 +52,7 @@ export const defaultAvatar = (id) => {
 };
 export const activityLabels = {
   idle: "就绪",
-  working: "正在处理",
+  working: "Running · 正在处理",
   queued: "等待处理",
   attention: "有请求需要你处理",
   interrupted: "执行中断",

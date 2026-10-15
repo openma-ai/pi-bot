@@ -1,134 +1,143 @@
-# iOS TestFlight preparation — 2026-10-15
+# iOS development and TestFlight preparation
 
-Status: source preparation and device-target typecheck only. No Xcode project,
-archive, IPA, signing, App Store Connect upload, or TestFlight build was produced.
-Includes the interface work through `1d38c69`.
+The client now has a real generated Xcode project and an embedded SSH transport.
+iOS connects only to an already-running remote daemon; it never executes or
+installs a local runtime. Apple distribution signing and upload are not configured.
 
-## Local build identity (provisional, not an Apple destination)
+## Build identity
 
-- Product: Pi Bot
-- Version: 0.1.0
-- Build: 1
-- Bundle ID: dev.pibot.ios
-- Minimum iOS: 16.0
-- Development team: unset
-- Existing App Store Connect app: not established
+- Product: Pi Bot; version 0.1.0; build 1; minimum iOS 16.0.
+- Provisional local bundle ID: `dev.pibot.ios`.
+- Apple development team and existing App Store Connect destination: unconfirmed.
+- No Apple certificate, profile, app record, API key, invitation or agreement was
+  created. No App Store Connect/TestFlight upload occurred.
 
-Confirm the existing team/app/bundle destination before any upload. Do not create
-an app record, signing certificate, provisioning profile, API key or agreement
-acceptance as part of this preparation.
+The generated project is `clients/tauri/src-tauri/gen/apple/pi-bot-desktop.xcodeproj`.
+The shared Rust library supplies Tauri's mobile entry point; desktop `main.rs`
+delegates to that library. Desktop retains system OpenSSH and local connections.
 
-## Source changes
+## Remote connection
 
-The desktop binary now delegates to a shared Rust library with Tauri's mobile
-entry point and static library output. iOS starts with no local profile, rejects
-local connections in native commands, hides the local option in settings, excludes
-Tokio process support and the runtime payload staging primitive, and excludes the
-desktop title-bar dragging permission. The runtime installer remains unavailable
-on iOS. No runtime executable or downloaded executable is bundled.
+The iOS MVP supports explicit `user@hostname`, an SSH port, a verified complete
+OpenSSH host public key, SSH password authentication and existing project/data
+paths. Obtain the public key through a trusted channel. Unknown, malformed,
+changed and certificate-wrapped host keys are rejected; there is no accept-any
+or trust-on-first-use path. OpenSSH aliases/config files, private-key login and
+keyboard-interactive/MFA authentication are not implemented on iOS yet.
 
-**Remote functionality is incomplete:** the existing iOS transport deliberately
-returns an explicit “embedded SSH adapter not yet verified” error. Desktop uses
-system SSH; iOS must use an embedded adapter with host verification and secure
-credential storage. There is no successful iOS remote connection/streaming test.
-This is a functional blocker to a useful tester release, independent of signing.
+Passwords are written through native IPC into Apple Keychain, protected with
+`AccessibleWhenUnlockedThisDeviceOnly` and cloud synchronization disabled. They
+are bound to profile ID, host/user, port and public-key pin; changing that identity
+invalidates/removes its old entry. Profile JSON, status responses, URLs and logs
+contain no password. Removing a disconnected iOS profile deletes its Keychain
+entry, including when it is the last profile. No real user credentials were used
+in verification.
 
-## Installed tools and signing inspection
+The adapter reads existing `daemon.json` and the transport token over the verified
+SSH session. Discovery must identify the supported protocol and a loopback-only
+HTTP endpoint. Independent SSH direct-TCP channels forward HTTP/SSE; the client
+listener binds only to `127.0.0.1`, preserves the remote Host header and adds the
+transport bearer credential natively. Dropping an endpoint aborts its owned
+forwarding tasks. No remote runtime is started. A dropped SSH session can be
+reestablished using the settings menu's reconnect action; this is not an
+always-running iOS background agent.
 
-Xcode 26.6 (17F113), iPhoneOS/iPhoneSimulator SDK 26.5, Rust 1.97.1,
-`aarch64-apple-ios` and `aarch64-apple-ios-sim`, XcodeGen 2.45.3, CocoaPods 1.16.2.
-Read-only inspection found zero valid code-signing identities, zero provisioning
-profiles in the standard user directories, no configured Xcode provisioning team,
-and no App Store Connect API private keys in the standard user directory. This
-only describes this machine; it does not establish the user's Apple membership.
+## Toolchain and resolved initialization blocker
 
-`tauri ios init --ci --skip-targets-install` stopped before project generation:
-the CLI tried to install missing `libimobiledevice` via Homebrew and sandbox
-filesystem restrictions prevented that install. No escalation/install retry or
-Homebrew permission changes were attempted. The Rust iOS dependencies were fetched
-for the target check; no new SDK was installed.
+Installed tools: Xcode 26.6 (17F113), iOS SDK 26.5, Rust 1.97.1, device and ARM64
+simulator targets, XcodeGen 2.45.3 and CocoaPods 1.16.2.
 
-## Verification
+After explicit user approval, `brew reinstall libimobiledevice` succeeded and
+installed its normal package dependencies. The prior failed sandbox attempt was
+not bypassed. `tauri ios init --ci --skip-targets-install` then generated the real
+Xcode project. No additional SDK or simulator runtime was installed.
 
-From repository root:
+CLI 2.12.2 checks libimobiledevice unconditionally during initialization, although
+it is device/log tooling rather than an archive linker input. The standard CLI's simulator
+archive path also requires a simulator runtime matching SDK 26.5, while this Mac
+has iOS 26.4 available. Direct Xcode builds target the installed iOS 26.4 simulator
+or a generic iOS device; no runtime version or security check was falsified.
+
+## Build/run
+
+From the repository root, build the frontend:
 
 ```sh
-npm run gui:check
-npx tsc --noEmit
-cargo check --manifest-path clients/tauri/src-tauri/Cargo.toml --target aarch64-apple-ios --lib --offline
-cargo test --manifest-path clients/tauri/src-tauri/Cargo.toml --lib --offline
+npm --prefix clients/tauri run build:gui
 ```
 
-Device Rust check passed without warnings after platform gating. Native tests:
-6 passed (the loopback fixture test required sandbox permission to bind localhost).
-GUI lint, TypeScript and the bundled frontend build passed. Desktop binary target
-check passed. No simulator/device launch or archive validation is claimed.
+Keep Tauri's official Xcode context process running in a terminal:
 
-## Continue after prerequisites are resolved
+```sh
+cd clients/tauri
+npm run tauri -- ios build --debug --target aarch64-sim --no-sign --ci --open
+```
 
-1. Complete and test the remote adapter on iOS; retain strict host verification,
-   secure credential storage and remote-only execution.
-2. Confirm permission to install the missing CLI support dependency, then generate
-   the Xcode project with `npm exec tauri ios init -- --ci --skip-targets-install`
-   from `clients/tauri`.
-3. Confirm the existing Apple team/app/bundle and configure signing through Xcode's
-   secure account UI. Never place passwords or production credentials in source.
-4. Produce and inspect a device archive before any signed export or upload:
-   `npm exec tauri ios build -- --ci --target aarch64 --no-sign --archive-only`.
-   This unsigned output is not TestFlight-ready. Use the approved existing signing
-   assets for a signed App Store Connect export only after the destination is known.
-5. Validate/export/upload through Xcode after reporting the concrete destination.
-   No automatic provisioning updates or resource creation are authorized here.
+It opens Xcode and supplies the build-script context. In another terminal, from
+`clients/tauri`, select the existing simulator UUID and build:
 
-An iOS foreground client can display remote work, but cannot promise continuous
-background streaming or an always-running local agent. A physical-device install
-and TestFlight require the appropriate signing/distribution setup; a Rust check
-alone does not provide an installable app.
+```sh
+xcodebuild -project src-tauri/gen/apple/pi-bot-desktop.xcodeproj \
+  -scheme pi-bot-desktop_iOS -configuration debug -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,id=<installed-iPhone-UUID>' \
+  -derivedDataPath /tmp/pi-bot-ios-derived \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= build
+```
 
-## Dependency clarification (read-only follow-up)
+This uses only local ad-hoc simulator signing. It creates no Apple signing asset.
+Install/launch the resulting simulator `.app` using Xcode or `xcrun simctl`.
+Without a fixture environment, the app starts with no local profile; add the
+remote configuration in settings. A device archive can be inspected unsigned:
 
-No install was retried while permission/team selection is pending.
+```sh
+xcodebuild -project src-tauri/gen/apple/pi-bot-desktop.xcodeproj \
+  -scheme pi-bot-desktop_iOS -configuration release -sdk iphoneos \
+  -destination 'generic/platform=iOS' -archivePath /tmp/PiBot-unsigned.xcarchive \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+  DEVELOPMENT_TEAM= archive
+```
 
-The installed CLI is 2.12.2; its native binary embeds cargo-mobile2 0.22.5 source
-paths. The actual failing child command was `brew reinstall libimobiledevice`
-(exit 1), not `pod install`. Tauri's project generator wraps dependency errors
-under a `pod install` label before invoking XcodeGen, which explains the misleading
-outer error. Homebrew reported non-writable targets under `/opt/homebrew`
-(including `Cellar`, `bin`, `lib`, `opt` and Homebrew state/lock directories), plus
-`~/Library/Caches/Homebrew` and `~/Library/Logs/Homebrew`. This was an ordinary
-sandbox filesystem failure, not an automatic approval-review rejection.
+Do not add automatic provisioning flags or upload until the existing Apple
+team/app/bundle destination is confirmed. An unsigned archive is not an
+installable TestFlight package. App Store Connect export/upload must use the
+approved existing signing assets and destination; the generated debugging export
+plist is not an App Store Connect distribution configuration.
 
-CLI 2.12.2's public init options have no skip-device-dependencies flag.
-`--skip-targets-install` skips only rustup target installation; `--ci` suppresses
-prompts; neither skips the unconditional dependency installer. Its source calls
-`deps::install_all(..., true, ...)` before rendering files: that `true` skips the
-optional Rust Xcode debugging plugin, not the package loop. Upstream cargo-mobile2
-checks `idevicesyslog` for the libimobiledevice package. The package loop also checks
-XcodeGen and CocoaPods, both already installed here. No fake executables, patched
-CLI, dependency shims or Homebrew permission changes were used.
+## Isolated verification
 
-libimobiledevice is device communication tooling, not a Rust target library or an
-Xcode archive linker input. Thus it is a practical prerequisite for this CLI's
-standard initialization path, even when preparing a simulator or unsigned archive;
-it is not intrinsically required to compile an already-generated Xcode project.
-The machine already has Apple's `xcrun devicectl` for modern device tooling.
-A manually maintained official-template/XcodeGen project could avoid that init
-policy, but there is no documented CLI skip switch and no such alternative project
-has been generated or validated. Installing the one missing package after approval
-is the smallest standard route; custom project generation adds maintenance work.
+The opt-in `client-fixtures` feature builds a loopback SSH fixture binary; normal
+app builds omit it. The fixture creates an ephemeral host key and accepts only a
+clearly named dummy password, a fixed discovery command and forwarding to the
+isolated runtime's loopback port. It never reads the user's Pi profile.
 
-Sources inspected:
+```sh
+node --import tsx clients/tauri/test/fixture-server.ts \
+  /tmp/pi-bot-ios-remote-fixture-<date> --navigation --bubble-colors \
+  --message-layout --ssh-testing
+cargo run --manifest-path clients/tauri/src-tauri/Cargo.toml \
+  --features client-fixtures --bin ios-ssh-fixture -- \
+  /tmp/pi-bot-ios-remote-fixture-<date>
+PIBOT_SSH_FIXTURE_ROOT=/tmp/pi-bot-ios-remote-fixture-<date> \
+  cargo test --manifest-path clients/tauri/src-tauri/Cargo.toml \
+  --features client-fixtures --lib
+```
 
-- Exact CLI version project generator: https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.2/crates/tauri-cli/src/mobile/ios/project.rs
-- Exact CLI init options: https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.2/crates/tauri-cli/src/mobile/ios/mod.rs
-- Upstream dependency implementation (dev branch, corroborating observed command/binary strings): https://github.com/tauri-apps/cargo-mobile2/blob/dev/src/apple/deps/mod.rs
+Native fixture coverage: changed host-key rejection, wrong-password rejection,
+real daemon RPC send, SSE delta and completed reply, forced SSH disconnect and
+explicit reconnect, plus desktop transport/install regression checks. A debug-only
+iOS probe repeats the transport checks and native Keychain store/read/update/delete
+inside the actual simulator app. Its profile must explicitly match the disposable
+loopback fixture; it is compiled out of release builds. No real remote server has
+been tested or granted access.
 
-No iOS transport currently succeeds: `transport::connect` always returns an error
-on iOS, and the separate `ssh-spike` is not an app dependency. It tests a host-key
-comparison and sketches a direct-TCP channel; it has no key loading, login,
-credential persistence, discovery integration or app HTTP/SSE wiring. There is no
-implemented direct HTTPS/WebSocket remote fallback. Remote transport remains the
-largest code/validation gap, not a packaging flag. A simulator shell could test UI
-and explicit unsupported-connection errors first; an honest remote-client
-TestFlight build requires the adapter and actual iOS remote send/stream/reconnect
-verification before distribution.
+UI verification is recorded separately in `IOS-SIMULATOR-UI-VERIFICATION.md`.
+Successful transport tests do not establish layout/keyboard acceptance.
+
+## Remaining distribution requirements
+
+Confirm the paid Apple Developer team, existing bundle/app destination and usable
+distribution signing certificate/profile (or authorize the exact missing resource
+separately). This machine initially had no valid signing identity, profile or
+configured team. Real-device install, background/foreground network behavior and
+signed archive/export remain separate checks. iOS may suspend foreground streaming
+in the background; there is no promise of continuous background execution.

@@ -1,15 +1,15 @@
 // Adapted from shadcn/ui, MIT. See SHADCN-NOTICE.md.
 import * as React from "react";
-const MOBILE_BREAKPOINT = 768;
+const MOBILE_QUERY = "(max-width:767px), (pointer:coarse) and (max-height:767px)";
 export function useIsMobile() {
-    const [isMobile, setIsMobile] = React.useState(() => window.innerWidth < MOBILE_BREAKPOINT);
+    const [isMobile, setIsMobile] = React.useState(() => window.matchMedia(MOBILE_QUERY).matches);
     React.useEffect(() => {
-        const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+        const mql = window.matchMedia(MOBILE_QUERY);
         const onChange = () => {
-            setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+            setIsMobile(window.matchMedia(MOBILE_QUERY).matches);
         };
         mql.addEventListener("change", onChange);
-        setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+        setIsMobile(window.matchMedia(MOBILE_QUERY).matches);
         return () => mql.removeEventListener("change", onChange);
     }, []);
     return !!isMobile;

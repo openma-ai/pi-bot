@@ -27,7 +27,7 @@ const daemon=await PiBotDaemon.create({dataDir:root,piOptions:{agentDir:join(roo
     const answer='Fixture reply: '+envelope.text;
     for (const piece of ['Fixture ', 'reply: ', envelope.text]) {
       host.events?.emit(bot.id,{type:'replyDelta',toolCallId:'fixture-'+envelope.id,textDelta:piece});
-      await new Promise(r=>setTimeout(r,180));
+      await new Promise(r=>setTimeout(r,envelope.text === "Atomic reply fixture" ? 1500 : 180));
     }
     host.sendMessage(envelope,answer,'fixture:'+envelope.id,'fixture-'+envelope.id);
   },close:async()=>{}
@@ -101,6 +101,9 @@ const server=createServer(async(req,res)=>{
     res.setHeader('content-type','application/json');res.end('{"submitted":true}');return;
   }
   if (existsSync(join(root,'ui-offline'))) { res.writeHead(503).end(); return; }
+  if(process.argv.includes('--ssh-testing') && url.pathname==='/fixture/disconnect-ssh' && req.method==='POST') {
+    writeFileSync(join(root,'disconnect-ssh'),''); res.end('{}'); return;
+  }
   if(url.pathname==='/events') {
     const c=daemon.connections.get(String(req.headers['x-pibot-connection']));
     if(!c) {res.writeHead(404).end();return;}
@@ -131,7 +134,7 @@ const server=createServer(async(req,res)=>{
   }
   res.writeHead(404).end();
 });
-await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
+await new Promise<void>(r=>server.listen(Number(process.env.PIBOT_FIXTURE_PORT || 0),'127.0.0.1',r));
 writeFileSync(join(root,'daemon.json'),JSON.stringify({protocolVersion:'2026-10-13',http:'http://127.0.0.1:'+(server.address() as any).port,pid:process.pid,tokenFile:join(root,'daemon.token')}));
 writeFileSync(join(root,'daemon.token'),token,{mode:0o600});
 console.log('Disposable fixture directory: '+root);

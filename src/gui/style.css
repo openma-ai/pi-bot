@@ -1078,8 +1078,8 @@ button:disabled {
 [data-compact="true"] .messenger-sidebar-footer .sidebar-toolbar { position:static; display:flex; flex-direction:column; padding:0; width:100%; pointer-events:auto; }
 [data-compact="true"] .messenger-sidebar-footer .sidebar-toolbar button { min-width:44px; min-height:44px; }
 [data-compact="true"] .conversation-navigation { padding-top:8px; }
-@media(max-width:767px) {
-  .app[data-phone="true"] { height:var(--phone-height,100dvh); padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
+@media (max-width:767px), (pointer:coarse) and (max-height:767px) {
+  .app[data-phone="true"] { height:var(--phone-height,100dvh); padding-top:env(safe-area-inset-top); padding-bottom:var(--phone-bottom-inset,env(safe-area-inset-bottom)); padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right); }
   .app[data-native-titlebar="true"][data-phone="true"] { padding-top:calc(32px + env(safe-area-inset-top)); }
   .app[data-phone-page="list"]>.main { display:none; }
   .app[data-phone-page="chat"]>.messenger-sidebar { display:none; }
@@ -1091,7 +1091,9 @@ button:disabled {
   .app[data-phone="true"] .sidebar-profile { margin-left:auto; }
   .app[data-phone="true"] .header { min-height:56px; }
   .app[data-phone="true"] .composer { padding-bottom:10px; }
-  .app[data-phone="true"] textarea { font-size:16px; }
+  .app[data-phone="true"] input,
+  .app[data-phone="true"] textarea,
+  .app[data-phone="true"] .composer .message-input { font-size:16px!important; }
   .phone-back { min-width:44px; min-height:44px; }
 }
 .edit-avatar { position:relative; display:grid; justify-items:center; gap:6px; padding:0; background:none; border:0; cursor:pointer; }
@@ -1211,7 +1213,7 @@ button:disabled {
 [data-compact="true"] .messenger-sidebar-footer .sidebar-toolbar svg { width:21px; height:21px; }
 @media(max-width:767px) {
   .sidebar-toolbar button { width:44px; height:44px; }
-  .messenger-sidebar:not([data-compact="true"]) .pinned-conversation .bot-avatar { --avatar-size:76px!important; }
+  .messenger-sidebar:not([data-compact="true"]) .pinned-conversation > .bot-avatar { --avatar-size:76px!important; }
   .messenger-sidebar:not([data-compact="true"]) .pinned-conversations { padding-top:16px; padding-bottom:20px; margin-bottom:8px; }
 }
 
@@ -1247,3 +1249,11 @@ button:disabled {
 .group-avatar-button[aria-disabled="true"] { cursor:not-allowed; }
 .private-return { position:absolute; left:14px; display:grid; place-items:center; width:44px; height:44px; padding:0; border:0; border-radius:50%; background:none; color:#aaa; cursor:pointer; }
 .private-return:hover { background:#242424; }
+
+.pinned-heading { display:block; padding:8px 16px 0; color:var(--gray-10); font-size:12px; }
+[data-compact="true"] .pinned-heading { display:none; }
+/* Navigation is a touch target, not selectable text: prevent the iOS copy
+   callout from covering the conversation's long-press pin menu. */
+.conversation-link, .conversation-link *, .pinned-conversation, .pinned-conversation * {
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+}

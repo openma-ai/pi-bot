@@ -84,6 +84,17 @@ export function useRuntime() {
     setStatus(next);
     return next;
   };
+  const disconnect = async () => {
+    if (busy) return;
+    setBusy(true); setError("");
+    try {
+      ++epoch.current;
+      await Promise.all([...beforeSwitch.current].map(fn => Promise.resolve().then(fn).catch(() => {})));
+      const next = await control.runtime.disconnect({});
+      setStatus(next);
+    } catch (e) { setError(e.message); throw e; }
+    finally { setBusy(false); }
+  };
   const remove = async (id) => {
     ++epoch.current;
     const next = await control.runtime.remove({ id });
@@ -95,6 +106,7 @@ export function useRuntime() {
   }, []);
   return {
     registerBeforeSwitch,
+    disconnect,
     remove,
     status,
     error,

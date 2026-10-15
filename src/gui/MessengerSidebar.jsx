@@ -89,14 +89,14 @@ export function MessengerSidebar({
           tabIndex={0}
           aria-label="滚动会话列表"
         >
-          {pinned.length > 0 && <div className="pinned-conversations" aria-label="置顶会话">
+          {pinned.length > 0 && <><span className="pinned-heading">置顶</span><div className="pinned-conversations" aria-label="置顶会话">
             {pinned.map((row) => <div className="pinned-item" key={conversationKey(row)}>
               <ConversationHint compact={compact} row={row} pinned onToggle={() => pins.toggle(row)}><button className="pinned-conversation" aria-label={`置顶 ${row.name}${row.pending ? ` · 需处理 ${row.pending}` : ""}`} aria-current={(row.kind === "bot" ? selected === row.id && view === "chat" : groupId === row.id && view === "group") ? "page" : undefined} onClick={() => { onSelect(row); setOpenMobile(false); }}>
-                {row.kind === "bot" ? <BotAvatar id={row.id} name={row.name} size={compact ? 36 : 88} activity={botActivity(data, row.id)} /> : <GroupAvatar members={data.bots.filter((bot) => row.group.memberIds.includes(bot.id))} />}
+                {row.kind === "bot" ? <BotAvatar id={row.id} name={row.name} size={compact ? 36 : 88} activity={botActivity(data, row.id)} /> : <GroupAvatar size={compact ? 36 : phone ? 76 : 88} members={data.bots.filter((bot) => row.group.memberIds.includes(bot.id))} />}
                 <span className="pinned-name">{row.name}</span>{row.pending > 0 && <span className="rail-pending">{row.pending}</span>}
               </button></ConversationHint>
             </div>)}
-          </div>}
+          </div></>}
           <SidebarMenu aria-label="会话列表">
             {rows.filter((row) => !pins.keys.includes(conversationKey(row))).map((row) => (
               <SidebarMenuItem key={row.kind + row.id}>

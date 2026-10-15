@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { completedMessages } from "./presentation.ts";
 import { PiBotClient } from "../sdk/client.ts";
 import { createDaemonStore } from "../sdk/state/reducer.ts";
 const empty = {
@@ -32,11 +33,7 @@ function view(snapshot, state) {
     items = values("items"),
     routines = values("routines"),
     requests = values("requests");
-  const messages = items
-    .map((i) => i.message)
-    .filter(Boolean)
-    .filter((m) => m.direction !== "outbound" || m.status === "delivered")
-    .sort((a, b) => a.receivedAt - b.receivedAt);
+  const messages = completedMessages(items);
   const states = Object.fromEntries(
     bots.map((b) => {
       const inbox = messages.filter(

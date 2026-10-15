@@ -39,12 +39,12 @@ This is test infrastructure only, with fixed dummy transport auth, isolated Pi c
 
 ## Remaining / blocked
 
-- iOS remains remote-only. The current iOS transport explicitly returns unsupported while the shared russh adapter is being verified; it does not assume `ssh` exists. Full Tauri mobile library/bootstrap, native secure-storage/auth integration and foreground reconnect are unfinished.
-- After explicit user approval, Rust iOS device/simulator targets were installed successfully. iOS compile and simulator/device execution have not yet run.
+- iOS remains remote-only. Embedded SSH/password authentication, explicit verified public-key pinning, Keychain storage and the mobile library/bootstrap are now implemented; see the current iOS verification record below. Private-key/MFA authentication is not yet supported on iOS.
+- After explicit user approval, Rust iOS targets and the missing libimobiledevice CLI support dependency were installed. Actual simulator app builds, native transport/Keychain fixture execution and unsigned device archive builds now run. Apple signing/upload remain unconfigured.
 - Windows/Linux architecture has not been build/run tested. Desktop SSH needs OpenSSH, trusted host keys and existing auth. Windows local runtime sandbox limitations remain in the independent runtime; client architecture does not fix them.
 - Real local/remote conversations, mobile builds, installer distribution, signing/notarization and production credentials are unverified/out of this checkpoint. No push, deployment, public listener, live restart or original-service change occurred.
 
-Next: finish the shared native SSH adapter with fixture channels and integrate it behind the existing transport boundary; compile the now-installed device/simulator targets. Separately finish narrow/mobile scrollbar QA and production runtime-manifest packaging when an approved artifact exists.
+Current iOS setup, supported authentication, build steps and distribution limits: [IOS-TESTFLIGHT-PREPARATION.md](../../docs/clients/IOS-TESTFLIGHT-PREPARATION.md). Earlier milestone screenshots below remain historical; phone-width macOS screenshots are not iOS acceptance evidence.
 
 ## Conversation request milestone
 
@@ -99,3 +99,5 @@ Latest screenshot corrections: no explicit expand/collapse icon in either mode; 
 Native titlebar correction: macOS main window uses Tauri `titleBarStyle: Overlay` with hidden native title, retains system traffic lights, and places search/new into that actual 32px row rather than a content row below it. The fixed controls reserve 84px for traffic lights and remain pointer-interactive; a separate blank `data-tauri-drag-region` covers the rest. Only the main window receives `core:window:allow-start-dragging`; secure credential windows keep their existing native chrome and permissions. Search dialog and new-conversation menu were opened by native UI clicks; blank titlebar dragging was exercised without a tool error or unintended control activation (global window coordinates were not independently measured). Native phone-width simulation retains a 32px macOS chrome inset; actual iOS uses its existing safe-area navigation instead of this macOS detector. Sources: [Tauri config](https://v2.tauri.app/reference/config/#titlebarstyle), [window/drag-region documentation](https://v2.tauri.app/learn/window-customization/). Context7 DNS lookup was unavailable; installed config schema and official docs were used.
 
 All four Library screenshots were replaced in place and confirmed at version 2 with the titlebar correction. Pixel fidelity measurement against the full new reference and investigation of the user's unspecified loading symptom are queued as a separate milestone. No exact-pixel claim is made by this navigation checkpoint.
+
+The shared chat UI shows complete assistant messages atomically; event deltas stay internal. Each bot's Running indicator follows its turn/job lifecycle, including after navigation or snapshot reconciliation. Long-press conversations on iOS (right-click on desktop) to pin/unpin; multiple bot/group pins are saved per runtime. Actual iPhone 17 evidence and current distribution limits are recorded in [UI verification](../../docs/clients/IOS-SIMULATOR-UI-VERIFICATION.md).

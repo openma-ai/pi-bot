@@ -4,6 +4,7 @@ if (window.__TAURI_INTERNALS__) {
     const { invoke } = await import("@tauri-apps/api/core");
     return invoke(command, args);
   } };
+  void window.__PIBOT_NATIVE__.call("layout_diagnostics_enabled").then(enabled => { if (enabled) return import("./layout-diagnostics.js"); }).catch(() => {});
   const marker = document.createElement("meta");
   marker.name = "pibot-client";
   document.head.append(marker);

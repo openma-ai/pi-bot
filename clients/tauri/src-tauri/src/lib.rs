@@ -1,4 +1,12 @@
+#[cfg(all(debug_assertions, target_os = "ios"))]
+mod ios_probe;
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+mod mobile_ssh;
 mod runtime_distribution;
+#[cfg(target_os = "ios")]
+mod ssh_credentials;
+#[cfg(feature = "client-fixtures")]
+pub mod ssh_fixture;
 mod transport;
 use serde_json::{json, Value};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
@@ -56,6 +64,61 @@ impl State {
 type Shared = Mutex<State>;
 
 #[tauri::command]
+fn layout_diagnostics_enabled(window: tauri::Window) -> Result<bool, String> {
+    main_window(&window)?;
+    Ok(cfg!(debug_assertions) && std::env::var("PIBOT_LAYOUT_DIAGNOSTICS").as_deref() == Ok("1"))
+}
+
+#[tauri::command]
+fn layout_diagnostics(
+    window: tauri::Window,
+    app: tauri::AppHandle,
+    metrics: Value,
+) -> Result<(), String> {
+    main_window(&window)?;
+    if !cfg!(debug_assertions) || std::env::var("PIBOT_LAYOUT_DIAGNOSTICS").as_deref() != Ok("1") {
+        return Err("Diagnostics disabled".into());
+    }
+    let bytes = serde_json::to_vec_pretty(&metrics).map_err(|_| "Invalid metrics")?;
+    if bytes.len() > 32768 {
+        return Err("Metrics too large".into());
+    }
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "No diagnostics directory")?;
+    std::fs::create_dir_all(&dir).map_err(|_| "Cannot create diagnostics directory")?;
+    std::fs::write(dir.join("ios-layout-latest.json"), bytes)
+        .map_err(|_| "Cannot write metrics".into())
+}
+
+#[tauri::command]
+async fn ssh_password_store(
+    window: tauri::Window,
+    state: tauri::State<'_, Shared>,
+    profile_id: String,
+    password: String,
+) -> Result<(), String> {
+    main_window(&window)?;
+    let password = zeroize::Zeroizing::new(password);
+    let s = state.lock().await;
+    let p = s
+        .profiles
+        .iter()
+        .find(|p| p.id == profile_id)
+        .ok_or("Runtime 不存在")?;
+    #[cfg(target_os = "ios")]
+    {
+        ssh_credentials::store(p, &password)
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (p, password);
+        Err("桌面继续使用系统 SSH 配置与密钥".into())
+    }
+}
+
+#[tauri::command]
 fn runtime_distribution_status() -> Value {
     runtime_distribution::status()
 }
@@ -85,8 +148,12 @@ async fn runtime_control(
             if s.active.as_ref().is_some_and(|(_, p, _)| p.id == id) {
                 return Err("请先断开此 runtime".into());
             }
-            if s.profiles.len() == 1 {
+            if s.profiles.len() == 1 && !cfg!(target_os = "ios") {
                 return Err("至少保留一个 runtime".into());
+            }
+            #[cfg(target_os = "ios")]
+            if let Some(p) = s.profiles.iter().find(|p| p.id == id) {
+                ssh_credentials::remove(p)?;
             }
             s.profiles.retain(|p| p.id != id);
             s.persist()?;
@@ -117,6 +184,12 @@ async fn runtime_control(
             } else {
                 None
             };
+            #[cfg(target_os = "ios")]
+            if let Some(old) = s.profiles.iter().find(|old| old.id == p.id) {
+                if !ssh_credentials::same_identity(old, &p) {
+                    ssh_credentials::remove(old)?;
+                }
+            }
             let previous = s.profiles.clone();
             if let Some(old) = s.profiles.iter_mut().find(|old| old.id == p.id) {
                 *old = p.clone();
@@ -358,6 +431,10 @@ pub fn run() {
                         )]
                     }
                 });
+            #[cfg(all(debug_assertions, target_os = "ios"))]
+            let fixture = ios_probe::profile();
+            #[cfg(all(debug_assertions, target_os = "ios"))]
+            let profiles = fixture.clone().map(|p| vec![p]).unwrap_or(profiles);
             app.manage(Mutex::new(State {
                 profiles,
                 active: None,
@@ -365,9 +442,49 @@ pub fn run() {
                 streams: HashMap::new(),
                 forms: HashMap::new(),
             }));
+            #[cfg(debug_assertions)]
+            if std::env::var("PIBOT_LAYOUT_DIAGNOSTICS").as_deref() == Ok("1") {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    if let Some(webview) = handle.get_webview_window("main") {
+                        let _ = webview.eval("(async()=>{const report=metrics=>window.__TAURI_INTERNALS__.invoke('layout_diagnostics',{metrics});const root=document.getElementById('root');if(!root?.children.length){const scripts=[...document.scripts].filter(s=>s.type==='module').map(s=>s.src);let error='';try{await import(scripts[0])}catch(e){error=String(e)}await report({startup:true,readyState:document.readyState,rootChildren:root?.children.length,scripts,error})}})()");
+                    }
+                });
+            }
+            #[cfg(all(debug_assertions, target_os = "ios"))]
+            if let Some(profile) = fixture {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let result = ios_probe::run(&profile).await;
+                    let report = match &result {
+                        Ok(value) => json!({"ok":true,"checks":value}),
+                        Err(error) => json!({"ok":false,"error":error}),
+                    };
+                    if let Ok(dir) = handle.path().app_data_dir() {
+                        let _ = std::fs::create_dir_all(&dir);
+                        let _ = std::fs::write(
+                            dir.join("ios-fixture-result.json"),
+                            serde_json::to_vec_pretty(&report).unwrap(),
+                        );
+                    }
+                    if result.is_ok() {
+                        if let Ok(endpoint) = transport::connect(&profile).await {
+                            handle.state::<Shared>().lock().await.active = Some((
+                                uuid::Uuid::new_v4().to_string(),
+                                profile,
+                                Arc::new(endpoint),
+                            ));
+                        }
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            layout_diagnostics_enabled,
+            layout_diagnostics,
+            ssh_password_store,
             runtime_distribution_status,
             runtime_install,
             runtime_control,

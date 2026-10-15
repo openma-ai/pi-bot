@@ -1,3 +1,15 @@
+// Only persisted, delivered messages are presentable. Delta buffers remain
+// transport state and never become bubbles, previews, or replacement messages.
+export function completedMessages(items: any[]): any[] {
+  const messages = new Map<string, any>();
+  for (const item of items) {
+    const m = item.message;
+    if (!m || (m.direction === "outbound" && m.status !== "delivered")) continue;
+    messages.set(JSON.stringify([m.direction, m.messageId]), m);
+  }
+  return [...messages.values()].sort((a, b) => a.receivedAt - b.receivedAt);
+}
+
 export function previewText(text: string): string {
   try {
     const value = JSON.parse(text);

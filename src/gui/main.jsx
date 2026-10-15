@@ -211,9 +211,15 @@ function App({ runtime, setPiSettingsOpen }) {
   useEffect(() => {
     if (!phone) return;
     const viewport = window.visualViewport;
-    const update = () => document.documentElement.style.setProperty("--phone-height", `${viewport?.height || window.innerHeight}px`);
+    const update = () => {
+      // A user pinch zoom must not resize the layout to the magnified viewport.
+      if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
+      const height = viewport?.height || window.innerHeight;
+      document.documentElement.style.setProperty("--phone-height", `${height}px`);
+      document.documentElement.style.setProperty("--phone-bottom-inset", height < window.innerHeight - 80 ? "0px" : "env(safe-area-inset-bottom)");
+    };
     update(); viewport?.addEventListener("resize", update); window.addEventListener("resize", update);
-    return () => { viewport?.removeEventListener("resize", update); window.removeEventListener("resize", update); document.documentElement.style.removeProperty("--phone-height"); };
+    return () => { viewport?.removeEventListener("resize", update); window.removeEventListener("resize", update); document.documentElement.style.removeProperty("--phone-height"); document.documentElement.style.removeProperty("--phone-bottom-inset"); };
   }, [phone]);
   useLayoutEffect(() => {
     if (!searchTarget) return;
@@ -362,12 +368,6 @@ function App({ runtime, setPiSettingsOpen }) {
               m.sourceKind !== "job" &&
               !(m.direction === "inbound" && m.sourceKind === "bot"),
           );
-  const streamMessages = Object.entries(data.streaming || {}).flatMap(([id, text]) => {
-    const thread = data.threads.find(t => t.id === data.streamingScopes?.[id]);
-    if (!thread || !(view === "group" ? thread.scope.channelId === groupId : view === "chat" && thread.botId === selected && thread.scope.channelId === (bot?.channelId ?? null))) return [];
-    const turn = (data.turns || []).find(t => t.threadId === thread.id && t.status === "running");
-    return [{ messageId: `stream:${id}`, direction: "outbound", sourceKind: "bot", sender: thread.botId, botId: thread.botId, receivedAt: turn?.startedAt ?? thread.lastActivityAt ?? thread.createdAt, text, status: "streaming", streaming: true }];
-  });
   const privateFrom = view === "chat" && navigation.route.kind === "bot" && navigation.route.id === selected && history.state?.piPrivateScope === activeRuntime?.scope && data.groups.some(g => g.id === history.state?.piPrivateFrom) ? history.state.piPrivateFrom : null;
   function openSenderConversation(senderId) {
     const sender = data.bots.find(b => b.id === senderId);
@@ -376,7 +376,7 @@ function App({ runtime, setPiSettingsOpen }) {
     navigation.open("group", groupId);
     chooseConversation({ kind: "bot", id: sender.id }, { piPrivateFrom: groupId, piPrivateScope: activeRuntime?.scope });
   }
-  const laidOutMessages = layoutMessages([...messages, ...streamMessages], view === "group", data.bots);
+  const laidOutMessages = layoutMessages(messages, view === "group", data.bots);
   const mentionMatch =
     view === "group" && !hideMentions
       ? draft.match(/(?:^|\s)@([^\s]*)$/)
@@ -394,7 +394,7 @@ function App({ runtime, setPiSettingsOpen }) {
     setHideMentions(false);
     requestAnimationFrame(() => composer.current?.focus());
   }
-  const scrollKey = [...messages, ...streamMessages].map((m) => m.direction + m.messageId + (m.streaming ? `:${m.text.length}` : "")).join("|");
+  const scrollKey = messages.map((m) => m.direction + m.messageId).join("|");
   useLayoutEffect(() => {
     const scope = [activeRuntime?.scope, view, selected, groupId, peerA, peerB, peerScope].join(":");
     const saved = scrollPositions.current.get(scope);
@@ -1207,14 +1207,14 @@ function App({ runtime, setPiSettingsOpen }) {
                           {sender && runStart && <div className="group-sender-name"><span style={{ "--sender-color": senderLabelColor(sender.id, sender.bot?.avatar) }}>{sender.name}</span></div>}
                           {view === "peers" && <div className="peer-sender-name">{isUserMessage(m) ? "你" : botName(m.sender)}</div>}
                           <div className="bubble">
-                          <MessageBody text={m.streaming ? m.text : displayText(m)} />
-                          {m.streaming && <span className="streaming-label" role="status">正在回复…</span>}
+                          <MessageBody text={displayText(m)} />
+
                           {["queued", "processing"].includes(m.status) && (
                             <Text size="1" className="status">
                               {labels[m.status] || m.status}
                             </Text>
                           )}
-                          {(m.streaming ? [] : messageFailures(data, m)).map((failed) => (
+                          {messageFailures(data, m).map((failed) => (
                             <TaskFailure
                               key={failed.messageId}
                               message={failed}
@@ -1267,7 +1267,7 @@ function App({ runtime, setPiSettingsOpen }) {
                   </Button>
                 )}
                 {view === "chat" && activity(selected) !== "idle" && (
-                  <div className="activity-line" role="status">
+                  <div className="activity-line" role="status" data-activity={activity(selected)}>
                     <BotAvatar
                       id={selected}
                       name={bot?.name}
