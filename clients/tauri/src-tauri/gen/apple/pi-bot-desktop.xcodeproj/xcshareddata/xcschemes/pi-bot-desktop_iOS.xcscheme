@@ -15,7 +15,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "8AFD78597103DEE43633F490"
-               BuildableName = "Pi Bot.app"
+               BuildableName = "Pibo.app"
                BlueprintName = "pi-bot-desktop_iOS"
                ReferencedContainer = "container:pi-bot-desktop.xcodeproj">
             </BuildableReference>
@@ -31,7 +31,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "8AFD78597103DEE43633F490"
-            BuildableName = "Pi Bot.app"
+            BuildableName = "Pibo.app"
             BlueprintName = "pi-bot-desktop_iOS"
             ReferencedContainer = "container:pi-bot-desktop.xcodeproj">
          </BuildableReference>
@@ -66,7 +66,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "8AFD78597103DEE43633F490"
-            BuildableName = "Pi Bot.app"
+            BuildableName = "Pibo.app"
             BlueprintName = "pi-bot-desktop_iOS"
             ReferencedContainer = "container:pi-bot-desktop.xcodeproj">
          </BuildableReference>
@@ -95,7 +95,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "8AFD78597103DEE43633F490"
-            BuildableName = "Pi Bot.app"
+            BuildableName = "Pibo.app"
             BlueprintName = "pi-bot-desktop_iOS"
             ReferencedContainer = "container:pi-bot-desktop.xcodeproj">
          </BuildableReference>
