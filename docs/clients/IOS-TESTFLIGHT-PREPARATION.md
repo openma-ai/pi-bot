@@ -84,3 +84,51 @@ An iOS foreground client can display remote work, but cannot promise continuous
 background streaming or an always-running local agent. A physical-device install
 and TestFlight require the appropriate signing/distribution setup; a Rust check
 alone does not provide an installable app.
+
+## Dependency clarification (read-only follow-up)
+
+No install was retried while permission/team selection is pending.
+
+The installed CLI is 2.12.2; its native binary embeds cargo-mobile2 0.22.5 source
+paths. The actual failing child command was `brew reinstall libimobiledevice`
+(exit 1), not `pod install`. Tauri's project generator wraps dependency errors
+under a `pod install` label before invoking XcodeGen, which explains the misleading
+outer error. Homebrew reported non-writable targets under `/opt/homebrew`
+(including `Cellar`, `bin`, `lib`, `opt` and Homebrew state/lock directories), plus
+`~/Library/Caches/Homebrew` and `~/Library/Logs/Homebrew`. This was an ordinary
+sandbox filesystem failure, not an automatic approval-review rejection.
+
+CLI 2.12.2's public init options have no skip-device-dependencies flag.
+`--skip-targets-install` skips only rustup target installation; `--ci` suppresses
+prompts; neither skips the unconditional dependency installer. Its source calls
+`deps::install_all(..., true, ...)` before rendering files: that `true` skips the
+optional Rust Xcode debugging plugin, not the package loop. Upstream cargo-mobile2
+checks `idevicesyslog` for the libimobiledevice package. The package loop also checks
+XcodeGen and CocoaPods, both already installed here. No fake executables, patched
+CLI, dependency shims or Homebrew permission changes were used.
+
+libimobiledevice is device communication tooling, not a Rust target library or an
+Xcode archive linker input. Thus it is a practical prerequisite for this CLI's
+standard initialization path, even when preparing a simulator or unsigned archive;
+it is not intrinsically required to compile an already-generated Xcode project.
+The machine already has Apple's `xcrun devicectl` for modern device tooling.
+A manually maintained official-template/XcodeGen project could avoid that init
+policy, but there is no documented CLI skip switch and no such alternative project
+has been generated or validated. Installing the one missing package after approval
+is the smallest standard route; custom project generation adds maintenance work.
+
+Sources inspected:
+
+- Exact CLI version project generator: https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.2/crates/tauri-cli/src/mobile/ios/project.rs
+- Exact CLI init options: https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.2/crates/tauri-cli/src/mobile/ios/mod.rs
+- Upstream dependency implementation (dev branch, corroborating observed command/binary strings): https://github.com/tauri-apps/cargo-mobile2/blob/dev/src/apple/deps/mod.rs
+
+No iOS transport currently succeeds: `transport::connect` always returns an error
+on iOS, and the separate `ssh-spike` is not an app dependency. It tests a host-key
+comparison and sketches a direct-TCP channel; it has no key loading, login,
+credential persistence, discovery integration or app HTTP/SSE wiring. There is no
+implemented direct HTTPS/WebSocket remote fallback. Remote transport remains the
+largest code/validation gap, not a packaging flag. A simulator shell could test UI
+and explicit unsupported-connection errors first; an honest remote-client
+TestFlight build requires the adapter and actual iOS remote send/stream/reconnect
+verification before distribution.
