@@ -1241,3 +1241,9 @@ button:disabled {
   .group-message-content { max-width:calc(100% - 36px); }
   .group-incoming { gap:7px; }
 }
+
+.group-avatar-button { display:grid; place-items:center; width:44px; height:44px; margin:-8px; padding:0; border:0; border-radius:50%; background:none; color:inherit; cursor:pointer; }
+.group-avatar-button:focus-visible,.private-return:focus-visible { outline:2px solid #aaa; outline-offset:2px; }
+.group-avatar-button[aria-disabled="true"] { cursor:not-allowed; }
+.private-return { position:absolute; left:14px; display:grid; place-items:center; width:44px; height:44px; padding:0; border:0; border-radius:50%; background:none; color:#aaa; cursor:pointer; }
+.private-return:hover { background:#242424; }

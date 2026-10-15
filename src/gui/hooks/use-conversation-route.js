@@ -19,9 +19,9 @@ export function useConversationRoute() {
     window.addEventListener("hashchange", update);
     return () => { window.removeEventListener("popstate", update); window.removeEventListener("hashchange", update); };
   }, []);
-  const open = (kind, id) => {
+  const open = (kind, id, routeState = {}) => {
     const hash = conversationHash(kind, id);
-    if (location.hash !== hash) history.pushState({ piConversation: true }, "", hash);
+    if (location.hash !== hash) history.pushState({ ...routeState, piConversation: true }, "", hash);
     setRoute(parseConversationRoute(hash));
   };
   const back = () => {

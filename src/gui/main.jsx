@@ -183,8 +183,8 @@ function App({ runtime, setPiSettingsOpen }) {
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
   }, [sidebarWidth]);
-  const chooseConversation = (row) => {
-    if (phone) navigation.open(row.kind, row.id);
+  const chooseConversation = (row, routeState) => {
+    navigation.open(row.kind, row.id, routeState);
     if (row.kind === "group") {
       setGroupId(row.id);
       setSelected(row.group.memberIds[0]);
@@ -197,7 +197,7 @@ function App({ runtime, setPiSettingsOpen }) {
     setInspectTask("");
     setRuntimeDetailsOpen(false);
   };
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (navigation.route.page !== "chat") { setDetails(false); return; }
     const { kind, id } = navigation.route;
     if (data.status === "ready" && !(kind === "group" ? data.groups : data.bots).some((row) => row.id === id)) {
@@ -368,6 +368,14 @@ function App({ runtime, setPiSettingsOpen }) {
     const turn = (data.turns || []).find(t => t.threadId === thread.id && t.status === "running");
     return [{ messageId: `stream:${id}`, direction: "outbound", sourceKind: "bot", sender: thread.botId, botId: thread.botId, receivedAt: turn?.startedAt ?? thread.lastActivityAt ?? thread.createdAt, text, status: "streaming", streaming: true }];
   });
+  const privateFrom = view === "chat" && navigation.route.kind === "bot" && navigation.route.id === selected && history.state?.piPrivateScope === activeRuntime?.scope && data.groups.some(g => g.id === history.state?.piPrivateFrom) ? history.state.piPrivateFrom : null;
+  function openSenderConversation(senderId) {
+    const sender = data.bots.find(b => b.id === senderId);
+    if (!sender) { setNotice("该成员已不可用，无法打开私聊。"); return; }
+    if (conversation.current) scrollPositions.current.set(lastScope.current, { top: conversation.current.scrollTop, bottom: pinnedToEnd.current });
+    navigation.open("group", groupId);
+    chooseConversation({ kind: "bot", id: sender.id }, { piPrivateFrom: groupId, piPrivateScope: activeRuntime?.scope });
+  }
   const laidOutMessages = layoutMessages([...messages, ...streamMessages], view === "group", data.bots);
   const mentionMatch =
     view === "group" && !hideMentions
@@ -387,7 +395,7 @@ function App({ runtime, setPiSettingsOpen }) {
     requestAnimationFrame(() => composer.current?.focus());
   }
   const scrollKey = [...messages, ...streamMessages].map((m) => m.direction + m.messageId + (m.streaming ? `:${m.text.length}` : "")).join("|");
-  useEffect(() => {
+  useLayoutEffect(() => {
     const scope = [activeRuntime?.scope, view, selected, groupId, peerA, peerB, peerScope].join(":");
     const saved = scrollPositions.current.get(scope);
     if (scope !== lastScope.current && saved) {
@@ -796,9 +804,7 @@ function App({ runtime, setPiSettingsOpen }) {
           className="bot"
           key={b.id}
           onClick={() => {
-            setSelected(b.id);
-            setView("chat");
-            setDetails(false);
+            chooseConversation({ kind: "bot", id: b.id });
           }}
         >
           <BotAvatar id={b.id} name={b.name} activity={activity(b.id)} />
@@ -924,8 +930,7 @@ function App({ runtime, setPiSettingsOpen }) {
             } else if (["bot", "group"].includes(row.kind))
               chooseConversation(row);
             else if (["schedule", "monitor"].includes(row.kind)) {
-              setSelected(row.botId);
-              setView("chat");
+              chooseConversation({ kind: "bot", id: row.botId });
               setDetails(true);
             } else if (row.id === "settings") setPiSettingsOpen(true);
             else if (row.id === "new-bot") {
@@ -940,7 +945,7 @@ function App({ runtime, setPiSettingsOpen }) {
         />
         <main className="main" style={{ "--outgoing-background": outgoingPalette.background, "--outgoing-foreground": outgoingPalette.foreground }}>
           <header className="header">
-            {phone && <button className="sidebar-toggle phone-back" aria-label="返回会话列表" onClick={() => { composer.current?.blur(); navigation.back(); }}><ChevronLeft size={22} /></button>}
+            {(phone || privateFrom) && <button className={phone ? "sidebar-toggle phone-back" : "private-return"} aria-label={privateFrom ? "返回群聊" : "返回会话列表"} onClick={() => { composer.current?.blur(); navigation.back(); }}><ChevronLeft size={22} /></button>}
             <button
               className="conversation-identity"
               onClick={() => setDetails((v) => !v)}
@@ -1197,7 +1202,7 @@ function App({ runtime, setPiSettingsOpen }) {
                       {separator && <div className="date-divider"><time dateTime={messageTime.iso} title={messageTime.full} aria-label={messageTime.full}>{messageTime.label}</time></div>}
                       <div data-message-id={m.messageId} className={"row " + (isUserMessage(m) ? "user " : "") + (sender ? "group-incoming" : "")} data-run-start={runStart || undefined} data-run-end={runEnd || undefined}>
                         <time className="message-time-accessible" dateTime={messageTime.iso}>{messageTime.full}</time>
-                        {sender && <div className="group-sender-avatar">{runEnd && <BotAvatar id={sender.id} name={sender.name} size={28} activity="idle" avatar={sender.bot?.avatar ?? null} />}</div>}
+                        {sender && <div className="group-sender-avatar">{runEnd && <button className="group-avatar-button" aria-label={sender.bot ? `与 ${sender.name} 私聊` : `${sender.name}，私聊不可用`} aria-disabled={!sender.bot || undefined} title={sender.bot ? `与 ${sender.name} 私聊` : "该成员已不可用"} onClick={() => openSenderConversation(sender.bot?.id)}><span aria-hidden="true"><BotAvatar id={sender.id} name={sender.name} size={28} activity="idle" avatar={sender.bot?.avatar ?? null} /></span></button>}</div>}
                         <div className={sender ? "group-message-content" : "message-content"}>
                           {sender && runStart && <div className="group-sender-name"><span style={{ "--sender-color": senderLabelColor(sender.id, sender.bot?.avatar) }}>{sender.name}</span></div>}
                           {view === "peers" && <div className="peer-sender-name">{isUserMessage(m) ? "你" : botName(m.sender)}</div>}
@@ -1221,8 +1226,7 @@ function App({ runtime, setPiSettingsOpen }) {
                               api={api}
                               onInspect={() => {
                                 if (view === "group") {
-                                  setSelected(failed.botId);
-                                  setView("chat");
+                                  chooseConversation({ kind: "bot", id: failed.botId });
                                 }
                                 setInspectTask(failed.messageId);
                                 setRuntimeDetailsOpen(true);
@@ -1605,6 +1609,7 @@ function App({ runtime, setPiSettingsOpen }) {
                           memberIds: members,
                         }),
                       );
+                      navigation.list();
                       setGroupId(g.id);
                       setGroupTarget(g.memberIds[0]);
                       setSelected(g.memberIds[0]);
@@ -1697,6 +1702,7 @@ function App({ runtime, setPiSettingsOpen }) {
                         name,
                       }),
                     );
+                    navigation.list();
                     setSelected(b.id);
                     setView("chat");
                     setName("");
