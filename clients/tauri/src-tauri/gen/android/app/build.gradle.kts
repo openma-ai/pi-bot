@@ -40,6 +40,13 @@ android {
             }
         }
         getByName("release") {
+            // Explicit development opt-in: optimized Rust/Android build, test identity.
+            if (providers.gradleProperty("pibotTestSigning").orNull == "true") {
+                signingConfig = signingConfigs.getByName("debug")
+                isDebuggable = true
+                resValue("string", "app_name", "Pi Bot Test")
+                resValue("string", "main_activity_title", "Pi Bot Test")
+            }
             optimization {
                enable = true
             }
@@ -57,6 +64,7 @@ android {
     }
     buildFeatures {
         buildConfig = true
+        resValues = true
     }
 }
 

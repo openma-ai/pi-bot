@@ -104,3 +104,40 @@ verified dummy SSH fixture using regular UI, loaded history, sent
 No new Running assertion: the 600ms sample missed that short message's transient
 state. Test screenshots/report stay with local artifacts. The Library upload
 succeeded as a new file; actual parent chat attachment delivery is a separate step.
+
+## Release-optimized test APK (2026-10-15)
+
+The 30.17 MiB stripped-debug attachment was also rejected by chat delivery. The
+replacement is a genuine Rust release-profile build with size optimization,
+Thin LTO, one codegen unit and stripped symbols, plus Android release optimization.
+Native library: 8,785,720 bytes; largest remaining entries are classes.dex
+(2,982,764 bytes; ZIP-compressed1,414,367) and resources.arsc (569,280 bytes).
+The standard single ARM64 APK is **11,191,422 bytes (10.67 MiB)**, without a ZIP
+wrapper or split parts. Filename: `Pi-Bot-Android-0.1.0-arm64-release-test.apk`.
+SHA256: `a33a5e0c21396610069f9bb52445259fb07a773c5149c430c5411742bf6f72df`.
+
+Build after configuring the existing JAVA_HOME, ANDROID_HOME and NDK_HOME:
+
+```sh
+ORG_GRADLE_PROJECT_pibotTestSigning=true \
+CARGO_PROFILE_RELEASE_OPT_LEVEL=z \
+CARGO_PROFILE_RELEASE_LTO=thin \
+CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+CARGO_PROFILE_RELEASE_STRIP=symbols \
+CARGO_PROFILE_RELEASE_DEBUG=0 \
+npm --prefix clients/tauri run tauri -- android build --target aarch64 --apk --ci
+```
+
+`pibotTestSigning=true` explicitly opts into the existing Android Debug test
+certificate, debuggable UI automation and **Pi Bot Test** application label.
+It is not a production identity or store distribution. Without that property,
+release has no automatic test signing. The Rust release profile disables debug
+assertions; test-only WebView debugging follows Android BuildConfig.DEBUG.
+
+Exact APK verified: v2 signature, same Android Debug certificate, API24 minimum,
+target36, arm64-v8a only, 16KB zip alignment; no dummy password embedded. Removed
+only the disposable emulator application, then fresh-installed this exact APK.
+Regular UI configured the verified dummy host pin and password, native SSH loaded
+conversation history, and `Release optimized APK SSH verification` received the
+exact complete fixture reply. Screenshot retained locally. All old APKs remain.
+Library save and successful chat attachment delivery must be reported separately.

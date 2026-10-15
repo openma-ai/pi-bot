@@ -15,6 +15,7 @@ class MainActivity : TauriActivity() {
       navigationBarStyle = SystemBarStyle.dark(Color.rgb(16, 16, 16))
     )
     super.onCreate(savedInstanceState)
+    if (BuildConfig.DEBUG) android.webkit.WebView.setWebContentsDebuggingEnabled(true)
     WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
     WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = false
     window.decorView.setBackgroundColor(Color.rgb(16, 16, 16))
