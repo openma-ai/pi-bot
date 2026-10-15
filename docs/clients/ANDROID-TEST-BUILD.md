@@ -82,3 +82,25 @@ none was present. Earlier unsuccessful coordinate gestures are not counted as
 passing checks. Real Internet hosts, physical devices, Android key import and MFA
 remain untested. Shared UI/release checks: 30 passed; GUI and repository typechecks,
 iOS release Cargo check and macOS Preview release build also passed.
+
+## Smaller sideload test package (2026-10-15)
+
+The initial 221,587,734-byte APK exceeded chat delivery limits. Inspection found
+214,310,032 bytes in the uncompressed native Rust library. The installed NDK
+`llvm-strip --strip-debug` and `--strip-unneeded` reduced that library to
+24,812,656 bytes, preserving runtime dynamic symbols. Other APK assets/code are
+unchanged. Rebuilt ZIP, 16KB zip alignment and signing with the existing Android
+Debug test certificate produced `Pi-Bot-Android-0.1.0-arm64-stripped-test.apk`:
+**31,630,429 bytes (30.17 MiB)**. This is a stripped **debug/test** package, not
+a release-optimized Cargo rebuild or production distribution. No new identity
+or production key was created. The original APK remains intact.
+
+SHA256: `4b1ce7474a1caa0df4af0844c95ef53bb2d19fb8c0f316f6a3e87c0f396413a7`.
+Signature v2/v3, Android Debug certificate, arm64-v8a, minSdk24/target36 and
+16KB zip alignment verified. No dummy password is embedded. Uninstalled the
+disposable emulator app and fresh-installed this exact package, configured the
+verified dummy SSH fixture using regular UI, loaded history, sent
+`Stripped APK native SSH verification` and received its complete fixture reply.
+No new Running assertion: the 600ms sample missed that short message's transient
+state. Test screenshots/report stay with local artifacts. The Library upload
+succeeded as a new file; actual parent chat attachment delivery is a separate step.
