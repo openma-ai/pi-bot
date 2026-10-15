@@ -92,7 +92,7 @@ export function MessengerSidebar({
           {pinned.length > 0 && <div className="pinned-conversations" aria-label="置顶会话">
             {pinned.map((row) => <div className="pinned-item" key={conversationKey(row)}>
               <ConversationHint compact={compact} row={row} pinned onToggle={() => pins.toggle(row)}><button className="pinned-conversation" aria-label={`置顶 ${row.name}${row.pending ? ` · 需处理 ${row.pending}` : ""}`} aria-current={(row.kind === "bot" ? selected === row.id && view === "chat" : groupId === row.id && view === "group") ? "page" : undefined} onClick={() => { onSelect(row); setOpenMobile(false); }}>
-                {row.kind === "bot" ? <BotAvatar id={row.id} name={row.name} size={compact ? 36 : 48} activity={botActivity(data, row.id)} /> : <GroupAvatar members={data.bots.filter((bot) => row.group.memberIds.includes(bot.id))} />}
+                {row.kind === "bot" ? <BotAvatar id={row.id} name={row.name} size={compact ? 36 : 88} activity={botActivity(data, row.id)} /> : <GroupAvatar members={data.bots.filter((bot) => row.group.memberIds.includes(bot.id))} />}
                 <span className="pinned-name">{row.name}</span>{row.pending > 0 && <span className="rail-pending">{row.pending}</span>}
               </button></ConversationHint>
             </div>)}
@@ -131,7 +131,7 @@ export function MessengerSidebar({
                       id={row.id}
                       name={row.name}
                       activity={botActivity(data, row.id)}
-                      size={compact ? 32 : 40}
+                      size={compact ? 32 : phone ? 44 : 52}
                     />
                   ) : (
                     <GroupAvatar
@@ -142,7 +142,7 @@ export function MessengerSidebar({
                   )}
                   {compact && row.pending > 0 && <span className="rail-pending" aria-hidden="true">{row.pending}</span>}
                   <span className="bot-label">
-                    <span className="contact-heading"><span className="contact-name">{row.name}</span><time dateTime={new Date(row.updatedAt).toISOString()}>{new Date(row.updatedAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</time></span>
+                    <span className="contact-heading"><span className="contact-name">{row.name}</span>{phone && <time dateTime={new Date(row.updatedAt).toISOString()}>{new Date(row.updatedAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</time>}</span>
                     {row.pending > 0 && <span className="pending-count">需处理 {row.pending}</span>}
                     <span className="preview">{row.preview}</span>
                   </span>

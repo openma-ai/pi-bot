@@ -73,6 +73,15 @@ export function BotAvatar({
   avatar,
 }) {
   const variant = avatarVariant(id);
+  const identity = Array.from(id).reduce((hash, c) => (hash * 33 + c.charCodeAt(0)) >>> 0, 5381);
+  const fallbackShapes = [
+    "M10 23C8 10 22 8 33 11C43 5 57 15 54 29C61 42 48 55 36 52C21 59 6 46 10 23Z",
+    "M12 18C18 8 37 6 49 16C60 23 58 40 46 49C36 59 16 55 10 42C5 34 6 24 12 18Z",
+    "M19 9C29 5 45 10 49 20L57 39C58 48 44 53 32 55L17 52C7 50 7 37 9 28Z",
+    "M11 19C15 8 31 7 44 12C55 15 58 31 52 42C50 54 33 57 21 51C10 50 5 34 11 19Z",
+    "M10 23C13 12 29 9 43 12C56 14 58 28 54 39C51 52 35 54 22 51C8 49 5 35 10 23Z",
+  ];
+  const fallbackAngle = [-20, 12, -12, 20, -5][identity % 5];
   const runtime = useContext(AvatarContext);
   const style =
     avatar === undefined
@@ -103,16 +112,16 @@ export function BotAvatar({
         />
       ) : (
         <svg viewBox="0 0 64 64" aria-hidden="true">
-          <g className="avatar-body">
+          <g transform={style?.shape === undefined ? `rotate(${fallbackAngle} 32 32)` : undefined}><g className="avatar-body">
             <path
-              d={avatarShapes[style?.shape ?? variant % 3]}
+              d={style?.shape === undefined ? fallbackShapes[identity % fallbackShapes.length] : avatarShapes[style.shape]}
               fill="currentColor"
             />
             <g className="avatar-eyes">
               <rect x="24" y="25" width="6" height="12" rx="3" />
               <rect x="37" y="25" width="6" height="12" rx="3" />
             </g>
-          </g>
+          </g></g>
         </svg>
       )}
       {activity !== "idle" && <i className="avatar-status" />}

@@ -1189,3 +1189,28 @@ button:disabled {
 .send-failure p { margin:0 0 7px; max-height:90px; overflow:auto; white-space:pre-wrap; color:#ddd; }
 .send-failure button { margin-left:8px; }
 .send-failure button:disabled { opacity:.45; cursor:default; }
+
+/* Expanded sidebar proportions and hierarchy, grounded in the supplied reference. */
+.messenger-sidebar:not([data-compact="true"]) .conversation-navigation { padding-inline:12px; }
+.messenger-sidebar:not([data-compact="true"]) .conversation-link { min-height:64px; height:auto; gap:12px; padding:6px 10px; border-radius:14px; }
+.messenger-sidebar:not([data-compact="true"]) .contact-name { font-size:16px; line-height:23px; font-weight:500; }
+.messenger-sidebar:not([data-compact="true"]) .conversation-link .preview { margin-top:1px; font-size:14px; line-height:20px; color:#a5a5a5; }
+.messenger-sidebar:not([data-compact="true"]) .contact-heading { padding-right:0; }
+.messenger-sidebar:not([data-compact="true"]) .pinned-conversations { gap:18px; padding:20px 0 10px; margin-bottom:4px; border-bottom:0; }
+.messenger-sidebar:not([data-compact="true"]) .pinned-item { flex-basis:112px; max-width:132px; }
+.messenger-sidebar:not([data-compact="true"]) .pinned-conversation { gap:8px; padding:10px 6px; border-radius:16px; }
+.messenger-sidebar:not([data-compact="true"]) .pinned-name { font-size:14px; line-height:20px; }
+.sidebar-toolbar { gap:10px; }
+.sidebar-toolbar button { width:40px; height:40px; flex-shrink:0; border:1px solid #303030; background:#202020; }
+.sidebar-toolbar svg { width:21px; height:21px; stroke-width:1.7; }
+.app[data-native-titlebar="true"][data-phone="false"] .messenger-sidebar-header { height:52px; padding:6px 16px; }
+.app[data-native-titlebar="true"][data-phone="false"] .messenger-sidebar-header .sidebar-toolbar { height:40px; gap:10px; }
+.app[data-native-titlebar="true"][data-phone="false"] .messenger-sidebar-header .sidebar-toolbar button { width:40px; height:40px; }
+.app[data-native-titlebar="true"][data-phone="false"] .messenger-sidebar-header .sidebar-toolbar svg { width:21px; height:21px; }
+.app[data-native-titlebar="true"][data-phone="false"] .messenger-sidebar:not([data-compact="true"]) .conversation-navigation { padding-top:14px; }
+[data-compact="true"] .messenger-sidebar-footer .sidebar-toolbar svg { width:21px; height:21px; }
+@media(max-width:767px) {
+  .sidebar-toolbar button { width:44px; height:44px; }
+  .messenger-sidebar:not([data-compact="true"]) .pinned-conversation .bot-avatar { --avatar-size:76px!important; }
+  .messenger-sidebar:not([data-compact="true"]) .pinned-conversations { padding-top:16px; padding-bottom:20px; margin-bottom:8px; }
+}
