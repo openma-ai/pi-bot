@@ -1,3 +1,4 @@
+import { conversationPalette } from "./identity-color.ts";
 import { AvatarEditor } from "./AvatarEditor.jsx";
 import { ErrorBoundary } from "./ErrorBoundary.jsx";
 import { useConversationDraft } from "./hooks/use-conversation-draft.js";
@@ -296,6 +297,7 @@ function App({ runtime, setPiSettingsOpen }) {
   const bot = data.bots.find((b) => b.id === selected),
     group = data.groups.find((g) => g.id === groupId),
     state = data.states[selected];
+  const outgoingPalette = conversationPalette(view, bot?.id, bot?.avatar);
   const botUsage = (data.turns || [])
     .filter((t) => t.botId === selected)
     .reduce(
@@ -927,7 +929,7 @@ function App({ runtime, setPiSettingsOpen }) {
             } else if (row.id === "requests") setView("requests");
           }}
         />
-        <main className="main">
+        <main className="main" style={{ "--outgoing-background": outgoingPalette.background, "--outgoing-foreground": outgoingPalette.foreground }}>
           <header className="header">
             {phone && <button className="sidebar-toggle phone-back" aria-label="返回会话列表" onClick={() => { composer.current?.blur(); navigation.back(); }}><ChevronLeft size={22} /></button>}
             <button

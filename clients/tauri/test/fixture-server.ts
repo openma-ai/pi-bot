@@ -35,6 +35,17 @@ if(process.argv.includes('--visual')) {
   for(const [i,text] of ['请比较两种界面排版方式，保留相同的测试数据。','只需要检查消息与状态，不进行外部操作。','排版完成后保留对比图片。'].entries()) daemon.runtime.accept({to:bot.id,text,key:'visual-seed:'+i});
   await daemon.runtime.idle();
 }
+if (process.argv.includes('--bubble-colors')) {
+  for (const [name,color] of [['Custom Dark Fixture','#173252'],['Custom Light Fixture','#f2e8bf']]) {
+    const bot=daemon.runtime.listBots().find(b=>b.name===name) || daemon.runtime.createBot(name,'Disposable bubble contrast fixture');
+    daemon.runtime.store.put('bots',{...bot,avatar:{shape:1,color}});
+    daemon.runtime.accept({to:bot.id,text:'Custom identity color contrast test. No external operations.',key:'palette-seed:'+bot.id});
+  }
+  const members=daemon.runtime.listBots().slice(0,2).map(b=>b.id);
+  const group=daemon.runtime.listGroups().find(g=>g.name==='Fixture Palette Group') || daemon.runtime.createGroup('Fixture Palette Group',members);
+  daemon.runtime.acceptGroupUser(group.id,'Group bubbles use neutral light gray, independent of member colors.','palette-group-seed');
+  await daemon.runtime.idle();
+}
 const mockRequests:any[]=process.argv.includes('--requests') ? ['question','approval','credential'].map(kind=>({
   id:'fixture-request-'+kind,kind,botId:daemon.runtime.listBots()[0].id,threadId:'fixture-request-thread',turnId:null,status:'pending',createdAt:Date.now(),expiresAt:null,
   params:kind==='question'?{text:'Fixture question: choose an answer',questionId:'fixture-question',choices:['Fixture A','Fixture B']}:kind==='approval'?{tool:'fixture_no_execution',args:{operation:'inert fixture action'}}:{label:'Dummy fixture credential',formUrl:'/credential/fixture-form'},

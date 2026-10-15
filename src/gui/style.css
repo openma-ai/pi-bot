@@ -277,8 +277,8 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 .row.user .bubble {
-  background: #a95b05;
-  color: #fff6e9;
+  background: var(--outgoing-background, #dededc);
+  color: var(--outgoing-foreground, #111111);
   border-radius: 18px 18px 5px 18px;
   max-width: min(82%, 600px);
 }
@@ -326,7 +326,7 @@ button:disabled {
   text-underline-offset: 3px;
 }
 .row.user .message-body a {
-  color: #fff4dc;
+  color: inherit;
 }
 .message-body code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -1214,3 +1214,9 @@ button:disabled {
   .messenger-sidebar:not([data-compact="true"]) .pinned-conversation .bot-avatar { --avatar-size:76px!important; }
   .messenger-sidebar:not([data-compact="true"]) .pinned-conversations { padding-top:16px; padding-bottom:20px; margin-bottom:8px; }
 }
+
+/* Embedded content and semantic failures keep their own readable surfaces. */
+.row.user .message-body pre { color:#ecebea; }
+.row.user .task-failure { padding:10px 12px; border:1px solid #6e5741; border-radius:9px; background:#241f1b; }
+
+.row.user .message-body blockquote { color:inherit; border-left-color:currentColor; }

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState } from "react";
+import { identityColor, defaultIdentityColors } from "./identity-color.ts";
 import { avatarVariant } from "./presentation.ts";
 
 export const AvatarContext = createContext({ baseUrl: "", bots: [] });
@@ -45,17 +46,9 @@ export const avatarColors = [
   "#f3319a",
   "#858585",
 ];
-const defaultColors = [
-  "#eb9b36",
-  "#48b39f",
-  "#9a7ce0",
-  "#5a9cd7",
-  "#d26e9c",
-  "#c6c0b6",
-];
 export const defaultAvatar = (id) => {
   const variant = avatarVariant(id);
-  return { shape: variant % 3, color: defaultColors[variant] };
+  return { shape: variant % 3, color: defaultIdentityColors[variant] };
 };
 export const activityLabels = {
   idle: "就绪",
@@ -98,7 +91,7 @@ export function BotAvatar({
       data-activity={activity}
       style={{
         "--avatar-size": `${size}px`,
-        ...(style?.color ? { color: style.color } : {}),
+        color: identityColor(id, style),
       }}
       role="img"
       aria-label={`${name} · ${activityLabels[activity]}`}
