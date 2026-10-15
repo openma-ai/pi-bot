@@ -36,6 +36,50 @@ impl server::Handler for Fixture {
             server::Auth::reject()
         })
     }
+    async fn auth_publickey(
+        &mut self,
+        user: &str,
+        key: &russh::keys::PublicKey,
+    ) -> Result<server::Auth, Self::Error> {
+        let allowed = ["client-test-key.pub", "client-test-rsa.pub"]
+            .iter()
+            .any(|name| {
+                std::fs::read_to_string(self.root.join(name))
+                    .ok()
+                    .and_then(|text| russh::keys::PublicKey::from_openssh(&text).ok())
+                    .is_some_and(|public| public.key_data() == key.key_data())
+            });
+        Ok(if user == "fixture" && allowed {
+            server::Auth::Accept
+        } else {
+            server::Auth::reject()
+        })
+    }
+    async fn auth_keyboard_interactive<'a>(
+        &'a mut self,
+        user: &str,
+        _: &str,
+        response: Option<server::Response<'a>>,
+    ) -> Result<server::Auth, Self::Error> {
+        if user != "fixture" {
+            return Ok(server::Auth::reject());
+        }
+        if let Some(mut values) = response {
+            return Ok(
+                if values.next().as_deref() == Some(b"000000".as_slice()) && values.next().is_none()
+                {
+                    server::Auth::Accept
+                } else {
+                    server::Auth::reject()
+                },
+            );
+        }
+        Ok(server::Auth::Partial {
+            name: "Disposable fixture".into(),
+            instructions: "Dummy code only".into(),
+            prompts: vec![("Fixture verification code".into(), false)].into(),
+        })
+    }
     async fn auth_succeeded(&mut self, session: &mut Session) -> Result<(), Self::Error> {
         self.sessions.lock().await.push(session.handle());
         Ok(())
@@ -170,6 +214,85 @@ pub async fn serve(root: PathBuf) {
 mod tests {
     use super::*;
     use futures_util::StreamExt;
+    #[test]
+    fn encrypted_key_and_keyboard_interactive_authentication() {
+        tauri::async_runtime::block_on(async {
+            let root = std::env::var("PIBOT_SSH_FIXTURE_ROOT").expect("isolated fixture required");
+            let p: crate::transport::Profile =
+                serde_json::from_slice(&std::fs::read(format!("{root}/ssh-profile.json")).unwrap())
+                    .unwrap();
+            let mut credentials = crate::mobile_ssh::Credentials::password("");
+            credentials.method = "privateKey".into();
+            credentials.private_key =
+                std::fs::read_to_string(format!("{root}/client-test-key")).unwrap();
+            credentials.passphrase = "fixture-key-passphrase".into();
+            for name in ["client-test-key", "client-test-rsa"] {
+                credentials.private_key =
+                    std::fs::read_to_string(format!("{root}/{name}")).unwrap();
+                let key_endpoint = crate::mobile_ssh::connect_authenticated(&p, &credentials, None)
+                    .await
+                    .unwrap();
+                assert!(key_endpoint
+                    .request("/readyz", "GET", "", "")
+                    .await
+                    .unwrap()
+                    .status()
+                    .is_success());
+                drop(key_endpoint);
+            }
+            credentials.passphrase = "wrong".into();
+            assert!(credentials.validate().is_err());
+            credentials.method = "interactive".into();
+            credentials.private_key.clear();
+            credentials.passphrase.clear();
+            let prompt: crate::mobile_ssh::PromptHandler = Arc::new(|prompts| {
+                Box::pin(async move {
+                    assert_eq!(prompts, vec!["Fixture verification code"]);
+                    Ok(vec!["000000".into()])
+                })
+            });
+            let endpoint = crate::mobile_ssh::connect_authenticated(&p, &credentials, Some(prompt))
+                .await
+                .unwrap();
+            assert!(endpoint
+                .request("/readyz", "GET", "", "")
+                .await
+                .unwrap()
+                .status()
+                .is_success());
+            drop(endpoint);
+            let wrong: crate::mobile_ssh::PromptHandler =
+                Arc::new(|_| Box::pin(async { Ok(vec!["111111".into()]) }));
+            assert!(
+                crate::mobile_ssh::connect_authenticated(&p, &credentials, Some(wrong))
+                    .await
+                    .is_err()
+            );
+            let blocked: crate::mobile_ssh::PromptHandler =
+                Arc::new(|_| Box::pin(std::future::pending()));
+            assert!(tokio::time::timeout(
+                Duration::from_millis(150),
+                crate::mobile_ssh::connect_authenticated(&p, &credentials, Some(blocked))
+            )
+            .await
+            .is_err());
+            let fresh = crate::mobile_ssh::connect(&p, PASSWORD).await.unwrap();
+            assert!(fresh
+                .request("/readyz", "GET", "", "")
+                .await
+                .unwrap()
+                .status()
+                .is_success());
+            drop(fresh);
+            let cancel: crate::mobile_ssh::PromptHandler =
+                Arc::new(|_| Box::pin(async { Err("cancelled".into()) }));
+            assert!(
+                crate::mobile_ssh::connect_authenticated(&p, &credentials, Some(cancel))
+                    .await
+                    .is_err()
+            );
+        });
+    }
     #[test]
     fn embedded_remote_send_stream_reconnect_and_trust() {
         tauri::async_runtime::block_on(async {

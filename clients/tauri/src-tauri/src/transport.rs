@@ -125,7 +125,8 @@ impl Endpoint {
         if !["GET", "POST"].contains(&method) {
             return Err("Unsupported method".into());
         }
-        self.client
+        let request = self
+            .client
             .request(
                 Method::from_bytes(method.as_bytes()).unwrap(),
                 format!("{}{}", self.base.as_str().trim_end_matches('/'), path),
@@ -134,7 +135,13 @@ impl Endpoint {
             .bearer_auth(&self.token)
             .header("X-PiBot-Connection", connection)
             .header("Content-Type", "application/json")
-            .body(body.to_string())
+            .body(body.to_string());
+        let request = if cfg!(target_os = "ios") && !path.starts_with("/events") {
+            request.timeout(Duration::from_secs(30))
+        } else {
+            request
+        };
+        request
             .send()
             .await
             .map_err(|_| "无法连接 runtime，请检查服务是否已独立启动".into())

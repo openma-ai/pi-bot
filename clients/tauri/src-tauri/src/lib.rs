@@ -7,6 +7,8 @@ mod runtime_distribution;
 mod ssh_credentials;
 #[cfg(feature = "client-fixtures")]
 pub mod ssh_fixture;
+#[cfg(target_os = "ios")]
+mod ssh_interactive;
 mod transport;
 use serde_json::{json, Value};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
@@ -18,6 +20,7 @@ struct State {
     profiles: Vec<Profile>,
     active: Option<(String, Profile, Arc<Endpoint>)>,
     file: PathBuf,
+    connection_epoch: Arc<std::sync::atomic::AtomicU64>,
     streams: HashMap<String, tauri::async_runtime::JoinHandle<()>>,
     forms: HashMap<String, (Arc<Endpoint>, String)>,
 }
@@ -26,6 +29,8 @@ impl State {
         json!({"remoteOnly":cfg!(target_os = "ios"),"profiles":self.profiles,"connecting":false,"active":self.active.as_ref().map(|(id,p,_)|json!({"id":id,"profileId":p.id,"mode":p.mode,"baseUrl":format!("/runtime/{id}"),"scope":p.id,"label":p.name,"profile":p}))})
     }
     fn retire(&mut self) {
+        self.connection_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         for (_, handle) in self.streams.drain() {
             handle.abort();
         }
@@ -119,6 +124,49 @@ async fn ssh_password_store(
 }
 
 #[tauri::command]
+async fn ssh_credentials_set(
+    window: tauri::Window,
+    state: tauri::State<'_, Shared>,
+    profile_id: String,
+    credentials: mobile_ssh::Credentials,
+    save: bool,
+) -> Result<(), String> {
+    main_window(&window)?;
+    #[cfg(target_os = "ios")]
+    {
+        let s = state.lock().await;
+        let p = s
+            .profiles
+            .iter()
+            .find(|p| p.id == profile_id)
+            .ok_or("Runtime 不存在")?;
+        ssh_credentials::configure(p, credentials, save)
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (state, profile_id, credentials, save);
+        Err("桌面使用系统 SSH 配置".into())
+    }
+}
+#[tauri::command]
+fn ssh_challenge_reply(
+    window: tauri::Window,
+    id: String,
+    answers: Option<Vec<String>>,
+) -> Result<(), String> {
+    main_window(&window)?;
+    #[cfg(target_os = "ios")]
+    {
+        ssh_interactive::respond(&id, answers)
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (id, answers);
+        Err("仅适用于 iOS".into())
+    }
+}
+
+#[tauri::command]
 fn runtime_distribution_status() -> Value {
     runtime_distribution::status()
 }
@@ -131,6 +179,7 @@ fn runtime_install() -> Result<(), String> {
 async fn runtime_control(
     window: tauri::Window,
     state: tauri::State<'_, Shared>,
+    app: tauri::AppHandle,
     method: String,
     params: Value,
 ) -> Result<Value, String> {
@@ -153,8 +202,10 @@ async fn runtime_control(
             }
             #[cfg(target_os = "ios")]
             if let Some(p) = s.profiles.iter().find(|p| p.id == id) {
-                ssh_credentials::remove(p)?;
+                ssh_credentials::forget(p)?;
             }
+            s.connection_epoch
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             s.profiles.retain(|p| p.id != id);
             s.persist()?;
             Ok(s.status())
@@ -177,19 +228,60 @@ async fn runtime_control(
                 }
                 .into();
             }
-            // Serialize connection changes to avoid out-of-order installation.
-            let mut s = state.lock().await;
+            // No lock is held during network/MFA waits. A later disconnect,
+            // configure or connect invalidates this attempt before installation.
+            let epoch = state.lock().await.connection_epoch.clone();
+            let version = epoch.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
             let endpoint = if method == "runtime/connect" {
-                Some(Arc::new(transport::connect(&p).await?))
+                let cancelled = async {
+                    loop {
+                        if epoch.load(std::sync::atomic::Ordering::SeqCst) != version {
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
+                };
+                #[cfg(target_os = "ios")]
+                let connection = async {
+                    let credentials = ssh_credentials::credentials(&p)?;
+                    mobile_ssh::connect_authenticated(
+                        &p,
+                        &credentials,
+                        Some(ssh_interactive::handler(app)),
+                    )
+                    .await
+                };
+                #[cfg(not(target_os = "ios"))]
+                let connection = async {
+                    let _ = app;
+                    transport::connect(&p).await
+                };
+                Some(Arc::new(tokio::select! {
+                    _=cancelled=>return Err("连接已取消".into()),
+                    result=tokio::time::timeout(std::time::Duration::from_secs(180),connection)=>result.map_err(|_|"SSH 连接总时限已到，请重试")??,
+                }))
             } else {
                 None
             };
+            let mut s = state.lock().await;
+            if epoch.load(std::sync::atomic::Ordering::SeqCst) != version {
+                return Err("连接已被更新操作取消".into());
+            }
             #[cfg(target_os = "ios")]
             if let Some(old) = s.profiles.iter().find(|old| old.id == p.id) {
                 if !ssh_credentials::same_identity(old, &p) {
-                    ssh_credentials::remove(old)?;
+                    ssh_credentials::forget(old)?;
                 }
             }
+            let changed_active = cfg!(target_os = "ios")
+                && s.active.as_ref().is_some_and(|(_, active, _)| {
+                    active.id == p.id
+                        && (active.host != p.host
+                            || active.ssh_port != p.ssh_port
+                            || active.host_key != p.host_key
+                            || active.data_dir != p.data_dir
+                            || active.project_dir != p.project_dir)
+                });
             let previous = s.profiles.clone();
             if let Some(old) = s.profiles.iter_mut().find(|old| old.id == p.id) {
                 *old = p.clone();
@@ -206,6 +298,8 @@ async fn runtime_control(
             if let Some(endpoint) = endpoint {
                 s.retire();
                 s.active = Some((uuid::Uuid::new_v4().to_string(), p, endpoint));
+            } else if changed_active {
+                s.retire();
             }
             Ok(s.status())
         }
@@ -276,7 +370,12 @@ async fn stream_open(
     if !suffix.starts_with("/events") {
         return Err("Invalid stream".into());
     }
-    let response = endpoint.request(&suffix, "GET", "", &connection).await?;
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        endpoint.request(&suffix, "GET", "", &connection),
+    )
+    .await
+    .map_err(|_| "事件连接超时，请重连 runtime")??;
     if !response.status().is_success() {
         return Err("Event stream rejected; reconnect runtime".into());
     }
@@ -439,6 +538,7 @@ pub fn run() {
                 profiles,
                 active: None,
                 file,
+                connection_epoch: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 streams: HashMap::new(),
                 forms: HashMap::new(),
             }));
@@ -469,7 +569,11 @@ pub fn run() {
                         );
                     }
                     if result.is_ok() {
-                        if let Ok(endpoint) = transport::connect(&profile).await {
+                        let endpoint = if std::env::var("PIBOT_IOS_FIXTURE_INTERACTIVE").as_deref()==Ok("1") {
+                            let credentials=mobile_ssh::Credentials {method:"interactive".into(),password:String::new(),private_key:String::new(),passphrase:String::new(),interactive:false};
+                            mobile_ssh::connect_authenticated(&profile,&credentials,Some(ssh_interactive::handler(handle.clone()))).await
+                        } else { transport::connect(&profile).await };
+                        if let Ok(endpoint) = endpoint {
                             handle.state::<Shared>().lock().await.active = Some((
                                 uuid::Uuid::new_v4().to_string(),
                                 profile,
@@ -485,6 +589,8 @@ pub fn run() {
             layout_diagnostics_enabled,
             layout_diagnostics,
             ssh_password_store,
+            ssh_credentials_set,
+            ssh_challenge_reply,
             runtime_distribution_status,
             runtime_install,
             runtime_control,

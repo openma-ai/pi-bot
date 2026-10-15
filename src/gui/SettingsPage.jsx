@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   Dialog,
   Tabs,
@@ -94,6 +94,8 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false }) {
   const [mode, setMode] = useState(profile?.mode || "ssh"),
     [name, setName] = useState(profile?.name || ""),
     [host, setHost] = useState(profile?.host || "");
+  const keyInput = useRef();
+  const [authMethod,setAuthMethod]=useState("password"), [passphrase,setPassphrase]=useState(""), [saveCredentials,setSaveCredentials]=useState(false), [interactive,setInteractive]=useState(false);
   const [profileId] = useState(() => profile?.id || crypto.randomUUID());
   const [hostKey, setHostKey] = useState(profile?.hostKey || ""),
     [password, setPassword] = useState("");
@@ -114,6 +116,7 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false }) {
   const [advanced, setAdvanced] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  async function readPrivateKey(file) { if(file.size > 131072) throw Error("私钥文件不能超过 128 KiB"); return file.text(); }
   async function save(event) {
     event.preventDefault();
     setBusy(true);
@@ -141,9 +144,10 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false }) {
               ...(port ? { sshPort: Number(port) } : {}),
               ...(configFile.trim() ? { configFile: configFile.trim() } : {}),
             },
-        password,
+        remoteOnly ? {method:authMethod,password:authMethod === "password" ? password : "",privateKey: authMethod === "privateKey" && keyInput.current?.files?.[0] ? await readPrivateKey(keyInput.current.files[0]) : "",passphrase:authMethod === "privateKey" ? passphrase : "",interactive} : null,
+        saveCredentials,
       );
-      setPassword("");
+      setPassword(""); setPassphrase(""); if(keyInput.current) keyInput.current.value="";
     } catch (e) {
       setError(e.message);
     } finally {
@@ -199,11 +203,16 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false }) {
             placeholder={remoteOnly ? "user@hostname" : "user@vps 或 SSH 别名"}
           />
           <Text size="1" color="gray">
-            {remoteOnly ? "此版本使用 SSH 密码认证；主机公钥必须通过服务器管理员等可信渠道核验，不会自动接受未知主机。" : "使用客户端的 SSH 配置与密钥。远程需先安装并独立启动 Pi Bot。"}
+            {remoteOnly ? "支持密码、Ed25519/RSA 私钥与交互验证；主机公钥必须通过可信渠道核验，不会自动接受未知或变更的主机。" : "使用客户端的 SSH 配置与密钥。远程需先安装并独立启动 Pi Bot。"}
           </Text>
           {remoteOnly && <>
             <Field label="已核验的 SSH 主机公钥" value={hostKey} onChange={setHostKey} placeholder="ssh-ed25519 AAAA…（完整公钥，不是 SHA256 指纹）" />
-            <Field label="SSH 密码（仅写入此设备 Keychain）" value={password} onChange={setPassword} type="password" placeholder={profile?.id ? "留空保留已存密码；更改主机或公钥需重新输入" : "输入 SSH 密码"} />
+            <label>认证方式<select aria-label="SSH 认证方式" value={authMethod} onChange={e=>{setAuthMethod(e.target.value);setPassword("");setPassphrase("");if(keyInput.current)keyInput.current.value="";}}><option value="password">密码</option><option value="privateKey">私钥文件</option><option value="interactive">交互验证</option></select></label>
+            {authMethod === "password" && <Field label="SSH 密码" value={password} onChange={setPassword} type="password" placeholder={profile?.id ? "留空保留已有凭据" : "输入 SSH 密码"} />}
+            {authMethod === "privateKey" && <><label>私钥文件（不会显示正文）<input ref={keyInput} type="file" aria-label="导入 SSH 私钥" /></label><Field label="私钥口令（如已加密）" type="password" value={passphrase} onChange={setPassphrase} /></>}
+            {authMethod !== "interactive" && <label><input type="checkbox" checked={interactive} onChange={e=>setInteractive(e.target.checked)} />需要附加交互验证（例如验证码）</label>}
+            <label><input type="checkbox" checked={saveCredentials} onChange={e=>setSaveCredentials(e.target.checked)} />将本次凭据保存到此设备 Keychain</label>
+            <Text size="1" color="gray">默认仅在内存使用；验证码从不保存。保存私钥时其解密口令也受 Keychain 保护。暂不支持硬件密钥、SSH agent、证书或网页登录式 MFA。</Text>
           </>}
         </>
       )}
@@ -320,10 +329,10 @@ function RuntimeSettings({ runtime }) {
       setEnabling("");
     }
   }
-  async function save(profile, password) {
+  async function save(profile, credentials, saveCredentials) {
     await runtime.configure(profile);
-    if (runtime.status.remoteOnly && password) {
-      await window.__PIBOT_NATIVE__.call("ssh_password_store", { profileId: profile.id, password });
+    if (runtime.status.remoteOnly && credentials && (credentials.method === "interactive" || credentials.password || credentials.privateKey)) {
+      await window.__PIBOT_NATIVE__.call("ssh_credentials_set", { profileId: profile.id, credentials, save: saveCredentials });
     }
     setEditor(undefined);
     setNotice("Runtime 已保存，点击启用后使用。");
@@ -352,6 +361,7 @@ function RuntimeSettings({ runtime }) {
     );
   return (
     <div className="settings-pane">
+      {runtime.busy && <Button color="gray" variant="soft" onClick={()=>void runtime.cancelConnect()}>取消连接</Button>}
       <div className="settings-pane-heading">
         <Flex justify="between" align="center" gap="3">
           <Heading size="4">Runtime</Heading>
@@ -454,6 +464,7 @@ function RuntimeSettings({ runtime }) {
                   <Text size="1" className="runtime-enabled">
                     <Check size={13} />
                     已启用
+                    <button className="runtime-reconnect" disabled={runtime.busy} onClick={()=>void enable(profile)}>重新连接</button>
                   </Text>
                 ) : (
                   <Button

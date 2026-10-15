@@ -48,16 +48,93 @@ impl Drop for Tunnel {
     }
 }
 
+pub type PromptFuture =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>, String>> + Send>>;
+pub type PromptHandler = Arc<dyn Fn(Vec<String>) -> PromptFuture + Send + Sync>;
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Credentials {
+    pub method: String,
+    #[serde(default)]
+    pub password: String,
+    #[serde(default)]
+    pub private_key: String,
+    #[serde(default)]
+    pub passphrase: String,
+    #[serde(default)]
+    pub interactive: bool,
+}
+impl Drop for Credentials {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.password.zeroize();
+        self.private_key.zeroize();
+        self.passphrase.zeroize();
+    }
+}
+impl Credentials {
+    pub fn password(value: &str) -> Self {
+        Self {
+            method: "password".into(),
+            password: value.into(),
+            private_key: String::new(),
+            passphrase: String::new(),
+            interactive: false,
+        }
+    }
+    pub fn validate(&self) -> Result<(), String> {
+        if self.password.len() > 4096
+            || self.passphrase.len() > 4096
+            || self.private_key.len() > 131072
+        {
+            return Err("SSH 凭据过大".into());
+        }
+        match self.method.as_str() {
+            "password" if !self.password.is_empty() => Ok(()),
+            "privateKey" => {
+                self.key()?;
+                Ok(())
+            }
+            "interactive" => Ok(()),
+            _ => Err("请选择 SSH 认证方式并输入凭据".into()),
+        }
+    }
+    fn key(&self) -> Result<russh::keys::PrivateKey, String> {
+        let key = russh::keys::decode_secret_key(
+            &self.private_key,
+            if self.passphrase.is_empty() {
+                None
+            } else {
+                Some(&self.passphrase)
+            },
+        )
+        .map_err(|_| {
+            "无法解密或识别私钥：检查格式与口令；支持 OpenSSH/PEM Ed25519 和 RSA".to_string()
+        })?;
+        if !matches!(
+            key.algorithm(),
+            russh::keys::Algorithm::Ed25519 | russh::keys::Algorithm::Rsa { .. }
+        ) {
+            return Err("当前仅支持 Ed25519/RSA 软件私钥；不支持硬件密钥、SSH agent 或证书".into());
+        }
+        Ok(key)
+    }
+}
 pub async fn connect(p: &Profile, password: &str) -> Result<Endpoint, String> {
+    connect_authenticated(p, &Credentials::password(password), None).await
+}
+pub async fn connect_authenticated(
+    p: &Profile,
+    credentials: &Credentials,
+    prompt: Option<PromptHandler>,
+) -> Result<Endpoint, String> {
     p.validate()?;
     if p.mode != "ssh" {
         return Err("iOS 仅支持远程 runtime".into());
     }
     let (user, host) = destination(p)?;
     let pin = canonical_key(p.host_key.as_deref().ok_or("请先核验并保存 SSH 主机公钥")?)?;
-    if password.is_empty() {
-        return Err("请先在设置中保存 SSH 密码".into());
-    }
+    credentials.validate()?;
     let config = Arc::new(ssh::Config {
         keepalive_interval: Some(Duration::from_secs(15)),
         keepalive_max: 2,
@@ -70,15 +147,100 @@ pub async fn connect(p: &Profile, password: &str) -> Result<Endpoint, String> {
     .await
     .map_err(|_| "SSH 连接超时")?
     .map_err(|_| "SSH 连接失败：检查地址和已核验公钥，未知或变更的主机密钥会被拒绝")?;
-    let auth = tokio::time::timeout(
-        Duration::from_secs(12),
-        session.authenticate_password(user, password),
-    )
-    .await
-    .map_err(|_| "SSH 认证超时")?
-    .map_err(|_| "SSH 认证失败")?;
-    if !auth.success() {
-        return Err("SSH 密码认证失败；此版本尚不支持密钥或交互式认证".into());
+    let authenticated = match credentials.method.as_str() {
+        "password" => tokio::time::timeout(
+            Duration::from_secs(20),
+            session.authenticate_password(user, &credentials.password),
+        )
+        .await
+        .map_err(|_| "SSH 密码认证超时")?
+        .map_err(|_| "SSH 密码认证连接中断")?
+        .success(),
+        "privateKey" => {
+            let key = Arc::new(credentials.key()?);
+            let hash = if key.algorithm().is_rsa() {
+                Some(
+                    session
+                        .best_supported_rsa_hash()
+                        .await
+                        .map_err(|_| "无法协商 RSA SHA-2 算法")?
+                        .flatten()
+                        .ok_or("服务器不支持 RSA SHA-2；不会降级到 SHA-1")?,
+                )
+            } else {
+                None
+            };
+            tokio::time::timeout(
+                Duration::from_secs(20),
+                session.authenticate_publickey(
+                    user,
+                    russh::keys::PrivateKeyWithHashAlg::new(key, hash),
+                ),
+            )
+            .await
+            .map_err(|_| "SSH 私钥认证超时")?
+            .map_err(|_| "SSH 私钥认证连接中断")?
+            .success()
+        }
+        _ => false,
+    };
+    if !authenticated {
+        if credentials.method != "interactive" && !credentials.interactive {
+            return Err(
+                "SSH 认证被拒绝：检查用户名、密码/授权公钥；如需验证码，请启用交互验证".into(),
+            );
+        }
+        use ssh::KeyboardInteractiveAuthResponse as Response;
+        let handler = prompt.ok_or("SSH 需要交互验证，请在前台连接并完成验证")?;
+        let mut response = tokio::time::timeout(
+            Duration::from_secs(20),
+            session.authenticate_keyboard_interactive_start(user, None),
+        )
+        .await
+        .map_err(|_| "SSH 交互认证超时")?
+        .map_err(|_| "服务器不支持交互认证")?;
+        let mut success = false;
+        for _ in 0..8 {
+            match response {
+                Response::Success => {
+                    success = true;
+                    break;
+                }
+                Response::Failure { .. } => {
+                    return Err("SSH 交互验证被拒绝；请检查验证码或服务器认证方式".into())
+                }
+                Response::InfoRequest { prompts, .. } => {
+                    if prompts.len() > 8 || prompts.iter().any(|p| p.prompt.len() > 512) {
+                        return Err("服务器认证提示超出安全限制".into());
+                    }
+                    let count = prompts.len();
+                    let answers = tokio::time::timeout(
+                        Duration::from_secs(90),
+                        handler(
+                            prompts
+                                .into_iter()
+                                .map(|p| p.prompt.chars().filter(|c| !c.is_control()).collect())
+                                .collect(),
+                        ),
+                    )
+                    .await
+                    .map_err(|_| "交互验证已超时，请重新连接")??;
+                    if answers.len() != count || answers.iter().any(|a| a.len() > 4096) {
+                        return Err("交互验证响应格式错误".into());
+                    }
+                    response = tokio::time::timeout(
+                        Duration::from_secs(20),
+                        session.authenticate_keyboard_interactive_respond(answers),
+                    )
+                    .await
+                    .map_err(|_| "服务器验证响应超时")?
+                    .map_err(|_| "SSH 交互认证中断")?;
+                }
+            }
+        }
+        if !success {
+            return Err("交互验证轮次过多，请检查服务器认证配置".into());
+        }
     }
     let command = format!(
         "cd {} && cat {}/daemon.json && printf '\\n' && cat {}/daemon.token",

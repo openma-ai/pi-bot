@@ -44,6 +44,30 @@ pub async fn run(p: &Profile) -> Result<Value, String> {
         return Err("Keychain delete failed".into());
     }
     ssh_credentials::store(p, PASSWORD)?;
+    if let Ok(private_key) = std::env::var("PIBOT_IOS_FIXTURE_KEY") {
+        let credentials = mobile_ssh::Credentials {
+            method: "privateKey".into(),
+            password: String::new(),
+            private_key,
+            passphrase: "fixture-key-passphrase".into(),
+            interactive: false,
+        };
+        ssh_credentials::configure(p, credentials, true)?;
+        let loaded = ssh_credentials::credentials(p)?;
+        let key_endpoint = mobile_ssh::connect_authenticated(p, &loaded, None).await?;
+        if !key_endpoint
+            .request("/readyz", "GET", "", "")
+            .await?
+            .status()
+            .is_success()
+        {
+            return Err("encrypted key authentication failed".into());
+        }
+        drop(key_endpoint);
+        drop(loaded);
+        ssh_credentials::forget(p)?;
+        ssh_credentials::store(p, PASSWORD)?;
+    }
     let mut wrong = p.clone();
     wrong.host_key = Some(
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE6kzwKq/JCIHd7g8uGX1s7zk3v/43+d2uzDU1kL6ICV".into(),

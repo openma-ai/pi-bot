@@ -39,7 +39,7 @@ This is test infrastructure only, with fixed dummy transport auth, isolated Pi c
 
 ## Remaining / blocked
 
-- iOS remains remote-only. Embedded SSH/password authentication, explicit verified public-key pinning, Keychain storage and the mobile library/bootstrap are now implemented; see the current iOS verification record below. Private-key/MFA authentication is not yet supported on iOS.
+- iOS remains remote-only. Embedded SSH password and Ed25519/RSA private-key authentication, keyboard-interactive challenges, explicit verified host pinning and opt-in native Keychain storage are implemented; see [SSH authentication](../../docs/clients/SSH-CLIENT-AUTH.md) for limits and coverage.
 - After explicit user approval, Rust iOS targets and the missing libimobiledevice CLI support dependency were installed. Actual simulator app builds, native transport/Keychain fixture execution and unsigned device archive builds now run. Apple signing/upload remain unconfigured.
 - Windows/Linux architecture has not been build/run tested. Desktop SSH needs OpenSSH, trusted host keys and existing auth. Windows local runtime sandbox limitations remain in the independent runtime; client architecture does not fix them.
 - Real local/remote conversations, mobile builds, installer distribution, signing/notarization and production credentials are unverified/out of this checkpoint. No push, deployment, public listener, live restart or original-service change occurred.

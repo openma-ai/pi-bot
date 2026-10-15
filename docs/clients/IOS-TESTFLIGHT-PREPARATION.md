@@ -18,20 +18,25 @@ delegates to that library. Desktop retains system OpenSSH and local connections.
 
 ## Remote connection
 
-The iOS MVP supports explicit `user@hostname`, an SSH port, a verified complete
-OpenSSH host public key, SSH password authentication and existing project/data
-paths. Obtain the public key through a trusted channel. Unknown, malformed,
-changed and certificate-wrapped host keys are rejected; there is no accept-any
-or trust-on-first-use path. OpenSSH aliases/config files, private-key login and
-keyboard-interactive/MFA authentication are not implemented on iOS yet.
+iOS supports explicit `user@hostname`, SSH port, a verified full host public key,
+passwords, Ed25519/RSA software private keys (including supported encrypted
+OpenSSH/PEM keys), and bounded keyboard-interactive challenges. RSA authentication
+requires SHA-2; there is no SHA-1 downgrade. Unknown, malformed, changed and
+certificate-wrapped host keys are rejected without TOFU. OpenSSH aliases/config,
+SSH agent, hardware-backed keys, certificate login and browser/push MFA are not
+supported. See [SSH authentication](SSH-CLIENT-AUTH.md) for precise coverage.
 
-Passwords are written through native IPC into Apple Keychain, protected with
-`AccessibleWhenUnlockedThisDeviceOnly` and cloud synchronization disabled. They
-are bound to profile ID, host/user, port and public-key pin; changing that identity
-invalidates/removes its old entry. Profile JSON, status responses, URLs and logs
-contain no password. Removing a disconnected iOS profile deletes its Keychain
-entry, including when it is the last profile. No real user credentials were used
-in verification.
+Credential saving requires an unchecked-by-default consent checkbox. Otherwise
+credentials remain in native memory for this app process. Opted-in credentials
+use Apple Keychain with `AccessibleWhenUnlockedThisDeviceOnly`, no cloud sync,
+and an identity bound to profile ID, host/user, port and pinned host public key.
+Saved encrypted keys include their decryption passphrase under that protection.
+Challenge responses are never saved. Removing a profile or changing its SSH
+identity removes old stored credentials. Profile JSON, runtime status, app events,
+URLs, chat transcripts and logs contain no private key, password or passphrase.
+Only bounded untrusted server prompts are sent to the verification dialog; answers
+return through one-shot native IPC, not daemon/chat events. Verification used
+only disposable dummy credentials and ephemeral keys.
 
 The adapter reads existing `daemon.json` and the transport token over the verified
 SSH session. Discovery must identify the supported protocol and a loopback-only
@@ -40,7 +45,7 @@ listener binds only to `127.0.0.1`, preserves the remote Host header and adds th
 transport bearer credential natively. Dropping an endpoint aborts its owned
 forwarding tasks. No remote runtime is started. A dropped SSH session can be
 reestablished using the settings menu's reconnect action; this is not an
-always-running iOS background agent.
+always-running iOS background agent. App visibility suspension retires the client connection; foreground resumes with a new snapshot and never resends a turn.
 
 ## Toolchain and resolved initialization blocker
 
@@ -141,3 +146,17 @@ separately). This machine initially had no valid signing identity, profile or
 configured team. Real-device install, background/foreground network behavior and
 signed archive/export remain separate checks. iOS may suspend foreground streaming
 in the background; there is no promise of continuous background execution.
+
+## Read-only Apple/Android setup inspection
+
+Xcode's saved production Apple account lists were empty and `security find-identity
+-v -p codesigning` returned zero valid identities. Neither local provisioning-profile
+directory exists. The user has a developer account but must log in personally and
+confirm the Team/app destination. No Apple setting or resource was changed.
+
+Android initialization failed because no SDK/NDK was installed; JDK 17/21 already
+exist. Installation was subsequently authorized and `aarch64-linux-android` was
+installed. The official SDK download explicitly requires the Google Android SDK
+License Agreement; acceptance is separately pending. Nothing from the Google SDK
+has been downloaded or accepted. No APK or Android native credential backend has
+been validated. Do not present an interface-only Android build as a working client.

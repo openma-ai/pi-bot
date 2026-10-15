@@ -95,6 +95,24 @@ export function useRuntime() {
     } catch (e) { setError(e.message); throw e; }
     finally { setBusy(false); }
   };
+  const cancelConnect = async () => {
+    ++epoch.current;
+    const next=await control.runtime.disconnect({}); setStatus(next);setBusy(false);
+  };
+  const lifecycle=useRef({}); lifecycle.current={status,connect,cancelConnect};
+  useEffect(()=>{
+    if(!managed || !window.__PIBOT_NATIVE__)return;
+    let resume, timer;
+    const changed=()=>{
+      const current=lifecycle.current;
+      if(!current.status.remoteOnly)return;
+      clearTimeout(timer);
+      if(document.hidden){resume=current.status.active?.profile || resume;void current.cancelConnect().catch(()=>{});}
+      else if(resume){const profile=resume;resume=null;timer=setTimeout(()=>{void lifecycle.current.connect(profile).catch(()=>{});},300);}
+    };
+    document.addEventListener("visibilitychange",changed);
+    return ()=>{clearTimeout(timer);document.removeEventListener("visibilitychange",changed);};
+  },[]);
   const remove = async (id) => {
     ++epoch.current;
     const next = await control.runtime.remove({ id });
@@ -106,6 +124,7 @@ export function useRuntime() {
   }, []);
   return {
     registerBeforeSwitch,
+    cancelConnect,
     disconnect,
     remove,
     status,
