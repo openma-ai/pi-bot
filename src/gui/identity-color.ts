@@ -20,3 +20,9 @@ export function conversationPalette(kind: string, id = '', avatar?: { color?: st
   const foreground = contrastRatio(background, '#111111') >= 4.5 ? '#111111' : contrastRatio(background, '#ffffff') >= 4.5 ? '#ffffff' : '#000000';
   return { background, foreground };
 }
+/** Keep sender labels readable on the existing dark transcript surface. */
+export function senderLabelColor(id = '', avatar?: {color?:string} | null) {
+  const color = identityColor(id,avatar);
+  if (contrastRatio(color,'#111111') >= 4.5) return color;
+  return '#' + [1,3,5].map(i => Math.round((parseInt(color.slice(i,i+2),16)+255)/2).toString(16).padStart(2,'0')).join('');
+}

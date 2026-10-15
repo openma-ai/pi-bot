@@ -1220,3 +1220,24 @@ button:disabled {
 .row.user .task-failure { padding:10px 12px; border:1px solid #6e5741; border-radius:9px; background:#241f1b; }
 
 .row.user .message-body blockquote { color:inherit; border-left-color:currentColor; }
+
+.message-content { min-width:0; max-width:min(88%,680px); }
+.message-content>.bubble { max-width:100%; }
+.row.user>.message-content { max-width:min(82%,600px); }
+.row.user>.message-content>.bubble { max-width:100%; }
+.group-incoming { gap:8px; align-items:flex-end; margin-bottom:4px; }
+.group-incoming[data-run-end="true"] { margin-bottom:18px; }
+.group-sender-avatar { width:28px; flex:0 0 28px; align-self:flex-end; padding-bottom:1px; }
+.group-message-content { min-width:0; max-width:min(calc(88% - 36px),680px); }
+.group-message-content>.bubble { max-width:100%; }
+.group-sender-name,.peer-sender-name { padding:0 12px 5px; font-size:12px; line-height:18px; overflow-wrap:anywhere; }
+.group-sender-name>span { color:var(--sender-color); }
+.streaming-label { display:block; margin-top:6px; font-size:11px; color:#aaa; }
+.message-time-accessible { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.date-divider time { overflow-wrap:anywhere; }
+@media(max-width:767px) {
+  .message-content { max-width:95%; }
+  .row.user>.message-content { max-width:92%; }
+  .group-message-content { max-width:calc(100% - 36px); }
+  .group-incoming { gap:7px; }
+}

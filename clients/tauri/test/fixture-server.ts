@@ -8,6 +8,17 @@ const token='a'.repeat(64); // Dummy fixture transport value only.
 mkdirSync(root,{recursive:true});
 const daemon=await PiBotDaemon.create({dataDir:root,piOptions:{agentDir:join(root,'empty-pi'),cwd:root},factory:async (bot,host)=>({
   run:async envelope=>{
+    if(process.argv.includes('--message-layout') && envelope.text === 'Stream layout fixture') {
+      host.sendMessage(envelope,'A completed fixture bubble before streaming.','layout-first:'+envelope.id);
+      host.sendMessage(envelope,'Another consecutive fixture bubble from the same sender.','layout-second:'+envelope.id);
+      const toolCallId='layout-stream:'+envelope.id;
+      let answer='';
+      for(const piece of ['This ', 'is ', 'a ', 'controlled ', 'group ', 'stream ', 'with ', 'stable ', 'sender ', 'attribution.']) {
+        answer+=piece; host.events?.emit(bot.id,{type:'replyDelta',toolCallId,textDelta:piece});
+        await new Promise(r=>setTimeout(r,450));
+      }
+      host.sendMessage(envelope,answer,'layout-final:'+envelope.id,toolCallId); return;
+    }
     if(process.argv.includes('--visual')) {
       host.sendMessage(envelope,'这是隔离的界面排版测试。内容用于检查行距、气泡宽度和换行，不会执行任何外部操作。\n\n'+envelope.text,'fixture:'+envelope.id);
       host.sendMessage(envelope,'测试记录已保留，下一条消息仍可独立处理。','fixture-extra:'+envelope.id);
@@ -45,6 +56,25 @@ if (process.argv.includes('--bubble-colors')) {
   const group=daemon.runtime.listGroups().find(g=>g.name==='Fixture Palette Group') || daemon.runtime.createGroup('Fixture Palette Group',members);
   daemon.runtime.acceptGroupUser(group.id,'Group bubbles use neutral light gray, independent of member colors.','palette-group-seed');
   await daemon.runtime.idle();
+}
+if(process.argv.includes('--message-layout')) {
+  const bots=daemon.runtime.listBots();
+  const a=bots.find(b=>b.name==='Fixture Bot 7') || bots[0];
+  const b=bots.find(b=>b.name==='Custom Dark Fixture') || bots[1];
+  const group=daemon.runtime.listGroups().find(g=>g.name==='Fixture Message Layout') || daemon.runtime.createGroup('Fixture Message Layout',[a.id,b.id]);
+  const template=daemon.runtime.store.list<any>('group_messages').find(m=>m.sourceKind==='bot');
+  if(!template) throw Error('Message layout fixture requires --bubble-colors');
+  const base=Date.parse('2026-10-14T15:58:00Z');
+  const rows=[
+    ['user',0,'Controlled sender-run and time-separator fixture.'],
+    [a.id,1000,'First consecutive message from the teal sender.'],
+    [a.id,2000,'Second message: one sender label and one bottom-aligned avatar for this run.'],
+    [b.id,3000,'A different real sender with a custom dark identity color.'],
+    ['deleted-fixture-member',4000,'Removed-member fixture: never borrow the selected bot identity.'],
+    [a.id,120000,'Across midnight in Asia/Shanghai; keep the real date boundary.'],
+    [a.id,600000,'A later message after a meaningful time gap.'],
+  ] as const;
+  rows.forEach(([sender,offset,text],i)=>{const id='message-layout-fixture-'+i;daemon.runtime.store.put('group_messages',{...template,id,messageId:id,groupMessageId:id,channelId:group.id,conversationId:group.id,recipient:'group',sender,botId:a.id,taskId:'layout-task-fixture',sourceKind:sender==='user'?'user':'bot',direction:'inbound',status:'received',text,receivedAt:base+offset});});
 }
 const mockRequests:any[]=process.argv.includes('--requests') ? ['question','approval','credential'].map(kind=>({
   id:'fixture-request-'+kind,kind,botId:daemon.runtime.listBots()[0].id,threadId:'fixture-request-thread',turnId:null,status:'pending',createdAt:Date.now(),expiresAt:null,

@@ -1,3 +1,5 @@
+import { layoutMessages, isUserMessage } from "./message-layout.ts";
+import { senderLabelColor } from "./identity-color.ts";
 import { conversationPalette } from "./identity-color.ts";
 import { AvatarEditor } from "./AvatarEditor.jsx";
 import { ErrorBoundary } from "./ErrorBoundary.jsx";
@@ -360,6 +362,13 @@ function App({ runtime, setPiSettingsOpen }) {
               m.sourceKind !== "job" &&
               !(m.direction === "inbound" && m.sourceKind === "bot"),
           );
+  const streamMessages = Object.entries(data.streaming || {}).flatMap(([id, text]) => {
+    const thread = data.threads.find(t => t.id === data.streamingScopes?.[id]);
+    if (!thread || !(view === "group" ? thread.scope.channelId === groupId : view === "chat" && thread.botId === selected && thread.scope.channelId === (bot?.channelId ?? null))) return [];
+    const turn = (data.turns || []).find(t => t.threadId === thread.id && t.status === "running");
+    return [{ messageId: `stream:${id}`, direction: "outbound", sourceKind: "bot", sender: thread.botId, botId: thread.botId, receivedAt: turn?.startedAt ?? thread.lastActivityAt ?? thread.createdAt, text, status: "streaming", streaming: true }];
+  });
+  const laidOutMessages = layoutMessages([...messages, ...streamMessages], view === "group", data.bots);
   const mentionMatch =
     view === "group" && !hideMentions
       ? draft.match(/(?:^|\s)@([^\s]*)$/)
@@ -377,7 +386,7 @@ function App({ runtime, setPiSettingsOpen }) {
     setHideMentions(false);
     requestAnimationFrame(() => composer.current?.focus());
   }
-  const scrollKey = messages.map((m) => m.direction + m.messageId).join("|");
+  const scrollKey = [...messages, ...streamMessages].map((m) => m.direction + m.messageId + (m.streaming ? `:${m.text.length}` : "")).join("|");
   useEffect(() => {
     const scope = [activeRuntime?.scope, view, selected, groupId, peerA, peerB, peerScope].join(":");
     const saved = scrollPositions.current.get(scope);
@@ -1182,59 +1191,25 @@ function App({ runtime, setPiSettingsOpen }) {
                 }}
               >
                 <ConversationRequests data={data} kind={view === "group" ? "group" : "bot"} id={view === "group" ? groupId : selected} api={api} baseUrl={activeRuntime?.baseUrl || ""} />
-                {messages.length ? (
-                  messages.map((m, i) => (
+                {laidOutMessages.length ? (
+                  laidOutMessages.map(({ message: m, separator, sender, runStart, runEnd, time: messageTime }) => (
                     <React.Fragment key={m.direction + m.messageId}>
-                      {(!i ||
-                        m.receivedAt - messages[i - 1].receivedAt > 300000) && (
-                        <div className="date-divider">
-                          {new Date(m.receivedAt).toLocaleString("zh-CN", {
-                            timeZone: "Asia/Shanghai",
-                            month: "numeric",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </div>
-                      )}
-                      <div
-                        data-message-id={m.messageId}
-                        className={
-                          "row " +
-                          (m.direction === "inbound" &&
-                          ["user", "answer"].includes(m.sourceKind)
-                            ? "user"
-                            : "")
-                        }
-                      >
-                        <div className="bubble" title={time(m.receivedAt)}>
-                          <div className="bubble-meta">
-                            {["user", "answer"].includes(m.sourceKind)
-                              ? "你"
-                              : m.direction === "outbound"
-                                ? botName(m.sender)
-                                : m.sourceKind === "bot"
-                                  ? `${botName(m.sender)}${m.recipient === "group" ? " · 群消息" : " → " + botName(m.recipient)}`
-                                  : m.sourceKind === "schedule"
-                                    ? "定时任务"
-                                    : "监控"}{" "}
-                            ·{" "}
-                            {new Date(m.receivedAt).toLocaleTimeString(
-                              "zh-CN",
-                              {
-                                timeZone: "Asia/Shanghai",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              },
-                            )}
-                          </div>
-                          <MessageBody text={displayText(m)} />
+                      {separator && <div className="date-divider"><time dateTime={messageTime.iso} title={messageTime.full} aria-label={messageTime.full}>{messageTime.label}</time></div>}
+                      <div data-message-id={m.messageId} className={"row " + (isUserMessage(m) ? "user " : "") + (sender ? "group-incoming" : "")} data-run-start={runStart || undefined} data-run-end={runEnd || undefined}>
+                        <time className="message-time-accessible" dateTime={messageTime.iso}>{messageTime.full}</time>
+                        {sender && <div className="group-sender-avatar">{runEnd && <BotAvatar id={sender.id} name={sender.name} size={28} activity="idle" avatar={sender.bot?.avatar ?? null} />}</div>}
+                        <div className={sender ? "group-message-content" : "message-content"}>
+                          {sender && runStart && <div className="group-sender-name"><span style={{ "--sender-color": senderLabelColor(sender.id, sender.bot?.avatar) }}>{sender.name}</span></div>}
+                          {view === "peers" && <div className="peer-sender-name">{isUserMessage(m) ? "你" : botName(m.sender)}</div>}
+                          <div className="bubble">
+                          <MessageBody text={m.streaming ? m.text : displayText(m)} />
+                          {m.streaming && <span className="streaming-label" role="status">正在回复…</span>}
                           {["queued", "processing"].includes(m.status) && (
                             <Text size="1" className="status">
                               {labels[m.status] || m.status}
                             </Text>
                           )}
-                          {messageFailures(data, m).map((failed) => (
+                          {(m.streaming ? [] : messageFailures(data, m)).map((failed) => (
                             <TaskFailure
                               key={failed.messageId}
                               message={failed}
@@ -1255,6 +1230,7 @@ function App({ runtime, setPiSettingsOpen }) {
                               }}
                             />
                           ))}
+                          </div>
                         </div>
                       </div>
                     </React.Fragment>
@@ -1317,29 +1293,6 @@ function App({ runtime, setPiSettingsOpen }) {
                     ))}
                   </div>
                 )}
-                {Object.entries(data.streaming || {})
-                  .filter(([id]) => {
-                    const thread = data.threads.find(
-                      (t) => t.id === data.streamingScopes?.[id],
-                    );
-                    return (
-                      thread &&
-                      (view === "group"
-                        ? thread.scope.channelId === groupId
-                        : view === "chat"
-                          ? thread.botId === selected &&
-                            thread.scope.channelId === (bot?.channelId ?? null)
-                          : false)
-                    );
-                  })
-                  .map(([id, text]) => (
-                    <div key={id} className="routine">
-                      <Text size="2">{text}</Text>
-                      <Text size="1" color="gray">
-                        正在回复…
-                      </Text>
-                    </div>
-                  ))}
                 <div className="composer">
                   <ComposerTextarea
                     className="message-input"
