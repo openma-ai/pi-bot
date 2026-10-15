@@ -14,7 +14,10 @@
     const composer = document.querySelector(".composer");
     if (composer && composer !== observedComposer) { resize.disconnect(); resize.observe(composer); observedComposer = composer; }
     const bubbles = [...document.querySelectorAll('.bubble')].map(rect);
-    const metrics = { at: Date.now(), innerWidth, innerHeight, clientWidth: document.documentElement.clientWidth,
+    const metrics = { nativeIos: document.documentElement.dataset.nativeIos === "true",
+      viewportPolicy: document.querySelector('meta[name="viewport"]')?.content,
+      focusedFont: document.activeElement ? getComputedStyle(document.activeElement).fontSize : null,
+      at: Date.now(), innerWidth, innerHeight, clientWidth: document.documentElement.clientWidth,
       documentScrollWidth: document.documentElement.scrollWidth, scrollX, scrollY,
       viewport: vv ? { width: vv.width, height: vv.height, offsetLeft: vv.offsetLeft, offsetTop: vv.offsetTop, scale: vv.scale } : null,
       pins: [...document.querySelectorAll(".pinned-conversation")].map(rect), pinHeading: rect(document.querySelector(".pinned-heading")), pinUserSelect: document.querySelector(".pinned-conversation") ? getComputedStyle(document.querySelector(".pinned-conversation")).webkitUserSelect : null, runningCount: document.querySelectorAll('.activity-line[data-activity="working"]').length, partialBubbleCount: document.querySelectorAll(".streaming-label").length,

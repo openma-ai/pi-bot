@@ -1,5 +1,7 @@
+import { configureNativeViewport } from "./native-viewport.ts";
 import { invoke } from "@tauri-apps/api/core";
 import "./credential.css";
+configureNativeViewport();
 const form = document.querySelector("form"), input = document.querySelector("input"), button = document.querySelector("button"), status = document.querySelector("#status");
 form.addEventListener("submit", async (event) => {
   event.preventDefault();

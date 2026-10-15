@@ -1259,3 +1259,10 @@ button:disabled {
 }
 .ssh-prompt { display:flex; flex-direction:column; gap:8px; margin-top:16px; overflow-wrap:anywhere; }
 .ssh-prompt input,.runtime-editor select { font:inherit; font-size:16px; color:inherit; background:#242424; border:1px solid #555; border-radius:8px; padding:10px; max-width:100%; }
+
+/* Radix dialogs/menus are portals outside .app, including runtime and search
+   fields. iOS focuses sub-16px inputs by magnifying the whole WKWebView. */
+html[data-native-ios="true"] :is(input, textarea, select),
+html[data-native-ios="true"] .composer .message-input {
+  font-size: max(16px, 1em) !important;
+}
