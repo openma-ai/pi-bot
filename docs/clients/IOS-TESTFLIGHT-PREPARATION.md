@@ -160,3 +160,41 @@ accepted Google's SDK agreement before installation. Android secrets remain
 session-only in native memory; no Keystore persistence or real-device coverage
 is claimed. Desktop preview/production workflows are documented separately in
 [Desktop releases](DESKTOP-RELEASE.md).
+
+## Signed TestFlight upload (2026-10-15)
+
+Later setup supersedes the initial unsigned-only inspection above. User authorized
+Apple Distribution creation, the public WWDR G3 intermediate installation with
+default trust, the app/profile creation, and this specific TestFlight upload.
+No root-trust override, Always Trust, API key, private-key export, new external
+testers or public store submission was performed.
+
+- Product display name: Pibo. App Store record: **Pibo - Personal Agent**
+  (the shorter Pibo store name was unavailable).
+- Team: Yang Xiao / `962863MJ5J`; Bundle ID: `dev.pibot.ios`.
+- ASC app: `6823234702`; primary language Simplified Chinese; SKU `pibo-ios`.
+- Profile: Pibo App Store Distribution, UUID
+  `1be1d9d0-3f8e-41cd-8bb2-4eb0310320c1`, expires2027-10-15.
+- Exported IPA: `artifacts/Pibo-TestFlight-0.1.0-build1/Pibo.ipa`,
+  **0.1.0 (1)**, 5,949,274 bytes, Library file
+  `libfile_75364379e4a88191baee5ba468927825`.
+- SHA256: `e6b9018a73dfc7c259caeea53b3baa41e488b13cdbe0d8b57a18d4ffdaddee64`.
+- Verified exact IPA's strict/deep codesign, Apple Distribution certificate chain,
+  TeamIdentifier, arm64 executable, embedded profile and get-task-allow=false.
+- Manual export used existing Xcode account/certificate/profile; no automatic
+  signing-resource creation. Upload log `/tmp/pibo-testflight-upload.log` reported
+  **Upload succeeded** and **EXPORT SUCCEEDED** at2026-10-15 23:54 local time
+  (15:54UTC); Apple reported the uploaded package was processing.
+
+Upload acceptance is separate from processing completion and test availability.
+[Authoritative TestFlight page](https://appstoreconnect.apple.com/teams/517afde0-f580-4088-89fa-5377334c9871/apps/6823234702/testflight).
+A distribution IPA is not a directly sideloadable development package.
+
+Processing subsequently completed: TestFlight exposes build1 (version0.1.0),
+build ID `a9e43959-f6e5-4aec-b1ab-eaa4766afe28`, with **Missing Compliance**.
+It is not yet installable. The app implements standard SSH/TLS encryption through
+russh/ring and reqwest/rustls, beyond OS-provided encryption. The accurate
+standard-encryption choice was prepared but not submitted. Apple's next question
+is whether the app will be distributed in France; no answer or final Save has
+been submitted. This distribution intent and the export declaration require user
+confirmation. No internal group/tester has been created yet.

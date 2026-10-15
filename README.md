@@ -11,7 +11,7 @@
 | 平台 | 当前验证状态 |
 | --- | --- |
 | macOS arm64 | 独立 Preview 打包流程；临时签名，无正式公证 |
-| iOS | 仅 remote；iPhone 17 模拟器测试、未签名设备归档；未上 TestFlight |
+| iOS | 仅 remote；Pibo 0.1.0 (1) 发行签名验证通过，已上传 TestFlight，Apple processing 已完成；待加密出口合规声明后开启内部测试 |
 | Android arm64 | 仅 remote；debug APK 与本地 Android 15 模拟器验证；凭据仅在本次进程内存中 |
 | Windows / Linux / Intel Mac | 尚未构建验证，不声称安装包 ready |
 
