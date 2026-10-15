@@ -10,7 +10,7 @@ configs:
 settingGroups:
   app:
     base:
-      PRODUCT_NAME: Pi Bot
+      PRODUCT_NAME: Pibo
       PRODUCT_BUNDLE_IDENTIFIER: dev.pibot.ios
 targetTemplates:
   app:

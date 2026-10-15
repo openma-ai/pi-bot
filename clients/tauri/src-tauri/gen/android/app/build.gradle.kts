@@ -44,8 +44,8 @@ android {
             if (providers.gradleProperty("pibotTestSigning").orNull == "true") {
                 signingConfig = signingConfigs.getByName("debug")
                 isDebuggable = true
-                resValue("string", "app_name", "Pi Bot Test")
-                resValue("string", "main_activity_title", "Pi Bot Test")
+                resValue("string", "app_name", "Pibo Test")
+                resValue("string", "main_activity_title", "Pibo Test")
             }
             optimization {
                enable = true

@@ -32,7 +32,7 @@ const override=JSON.stringify({version,bundle:{macOS:{bundleVersion:build,signin
 try{
  run('npm',['run','build:gui'],{stdio:'inherit',env});
  run('npm',['run','tauri','--','build','--bundles','app','--config',config,'--config',override],{stdio:'inherit',env});
- const name=channel==='preview'?'Pi Bot Preview':'Pi Bot';const app=join(client,`src-tauri/target/release/bundle/macos/${name}.app`);
+ const name=channel==='preview'?'Pibo Preview':'Pibo';const app=join(client,`src-tauri/target/release/bundle/macos/${name}.app`);
  if(!existsSync(app))throw Error('Expected app bundle missing');
  const expectedId=channel==='preview'?'dev.pibot.desktop.preview':'dev.pibot.desktop';
  const plist=join(app,'Contents/Info.plist');
@@ -44,7 +44,7 @@ try{
   if(!signature.includes('runtime')||signature.includes('Signature=adhoc'))throw Error('Production candidate lacks hardened runtime/distribution signature');
  }
  const out=join(repo,'artifacts/releases');mkdirSync(out,{recursive:true});
- let stem=`Pi-Bot-${channel==='preview'?'Preview':'Production-Candidate'}-${version}-macos-arm64-${sha.slice(0,7)}${dirty?'-dirty':''}`;
+ let stem=`Pibo-${channel==='preview'?'Preview':'Production-Candidate'}-${version}-macos-arm64-${sha.slice(0,7)}${dirty?'-dirty':''}`;
  let zip=join(out,stem+'.zip');run('ditto',['-c','-k','--keepParent',app,zip]);
  if(notarize){
   // Explicit flag performs an upload. The assistant never invokes it without authorization.
