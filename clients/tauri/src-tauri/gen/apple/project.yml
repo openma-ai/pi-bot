@@ -58,7 +58,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         CFBundleShortVersionString: 0.1.0
-        CFBundleVersion: "1"
+        CFBundleVersion: "2"
     entitlements:
       path: pi-bot-desktop_iOS/pi-bot-desktop_iOS.entitlements
     scheme:
