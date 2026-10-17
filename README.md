@@ -146,6 +146,8 @@ evals ──► 任意层（层外评测工具）
 默认不监听网络端口。详细 API、策略、测试与 Pi Durable/1.2 兼容性评估见
 [proactive runtime](docs/proactive-runtime.md)。
 
+改状态工具（`send_message`、`schedule_cancel`、`monitor_enable`、`monitor_cancel`）按 Agent 已读版本条件提交，冲突时零副作用并返回结构化结果；保护矩阵与未覆盖项见 [Agent 状态保护](docs/state-protection.md)。
+
 Linux 桌面、共享浏览器 profile、Computer 实时画面与人工接管，见 [运行及验收说明](docs/linux-desktop-image.md)。
 
 Real flood, natural-language correction/cancellation and concurrent background compaction acceptance: [2026-10-14 report](docs/real-flood-compaction-20261014.md).

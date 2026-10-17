@@ -9,6 +9,7 @@ export function migrate(db: DatabaseSync) {
  CREATE TABLE IF NOT EXISTS items(id TEXT PRIMARY KEY,data TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS turns_thread ON turns(json_extract(data,'$.threadId'));
  CREATE INDEX IF NOT EXISTS requests_state ON requests(json_extract(data,'$.status'));
+ CREATE TABLE IF NOT EXISTS mutation_receipts(authority TEXT NOT NULL,operation_id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(authority,operation_id));
  CREATE TABLE IF NOT EXISTS event_retention(id INTEGER PRIMARY KEY CHECK(id=1),floor INTEGER NOT NULL);INSERT OR IGNORE INTO event_retention VALUES(1,0);`);
     if (!db.prepare('SELECT version FROM schema_version').get())
         db.prepare('INSERT INTO schema_version VALUES(1)').run();

@@ -38,6 +38,7 @@
     "@earendil-works/pi-ai": "1.1.0",
     "@earendil-works/pi-coding-agent": "1.1.0",
     "@novnc/novnc": "1.7.0",
+    "@openma/matter": "^0.2.1",
     "@radix-ui/themes": "^3.2.1",
     "@tailwindcss/vite": "^4.3.3",
     "class-variance-authority": "^0.7.1",
