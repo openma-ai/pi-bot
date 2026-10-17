@@ -8,12 +8,15 @@ import { randomUUID } from 'node:crypto';
 import { Store, type Bot, type Envelope, type Job, type Question, type Outbound, type ChatRoute, type ChatGroup } from './store.ts';
 import { redactChannelText } from './channel-messages.ts';
 import type { OpenMatterTrigger } from './openmatter-trigger.ts';
+import { StateGuard } from './state-guard.ts';
+import { conversationResource, outboxResource, type CommitResult, type Revision } from '../../pi/state-protection.ts';
 import { groupMentions } from './group-mentions.ts';
 import { InferenceYieldError, JobExecutionError, type BotHost, type BotSession, type Permission, type SessionFactory } from '../../pi/host.ts';
 export { InferenceYieldError, JobExecutionError, type BotSession, type Permission, type SessionFactory };
 export class BotRuntime implements BotHost {
     readonly store: Store;
     readonly tracker: TurnTracker;
+    readonly state: StateGuard;
     approvals?: ApprovalPort;
     readonly events: EventSink = {
         emit: (botId, event) => {
@@ -59,6 +62,7 @@ export class BotRuntime implements BotHost {
             this.store = new Store(path);
             this.store.scopeForEnvelope = e => this.sessionScope(e);
             this.store.recover();
+            this.state = new StateGuard(this.store);
             this.tracker = new TurnTracker(this.store);
         }
         catch (e) {
@@ -444,30 +448,57 @@ export class BotRuntime implements BotHost {
                 this.wake(e.to);
         }
     }
-    sendMessage(e: Envelope, text: string, key: string, toolCallId?: string) {
+    /** Host-originated message (question projection, credential form): only the key must be new. */
+    sendMessage(e: Envelope, text: string, key: string, toolCallId?: string): Outbound {
+        const commit = this.commitMessage(e, text, key, {
+            toolCallId
+        });
+        if (commit.status === 'conflict')
+            throw new PiBotError('conflict', 'Idempotency key conflict');
+        return commit.value;
+    }
+    /** Append to the user conversation against the conversation revision the agent read.
+     * Omitting observedConversation leaves the conversation unconditioned (host messages).
+     * The outbox append is the local commit boundary; delivery afterwards is transport. */
+    commitMessage(e: Envelope, text: string, key: string, options: {
+        toolCallId?: string;
+        observedConversation?: Revision;
+    } = {}): CommitResult<Outbound> {
         this.assertTaskCurrent(e, true);
         text = redactChannelText(text);
         if (text.length > 64000)
             throw new PiBotError('invalidParams', 'Message too large');
-        const old = this.store.find<Outbound>('outbox', e.to, key);
-        if (old) {
-            if (old.text !== text || old.taskId !== e.taskId || JSON.stringify(old.route) !== JSON.stringify(e.route))
-                throw new PiBotError('conflict', 'Idempotency key conflict');
-            return old;
-        }
-        if (this.store.count('outbox', 'taskId', e.taskId) >= 64)
+        if (!this.store.find<Outbound>('outbox', e.to, key) && this.store.count('outbox', 'taskId', e.taskId) >= 64)
             throw new PiBotError('budgetExhausted', 'Task outbox budget exceeded');
-        const o: Outbound = {
-            id: randomUUID(), botId: e.to, taskId: e.taskId, replyTo: e.id, key, text, ...(toolCallId ? {
-                toolCallId
-            } : {}), state: 'pending', createdAt: Date.now(), ...(e.route ? {
-                route: {
-                    ...e.route
-                }
-            } : {})
-        };
-        this.store.put('outbox', o);
-        return o;
+        const resourceId = outboxResource(key);
+        const route: ChatRoute | undefined = e.route ? JSON.parse(JSON.stringify(e.route)) : undefined;
+        const commit = this.state.commit<Outbound>({
+            botId: e.to, operationId: `message:${key}`, operation: 'conversation.append', input: {
+                text, taskId: e.taskId, ...(route ? {
+                    route
+                } : {})
+            }, read: [{
+                    resourceId, revision: null
+                }, ...(options.observedConversation === undefined ? [] : [{
+                    resourceId: conversationResource(e.route), revision: options.observedConversation
+                }])],
+            reread: 'New user input arrived in this conversation after the context you decided on; nothing was sent. Read it in your next context, then decide again with a new key.',
+            apply: tx => {
+                const o: Outbound = {
+                    id: randomUUID(), botId: e.to, taskId: e.taskId, replyTo: e.id, key, text, ...(options.toolCallId ? {
+                        toolCallId: options.toolCallId
+                    } : {}), state: 'pending', createdAt: Date.now(), ...(route ? {
+                        route
+                    } : {})
+                };
+                tx.set(resourceId, o);
+                return o;
+            }
+        });
+        // A replayed commit reports the message as it is now (it may have been delivered since).
+        return commit.status === 'committed' ? {
+            ...commit, value: this.store.find<Outbound>('outbox', e.to, key) ?? commit.value
+        } : commit;
     }
     askUser(e: Envelope, text: string, key: string, choices?:string[]) {
         this.assertTaskCurrent(e);

@@ -14,6 +14,7 @@ import { createContextExtension, estimateContextTokens, type ContextOptions, typ
 import { authorize, ProviderRequestGuardError, InferenceYieldError, JobExecutionError, type SessionFactory, type BotHost, type ProactivePort, type CredentialPort } from './host.ts';
 import { createProactiveExtension, proactiveToolNames } from './proactive-extension.ts';
 import { inboxIds } from './inbox-identity.ts';
+import { commitOutcome, conversationResource, ReadEvidence } from './state-protection.ts';
 import type { Envelope, Job, Question, Outbound, Bot } from './types.ts';
 import { createBackgroundCodemodeExtension, type BackgroundCodemodeOptions } from './background-codemode.ts';
 const result = (v: unknown) => ({
@@ -137,6 +138,8 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
         const enqueues = new Set<Promise<unknown>>();
         let visibleTaskScopes = new Set<string>();
         let visibleInboxIds = new Set<string>();
+        // Read evidence binds state-changing tools to what this session's model was shown.
+        const evidence = new ReadEvidence();
         const executionSource = new AsyncLocalStorage<Envelope>();
         const own = (messageId?: string, routedAction = false) => {
             const inherited = executionSource.getStore();
@@ -269,7 +272,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                 }
             });
             if (proactive)
-                createProactiveExtension(proactive, bot.id, own)(pi);
+                createProactiveExtension(proactive, bot.id, own, evidence)(pi);
             if (options.credentials)
                 pi.registerTool({
                     name: 'request_credential', label: 'Request credential',
@@ -311,6 +314,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                     }
                 });
             pi.on('tool_call', event => {
+                evidence.bind(event.toolCallId, event.parentToolCallId);
                 if (!event.parentToolCallId && native.has(event.toolName) && options.modelNativeTools && !options.modelNativeTools.includes(event.toolName))
                     return {
                         block: true, reason: 'Native tool outside the configured model surface'
@@ -348,6 +352,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                 }));
                 const visibleInbox = runtime.store.list<Envelope>('inbox').filter(e => e.to === bot.id && visible.includes(e.id));
                 visibleInboxIds = new Set(visibleInbox.map(e => e.id));
+                evidence.observeContext(visibleInbox);
                 visibleTaskScopes = new Set(visibleInbox.map(e => JSON.stringify([e.taskId, e.route])));
                 if (current && admitted.has(current.id))
                     consumed.add(current.id);
@@ -425,10 +430,13 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                 }
             });
             pi.registerTool({
-                name: 'send_message', label: 'Message user', description: 'Enqueue a message to the user in the host outbox. Pending is not delivered. No arbitrary destination. For interleaved tasks, set source_message_id to the inbox event being answered; without a source, multiple visible tasks are rejected. An original parent task ID resolves only to an unambiguous verified own inherited branch.', parameters: Type.Object({
+                name: 'send_message', label: 'Message user', description: 'Enqueue a message to the user in the host outbox. Pending is not delivered. Commits only if no new user input arrived in that conversation since the context you decided on; otherwise returns status "conflict" with nothing sent: read the new input, then decide again with a new key. No arbitrary destination. For interleaved tasks, set source_message_id to the inbox event being answered; without a source, multiple visible tasks are rejected. An original parent task ID resolves only to an unambiguous verified own inherited branch.', parameters: Type.Object({
                     text: Type.String(), key, source_message_id: Type.Optional(Type.String())
                 }), async execute(_id, p) {
-                    return result(runtime.sendMessage(own(p.source_message_id, true), p.text, p.key, _id));
+                    const source = own(p.source_message_id, true);
+                    return result(commitOutcome(runtime.commitMessage(source, p.text, p.key, {
+                        toolCallId: _id, observedConversation: evidence.decision(_id, conversationResource(source.route)).observed
+                    })));
                 }
             });
             pi.registerTool({
