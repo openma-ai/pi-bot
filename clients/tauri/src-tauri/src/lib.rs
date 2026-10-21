@@ -531,6 +531,28 @@ pub fn run() {
                 std::fs::write(dir.join("tailscale-local-probe.json"), serde_json::to_vec_pretty(&result)?)?;
             }
 
+            #[cfg(all(debug_assertions, feature = "embedded-tailscale", target_os = "ios"))]
+            if std::env::var("PIBOT_TAILSCALE_BROWSER_TEST").as_deref() == Ok("1") {
+                let dir = app.path().app_data_dir()?;
+                std::fs::create_dir_all(&dir)?;
+                tauri::async_runtime::spawn(async move {
+                    let started = tokio::task::spawn_blocking(tailscale::browser_test_start).await;
+                    if !matches!(started, Ok(Ok(()))) {
+                        let _ = std::fs::write(dir.join("tailscale-browser-test.json"), b"{\"error\":\"SDK start failed\"}");
+                        return;
+                    }
+                    for _ in 0..450 {
+                        let status = tokio::task::spawn_blocking(tailscale::browser_test_status).await;
+                        if let Ok(result) = status {
+                            if let Ok(bytes) = serde_json::to_vec_pretty(&result) {
+                                let _ = std::fs::write(dir.join("tailscale-browser-test.json"), bytes);
+                            }
+                        }
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    }
+                    tailscale::stop();
+                });
+            }
             let file = app.path().app_data_dir()?.join("profiles.json");
             let profiles = std::fs::read(&file)
                 .ok()

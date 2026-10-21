@@ -108,6 +108,53 @@ mod native {
             }
         }
     }
+    #[cfg(debug_assertions)]
+    pub fn browser_test_start() -> Result<(), String> {
+        start("tskey-auth-local-placeholder")?;
+        let node = current()
+            .lock()
+            .map_err(|_| "Node lock unavailable")?
+            .clone()
+            .ok_or("Missing node")?;
+        unsafe extern "C" {
+            fn tailscale_start(sd: i32) -> i32;
+        }
+        // Remove the placeholder before starting; interactive official login only.
+        if unsafe { tailscale_set_authkey(node.sd, c"".as_ptr()) } != 0
+            || unsafe { tailscale_set_hostname(node.sd, c"pibo-ios-simulator-test".as_ptr()) } != 0
+            || unsafe { tailscale_start(node.sd) } != 0
+        {
+            stop();
+            return Err("Cannot start temporary browser-login node".into());
+        }
+        Ok(())
+    }
+    #[cfg(debug_assertions)]
+    pub fn browser_test_status() -> Result<serde_json::Value, String> {
+        unsafe extern "C" {
+            fn tailscale_status_json(sd: i32, out: *mut *mut std::ffi::c_char) -> i32;
+            fn free(ptr: *mut std::ffi::c_void);
+        }
+        let node = current()
+            .lock()
+            .map_err(|_| "Node lock unavailable")?
+            .clone()
+            .ok_or("Missing node")?;
+        let mut out = std::ptr::null_mut();
+        if unsafe { tailscale_status_json(node.sd, &mut out) } != 0 || out.is_null() {
+            return Err("Status unavailable".into());
+        }
+        let parsed = serde_json::from_slice::<serde_json::Value>(
+            unsafe { std::ffi::CStr::from_ptr(out) }.to_bytes(),
+        );
+        unsafe {
+            free(out.cast());
+        }
+        let status = parsed.map_err(|_| "Invalid SDK status")?;
+        Ok(
+            serde_json::json!({"backendState":status["BackendState"],"authURL":status["AuthURL"],"health":status["Health"],"ips":status["TailscaleIPs"],"hostname":"pibo-ios-simulator-test","ephemeral":true}),
+        )
+    }
     /// Local initialization only: never invokes start/up/dial or persists identity.
     #[cfg(debug_assertions)]
     pub fn local_probe() -> Result<serde_json::Value, String> {
@@ -228,3 +275,6 @@ pub fn state() -> &'static str {
 
 #[cfg(all(feature = "embedded-tailscale", debug_assertions))]
 pub use native::local_probe;
+
+#[cfg(all(feature = "embedded-tailscale", debug_assertions))]
+pub use native::{browser_test_start, browser_test_status};

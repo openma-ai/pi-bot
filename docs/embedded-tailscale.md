@@ -153,3 +153,25 @@ They do not prove authentication, Tailnet HTTP/WebSocket, VPN coexistence, or
 physical-device/background behavior. Network testing requires explicit approval
 for a temporary node login/auth key and an authorized peer/test runtime on the
 same Tailnet; no persistent credentials are needed for this test design.
+
+
+### Authorized browser login attempt
+
+After explicit permission for a temporary Tailnet test node, ran the isolated
+simulator app with `PIBOT_TAILSCALE_BROWSER_TEST=1`. The debug-only entry configures
+an ephemeral node named `pibo-ios-simulator-test`, removes the placeholder key
+before SDK start, and polls a restricted status report. Official tsnet supports
+interactive browser login without auth keys (StartLoginInteractive); this is not
+an auth-key-only limitation. No auth key/password was requested or generated.
+The report excludes peers and keys. A 15-minute guard stops the test node.
+
+The actual attempt remained NeedsLogin with empty AuthURL/no IPs. SDK health
+progressed from control-key fetch cancellation to registration POST timeout at
+`https://controlplane.tailscale.com/machine/register` (context deadline exceeded).
+Mac HTTPS checks to the public control-key endpoint succeeded, including a
+single request with proxy bypass; this does not establish the simulator SDK's
+registration path. No system settings were changed. No root cause is claimed.
+No login URL or approved Tailnet membership was obtained. The test app was
+stopped and its temporary identity directory removed. Sanitized evidence:
+`artifacts/tailscale-simulator/browser-login-blocker.json`.
+Cloud peer was also unavailable, so live HTTP/WebSocket remain unverified.
