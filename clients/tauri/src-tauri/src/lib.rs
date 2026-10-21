@@ -523,6 +523,14 @@ async fn credential_submit(
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            #[cfg(all(debug_assertions, feature = "embedded-tailscale", target_os = "ios"))]
+            if std::env::var("PIBOT_TAILSCALE_LOCAL_PROBE").as_deref() == Ok("1") {
+                let result = tailscale::local_probe();
+                let dir = app.path().app_data_dir()?;
+                std::fs::create_dir_all(&dir)?;
+                std::fs::write(dir.join("tailscale-local-probe.json"), serde_json::to_vec_pretty(&result)?)?;
+            }
+
             let file = app.path().app_data_dir()?.join("profiles.json");
             let profiles = std::fs::read(&file)
                 .ok()

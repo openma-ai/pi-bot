@@ -108,6 +108,39 @@ mod native {
             }
         }
     }
+    /// Local initialization only: never invokes start/up/dial or persists identity.
+    #[cfg(debug_assertions)]
+    pub fn local_probe() -> Result<serde_json::Value, String> {
+        if state() != "notPrepared" {
+            return Err("Probe requires an unused node".into());
+        }
+        let mut cycles = Vec::new();
+        for _ in 0..3 {
+            start("tskey-auth-local-init-only")?;
+            let node = current()
+                .lock()
+                .map_err(|_| "Node lock unavailable")?
+                .take()
+                .ok_or("Missing node")?;
+            let dir = node.dir.clone();
+            let empty = std::fs::read_dir(&dir)
+                .map_err(|e| e.to_string())?
+                .next()
+                .is_none();
+            let configured = !node.closed.load(Ordering::SeqCst);
+            let close_code = unsafe { tailscale_close(node.sd) };
+            node.closed.store(true, Ordering::SeqCst);
+            drop(node);
+            let removed = !dir.exists();
+            if !empty || !configured || close_code != 0 || !removed {
+                return Err(format!(
+                    "Lifecycle failed: empty={empty}, close={close_code}, removed={removed}"
+                ));
+            }
+            cycles.push(serde_json::json!({"configured":configured,"stateDirectoryEmpty":empty,"closeCode":close_code,"temporaryDirectoryRemoved":removed}));
+        }
+        Ok(serde_json::json!({"cycles":cycles,"finalState":state(),"networkStarted":false}))
+    }
     pub async fn dial(host: &str, port: u16) -> Result<tokio::net::UnixStream, String> {
         let node = current()
             .lock()
@@ -192,3 +225,6 @@ mod tests {
 pub fn state() -> &'static str {
     "unavailable"
 }
+
+#[cfg(all(feature = "embedded-tailscale", debug_assertions))]
+pub use native::local_probe;

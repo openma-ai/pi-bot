@@ -14,7 +14,9 @@ fn main() {
         // Xcode's Tauri phase filters arbitrary environment variables. The pinned
         // project-local helper output is therefore also a deterministic default.
         let platform = if target == "ios" {
-            if std::env::var("TARGET").unwrap().contains("-sim") {
+            if std::env::var("TARGET").unwrap().contains("-sim")
+                || std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("x86_64")
+            {
                 "ios-sim"
             } else {
                 "ios"
@@ -22,9 +24,12 @@ fn main() {
         } else {
             "macos"
         };
-        let fallback = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+        let mut fallback = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
             .join("../.tailscale-build")
             .join(platform);
+        if platform == "ios-sim" {
+            fallback = fallback.join(std::env::var("CARGO_CFG_TARGET_ARCH").unwrap());
+        }
         let dir = std::env::var("PIBO_TAILSCALE_LIB_DIR")
             .unwrap_or_else(|_| fallback.to_string_lossy().into_owned());
         assert!(

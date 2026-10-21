@@ -21,5 +21,14 @@ case "$platform" in
 esac
 output="$root/.tailscale-build/$platform"
 mkdir -p "$output"
-cp "$source/$archive" "$output/libtailscale.a"
-echo "PIBO_TAILSCALE_LIB_DIR=$output"
+if [ "$platform" = ios-sim ]; then
+  # rustc's static archive bundler cannot consume a universal Mach-O archive.
+  for pair in arm64:aarch64 x86_64:x86_64; do
+    arch=${pair%%:*}; rustarch=${pair#*:}
+    mkdir -p "$output/$rustarch"
+    lipo "$source/$archive" -thin "$arch" -output "$output/$rustarch/libtailscale.a"
+  done
+else
+  cp "$source/$archive" "$output/libtailscale.a"
+fi
+echo "Archives ready: $output (ios-sim: select aarch64 or x86_64 subdirectory)"

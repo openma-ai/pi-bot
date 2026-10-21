@@ -42,8 +42,10 @@ npm run tauri -- build --features embedded-tailscale --config src-tauri/tauri.ta
 ```
 
 The macOS configuration sets a minimum OS of 15.0, matching the SDK build.
-For iOS use the helper's `ios` or `ios-sim` argument and pass the matching archive
-directory to the Tauri iOS build environment; always enable `embedded-tailscale`.
+For iOS use the helper's `ios` or `ios-sim` argument; always enable `embedded-tailscale`.
+The default build path selects the platform automatically. Simulator archives are
+split into `ios-sim/aarch64` and `ios-sim/x86_64`: rustc cannot bundle the universal
+archive. If setting `PIBO_TAILSCALE_LIB_DIR`, select that architecture subdirectory.
 Do not reuse a macOS archive for an iOS target. Static linking includes Go in the
 client artifact; no separate daemon or shared library is installed. The official
 Swift framework is not needed by this implementation.
@@ -124,3 +126,30 @@ Follow-up: the file-transfer implementation resolved the disk/build-phase
 blockers and produced a local macOS preview app plus an unsigned iOS archive.
 See [file-transfer verification](file-transfer.md) for the current build results;
 the earlier disk failure remains part of the initial verification history.
+
+## Local simulator initialization check (2026-10-21)
+
+Ran the real arm64 libtailscale in an iPhone 17 simulator on installed iOS 26.4,
+using an isolated `dev.pibot.sdk-simulator` app, preserving existing Pibo data.
+`PIBOT_TAILSCALE_LOCAL_PROBE=1` enables a debug-only, iOS-only launch probe:
+three real create/configure/close cycles, each close returning 0, each state
+directory empty and removed. It never calls SDK start/up/dial. The result is
+written to the test app's `tailscale-local-probe.json`; no real auth key is used.
+The actual WebView/native IPC UI also passed select embedded, prepare with a
+synthetic placeholder, stop, back, reenter, invalid-key error, and cancel.
+Evidence is local ignored `artifacts/tailscale-simulator/` (JSON, PNG, build logs).
+
+Tauri CLI refused this simulator because installed SDK 26.5 and runtime 26.4
+versions differ; direct Cargo + Xcode simulator build worked. Cargo must enable
+`embedded-tailscale,custom-protocol` for bundled frontend assets without a dev
+server. A temporary Xcode project skipped the Tauri Rust phase and linked the
+already-built simulator staticlib, with all SDK/toolchain Swift search paths.
+No runtime download was performed. Tauri `ios dev` unexpectedly reinstalled the
+existing Homebrew ios-deploy 1.12.2 (268.6 KB) before the command was stopped;
+subsequent work used existing tools directly.
+
+These checks prove library loading/configuration/lifecycle and UI IPC only.
+They do not prove authentication, Tailnet HTTP/WebSocket, VPN coexistence, or
+physical-device/background behavior. Network testing requires explicit approval
+for a temporary node login/auth key and an authorized peer/test runtime on the
+same Tailnet; no persistent credentials are needed for this test design.
