@@ -1,6 +1,8 @@
 import { PiBotError } from '../core/errors.ts';
 import { randomUUID, createHash } from 'node:crypto';
 import type { BotRuntime } from './runtime.ts';
+import type { JsonValue } from '@openma/matter';
+import { monitorResource, scheduleResource, type CommitResult, type Decision } from '../../pi/state-protection.ts';
 import type { Envelope } from './store.ts';
 import type { TriggerBase as Base, Schedule, Monitor, Fire, Detection, Candidate, Proposal, MemoryRecord } from '../../pi/types.ts';
 export type { Schedule, Monitor, Fire, Detection, Proposal, MemoryRecord } from '../../pi/types.ts';
@@ -107,12 +109,16 @@ export class ProactiveService {
     listFires(botId: string) {
         return this.runtime.store.list<Fire>('fires').filter(f => f.botId === botId);
     }
-    cancelSchedule(botId: string, id: string) {
-        const s = this.owned<Schedule>('schedules', botId, id);
-        this.runtime.store.put('schedules', {
-            ...s, state: 'cancelled', revision: s.revision + 1
+    /** Agent calls pass the revision they read; host calls commit against the current revision. */
+    cancelSchedule(botId: string, id: string, decision?: Decision): CommitResult<Schedule> {
+        return this.runtime.store.transaction(() => {
+            const commit = this.commitTrigger<Schedule>('schedule', botId, id, 'schedule.cancel', decision, s => ({
+                ...s, state: 'cancelled', revision: s.revision + 1
+            }));
+            if (commit.status === 'committed')
+                this.invalidateFires(id);
+            return commit;
         });
-        this.invalidateFires(id);
     }
     pauseSchedule(botId: string, id: string) {
         const s = this.owned<Schedule>('schedules', botId, id);
@@ -175,26 +181,51 @@ export class ProactiveService {
     listMonitors(botId: string) {
         return this.runtime.store.list<Monitor>('monitors').filter(m => m.botId === botId);
     }
-    enableMonitor(botId: string, id: string) {
-        const m = this.owned<Monitor>('monitors', botId, id);
-        this.source(m.sourceId);
-        if (!m.dryRunVerified)
-            throw new PiBotError('invalidRequest', 'Successful dry-run required before enable');
-        if (m.state !== 'active' || m.deadline <= this.now())
-            throw new PiBotError('invalidRequest', 'Monitor expired or cancelled');
-        if (m.enabled)
-            return;
-        this.runtime.store.put('monitors', {
-            ...m, enabled: true, revision: m.revision + 1
+    enableMonitor(botId: string, id: string, decision?: Decision): CommitResult<Monitor> {
+        this.source(this.owned<Monitor>('monitors', botId, id).sourceId);
+        return this.commitTrigger<Monitor>('monitor', botId, id, 'monitor.enable', decision, m => {
+            if (!m.dryRunVerified)
+                throw new PiBotError('invalidRequest', 'Successful dry-run required before enable');
+            if (m.state !== 'active' || m.deadline <= this.now())
+                throw new PiBotError('invalidRequest', 'Monitor expired or cancelled');
+            return m.enabled ? m : {
+                ...m, enabled: true, revision: m.revision + 1
+            };
         });
     }
-    cancelMonitor(botId: string, id: string) {
-        const m = this.owned<Monitor>('monitors', botId, id);
-        this.runtime.store.put('monitors', {
-            ...m, enabled: false, state: 'cancelled', revision: m.revision + 1
+    cancelMonitor(botId: string, id: string, decision?: Decision): CommitResult<Monitor> {
+        const commit = this.runtime.store.transaction(() => {
+            const commit = this.commitTrigger<Monitor>('monitor', botId, id, 'monitor.cancel', decision, m => ({
+                ...m, enabled: false, state: 'cancelled', revision: m.revision + 1
+            }));
+            if (commit.status === 'committed')
+                this.invalidateFires(id);
+            return commit;
         });
-        this.controllers.get(id)?.abort();
-        this.invalidateFires(id);
+        if (commit.status === 'committed')
+            this.controllers.get(id)?.abort();
+        return commit;
+    }
+    /** One conditional write of an owned trigger through the runtime's MutationStore.
+     * change returns the same object for a no-op; any other result must advance revision. */
+    private commitTrigger<T extends Base>(kind: 'schedule' | 'monitor', botId: string, id: string, operation: string, decision: Decision | undefined, change: (current: T) => T): CommitResult<T> {
+        this.owned<T>(kind === 'schedule' ? 'schedules' : 'monitors', botId, id);
+        const resourceId = kind === 'schedule' ? scheduleResource(id) : monitorResource(id);
+        // The host's own read and commit share one transaction; agents bring their observed revision.
+        return this.runtime.store.transaction(() => this.runtime.state.commit<T>({
+            botId, operationId: decision?.operationId ?? `host:${randomUUID()}`, operation, input: {
+                id
+            }, read: [{
+                    resourceId, revision: decision ? decision.observed : this.runtime.state.revision(botId, resourceId)
+                }], reread: `The ${kind} changed after you read it; nothing was applied. Call ${kind}_list, then decide again.`,
+            apply: tx => {
+                const current = tx.read(resourceId).value as unknown as T;
+                const next = change(current);
+                if (next !== current)
+                    tx.set(resourceId, next as unknown as JsonValue);
+                return next;
+            }
+        }));
     }
     private invalidateFires(triggerId: string) {
         // Do not replay running tools. Prevent new actions from already-admitted cancelled fires.

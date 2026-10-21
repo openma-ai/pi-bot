@@ -6,6 +6,7 @@
  * module free of host imports so the dependency arrow always points into `pi`.
  */
 import type { Bot, BotStateSnapshot, Envelope, Job, JobResultPage, MemoryRecord, Monitor, Outbound, Proposal, Question, Schedule } from './types.ts';
+import type { CommitResult, Decision, Revision } from './state-protection.ts';
 /** Thrown by a tool whose durable job failed; carries the native outcome. */
 export class JobExecutionError extends Error {
     constructor(message: string, readonly outcome: unknown) {
@@ -69,6 +70,10 @@ export interface BotHost {
     }): Envelope;
     sendToGroup(source: Envelope, text: string, key: string, priority?: boolean): Envelope[];
     sendMessage(e: Envelope, text: string, key: string, toolCallId?: string): Outbound;
+    commitMessage(e: Envelope, text: string, key: string, options?: {
+        toolCallId?: string;
+        observedConversation?: Revision;
+    }): CommitResult<Outbound>;
     askUser(e: Envelope, text: string, key: string, choices?:string[]): Question;
     startJob(e: Envelope, tool: string, args: unknown, key: string, execute: () => Promise<unknown>, options?: {
         quiet?: boolean;
@@ -93,7 +98,7 @@ export interface ProactivePort {
         overlap?: Schedule['overlap'];
     }): Schedule;
     listSchedules(botId: string): Schedule[];
-    cancelSchedule(botId: string, id: string): unknown;
+    cancelSchedule(botId: string, id: string, decision?: Decision): CommitResult<Schedule>;
     createMonitor(source: Envelope, input: {
         key: string;
         detector: string;
@@ -103,8 +108,8 @@ export interface ProactivePort {
     }): Monitor;
     listMonitors(botId: string): Monitor[];
     dryRunMonitor(botId: string, id: string): Promise<unknown>;
-    enableMonitor(botId: string, id: string): unknown;
-    cancelMonitor(botId: string, id: string): unknown;
+    enableMonitor(botId: string, id: string, decision?: Decision): CommitResult<Monitor>;
+    cancelMonitor(botId: string, id: string, decision?: Decision): CommitResult<Monitor>;
     startBackgroundWork(source: Envelope, input: {
         kind: 'research' | 'memory';
         key: string;
