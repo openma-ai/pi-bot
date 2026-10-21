@@ -7,6 +7,10 @@ use std::{path::PathBuf, process::Stdio};
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 use tokio::process::{Child, Command};
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Profile {
@@ -15,6 +19,8 @@ pub struct Profile {
     #[serde(default)]
     pub name: String,
     pub mode: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub embedded_tailscale: bool,
     pub data_dir: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<String>,
@@ -39,6 +45,7 @@ impl Profile {
             id: id.into(),
             name: name.into(),
             mode: "local".into(),
+            embedded_tailscale: false,
             data_dir: path.into(),
             host: None,
             project_dir: None,
@@ -57,6 +64,9 @@ impl Profile {
             || self.data_dir.chars().any(|c| c.is_control())
         {
             return Err("请检查 runtime 目录".into());
+        }
+        if self.embedded_tailscale && (self.mode != "ssh" || self.host_key.is_none()) {
+            return Err("内嵌 Tailscale 需要 SSH 模式和已核验主机公钥".into());
         }
         if self.name.len() > 300 || self.name.chars().any(|c| c.is_control()) {
             return Err("Invalid runtime name".into());
@@ -255,6 +265,10 @@ pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
     p.validate()?;
+    if p.embedded_tailscale {
+        let credentials = crate::ssh_credentials::credentials(p)?;
+        return crate::mobile_ssh::connect_authenticated(p, &credentials, None).await;
+    }
     if p.mode == "local" {
         let path = PathBuf::from(&p.data_dir);
         if !path.is_absolute() {
@@ -345,6 +359,26 @@ pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn embedded_route_requires_remote_profile_and_host_pin() {
+        let mut p = Profile::local("fixture", "fixture", "/tmp/fixture");
+        p.embedded_tailscale = true;
+        assert!(p.validate().is_err());
+        p.mode = "ssh".into();
+        p.host = Some("user@pibo.tail.ts.net".into());
+        p.project_dir = Some("~/pi-bot".into());
+        assert!(p.validate().is_err());
+        p.host_key = Some("ssh-ed25519 checked-separately".into());
+        assert!(p.validate().is_ok());
+        let old: Profile =
+            serde_json::from_str(r#"{"mode":"local","dataDir":"/tmp/fixture"}"#).unwrap();
+        assert!(!old.embedded_tailscale);
+        assert!(!serde_json::to_value(old)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .contains_key("embeddedTailscale"));
+    }
     #[test]
     fn discovery_rejects_non_loopback_and_credentials() {
         let token = "a".repeat(64);

@@ -19,7 +19,7 @@ export const RuntimeProfileSchema = Type.Union([
         additionalProperties: false
     }),
     Type.Object({
-        ...identity, mode: Type.Literal('ssh'), host: Type.String({
+        ...identity, embeddedTailscale: Type.Optional(Type.Boolean()), mode: Type.Literal('ssh'), host: Type.String({
             minLength: 1, maxLength: 255, pattern: '^(?:[a-zA-Z0-9_][a-zA-Z0-9_.-]*@)?[a-zA-Z0-9_][a-zA-Z0-9_.:-]*$'
         }), hostKey: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })), projectDir: path, dataDir: path, node: Type.Optional(path), sshPort: Type.Optional(port), configFile: Type.Optional(path), serverPort: Type.Integer({
             minimum: 0, maximum: 65535
@@ -36,6 +36,7 @@ export const RuntimeStatusSchema = Type.Object({
     active: Type.Union([Type.Object({
             id: Type.String(), profileId: Type.String(), mode: Type.Union([Type.Literal('local'), Type.Literal('ssh')]), baseUrl: Type.String(), profile: Type.Optional(RuntimeProfileSchema), scope: Type.String(), label: Type.String()
         }), Type.Null()]),
+    embeddedTailscaleAvailable: Type.Optional(Type.Boolean()),
     remoteOnly: Type.Optional(Type.Boolean()),
     credentialStorage: Type.Optional(Type.Union([Type.Literal("session"),Type.Literal("keychain"),Type.Literal("system")])),
     connecting: Type.Boolean()

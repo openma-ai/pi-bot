@@ -1,4 +1,4 @@
-//! Android first test build deliberately has no persistent credential backend.
+//! Android and desktop embedded SSH use session-only credentials.
 //! Only non-secret profiles are saved. Process death requires re-entry/import.
 use crate::{mobile_ssh::Credentials, transport::Profile};
 use sha2::{Digest, Sha256};
@@ -28,7 +28,7 @@ pub fn same_identity(a: &Profile, b: &Profile) -> bool {
 }
 pub fn configure(p: &Profile, mut credentials: Credentials, save: bool) -> Result<(), String> {
     if save {
-        return Err("Android 测试版仅支持会话内凭据；未启用持久化安全存储".into());
+        return Err("此连接仅支持会话内凭据；未启用持久化安全存储".into());
     }
     p.validate()?;
     crate::mobile_ssh::destination(p)?;
@@ -53,7 +53,7 @@ pub fn credentials(p: &Profile) -> Result<Credentials, String> {
         .map_err(|_| "凭据暂不可用")?
         .get(&account(p))
         .cloned()
-        .ok_or("此 Android 会话没有凭据，请在设置中重新输入密码或导入私钥".into())
+        .ok_or("此会话没有凭据，请在设置中重新输入密码或导入私钥".into())
 }
 pub fn store(p: &Profile, password: &str) -> Result<(), String> {
     configure(p, Credentials::password(password), false)

@@ -90,10 +90,14 @@ function Field({ label, value, onChange, placeholder, type = "text" }) {
     </label>
   );
 }
-function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionOnly = false }) {
+function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionOnly = false, tailscaleAvailable = false }) {
   const [mode, setMode] = useState(profile?.mode || "ssh"),
     [name, setName] = useState(profile?.name || ""),
     [host, setHost] = useState(profile?.host || "");
+  const [embeddedTailscale, setEmbeddedTailscale] = useState(!!profile?.embeddedTailscale);
+  const [tailKey, setTailKey] = useState("");
+  const [tailReady,setTailReady] = useState(false);
+  const nativeAuth = remoteOnly || embeddedTailscale;
   const keyInput = useRef();
   const [authMethod,setAuthMethod]=useState("password"), [passphrase,setPassphrase]=useState(""), [saveCredentials,setSaveCredentials]=useState(false), [interactive,setInteractive]=useState(false);
   const [profileId] = useState(() => profile?.id || crypto.randomUUID());
@@ -136,15 +140,16 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionO
               id: profileId,
               name: name.trim(),
               host: host.trim(),
-              ...(remoteOnly ? { hostKey: hostKey.trim() } : {}),
+              ...(nativeAuth ? { hostKey: hostKey.trim() } : {}),
+              ...(embeddedTailscale ? { embeddedTailscale: true } : {}),
               projectDir: project.trim(),
               dataDir: remoteDir.trim(),
               node: node.trim(),
               serverPort: Number(serverPort),
               ...(port ? { sshPort: Number(port) } : {}),
-              ...(configFile.trim() ? { configFile: configFile.trim() } : {}),
+              ...(!nativeAuth && configFile.trim() ? { configFile: configFile.trim() } : {}),
             },
-        remoteOnly ? {method:authMethod,password:authMethod === "password" ? password : "",privateKey: authMethod === "privateKey" && keyInput.current?.files?.[0] ? await readPrivateKey(keyInput.current.files[0]) : "",passphrase:authMethod === "privateKey" ? passphrase : "",interactive} : null,
+        nativeAuth ? {method:authMethod,password:authMethod === "password" ? password : "",privateKey: authMethod === "privateKey" && keyInput.current?.files?.[0] ? await readPrivateKey(keyInput.current.files[0]) : "",passphrase:authMethod === "privateKey" ? passphrase : "",interactive} : null,
         saveCredentials,
       );
       setPassword(""); setPassphrase(""); if(keyInput.current) keyInput.current.value="";
@@ -200,19 +205,29 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionO
             label="SSH 主机"
             value={host}
             onChange={setHost}
-            placeholder={remoteOnly ? "user@hostname" : "user@vps 或 SSH 别名"}
+            placeholder={nativeAuth ? "user@hostname" : "user@vps 或 SSH 别名"}
           />
           <Text size="1" color="gray">
-            {remoteOnly ? "支持密码、Ed25519/RSA 私钥与交互验证；主机公钥必须通过可信渠道核验，不会自动接受未知或变更的主机。" : "使用客户端的 SSH 配置与密钥。远程需先安装并独立启动 Pi Bot。"}
+            {nativeAuth ? "支持密码、Ed25519/RSA 私钥与交互验证；主机公钥必须通过可信渠道核验，不会自动接受未知或变更的主机。" : "使用客户端的 SSH 配置与密钥。远程需先安装并独立启动 Pi Bot。"}
           </Text>
-          {remoteOnly && <>
+          {window.__PIBOT_NATIVE__ && tailscaleAvailable && <>
+            <label><input type="checkbox" checked={embeddedTailscale} onChange={e=>setEmbeddedTailscale(e.target.checked)} />应用内 Tailscale（实验性）</label>
+            {embeddedTailscale && <>
+              <Text size="1" color="gray">仅此应用使用用户态 Tailnet；外层连接仍受当前 VPN 路由影响。启用 runtime 会使用 auth key 注册临时节点；状态只写临时目录，正常退出清理，异常退出可能留存。iOS 回前台会重新连接。</Text>
+              <Field label="Tailscale auth key（仅本次）" type="password" value={tailKey} onChange={setTailKey} />
+              <Button type="button" disabled={busy || !tailKey} onClick={async()=>{setBusy(true);setError("");const authKey=tailKey;setTailKey("");try{await window.__PIBOT_NATIVE__.call("runtime_control",{method:"tailscale/start",params:{authKey}});setTailReady(true);}catch(e){setError(String(e));}finally{setBusy(false);}}}>准备临时节点（启用时授权入网）</Button>
+              {tailReady && <Text size="1">临时节点已准备；保存设置后点击启用 runtime。</Text>}
+              <Button type="button" onClick={async()=>{try{await window.__PIBOT_NATIVE__.call("runtime_control",{method:"tailscale/stop",params:{}});setTailReady(false);}catch(e){setError(String(e));}}}>停止内嵌节点并断开</Button>
+            </>}
+          </>}
+          {nativeAuth && <>
             <Field label="已核验的 SSH 主机公钥" value={hostKey} onChange={setHostKey} placeholder="ssh-ed25519 AAAA…（完整公钥，不是 SHA256 指纹）" />
             <label>认证方式<select aria-label="SSH 认证方式" value={authMethod} onChange={e=>{setAuthMethod(e.target.value);setPassword("");setPassphrase("");if(keyInput.current)keyInput.current.value="";}}><option value="password">密码</option><option value="privateKey">私钥文件</option><option value="interactive">交互验证</option></select></label>
             {authMethod === "password" && <Field label="SSH 密码" value={password} onChange={setPassword} type="password" placeholder={profile?.id ? "留空保留已有凭据" : "输入 SSH 密码"} />}
             {authMethod === "privateKey" && <><label>私钥文件（不会显示正文）<input ref={keyInput} type="file" aria-label="导入 SSH 私钥" /></label><Field label="私钥口令（如已加密）" type="password" value={passphrase} onChange={setPassphrase} /></>}
             {authMethod !== "interactive" && <label><input type="checkbox" checked={interactive} onChange={e=>setInteractive(e.target.checked)} />需要附加交互验证（例如验证码）</label>}
-            {!sessionOnly && <label><input type="checkbox" checked={saveCredentials} onChange={e=>setSaveCredentials(e.target.checked)} />将本次凭据保存到此设备 Keychain</label>}
-            <Text size="1" color="gray">{sessionOnly ? "Android 测试版凭据仅在内存中，关闭进程后需要重新输入/导入；不会写入文件。" : "默认仅在内存使用；可选择 Keychain 保存，保存私钥时口令也受同样保护。"} 验证码从不保存。暂不支持硬件密钥、SSH agent、证书或网页登录式 MFA。</Text>
+            {!sessionOnly && remoteOnly && <label><input type="checkbox" checked={saveCredentials} onChange={e=>setSaveCredentials(e.target.checked)} />将本次凭据保存到此设备 Keychain</label>}
+            <Text size="1" color="gray">{sessionOnly ? "Android 测试版凭据仅在内存中，关闭进程后需要重新输入/导入；不会写入文件。" : (remoteOnly ? "默认仅在内存使用；可选择 Keychain 保存，保存私钥时口令也受同样保护。" : "内嵌连接的 SSH 凭据仅在当前进程内存中使用。")} 验证码从不保存。暂不支持硬件密钥、SSH agent、证书或网页登录式 MFA。</Text>
           </>}
         </>
       )}
@@ -274,13 +289,13 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionO
                 placeholder="0 为自动选择"
                 type="number"
               />
-              {!remoteOnly && <Field
+              {!nativeAuth && <Field
                 label="SSH 配置文件"
                 value={configFile}
                 onChange={setConfigFile}
                 placeholder="默认 ~/.ssh/config"
               />}
-              {!remoteOnly && <Field label="远程 Node 路径" value={node} onChange={setNode} />}
+              {!nativeAuth && <Field label="远程 Node 路径" value={node} onChange={setNode} />}
             </>
           )}
         </div>
@@ -331,8 +346,8 @@ function RuntimeSettings({ runtime }) {
   }
   async function save(profile, credentials, saveCredentials) {
     await runtime.configure(profile);
-    if (runtime.status.remoteOnly && credentials && (credentials.method === "interactive" || credentials.password || credentials.privateKey)) {
-      await window.__PIBOT_NATIVE__.call("ssh_credentials_set", { profileId: profile.id, credentials, save: saveCredentials });
+    if ((runtime.status.remoteOnly || profile.embeddedTailscale) && credentials && (credentials.method === "interactive" || credentials.password || credentials.privateKey)) {
+      await window.__PIBOT_NATIVE__.call("ssh_credentials_set", { profileId: profile.id, credentials, save: runtime.status.remoteOnly && saveCredentials });
     }
     setEditor(undefined);
     setNotice("Runtime 已保存，点击启用后使用。");
@@ -353,6 +368,7 @@ function RuntimeSettings({ runtime }) {
         <RuntimeEditor
           key={editor.id || "new"}
           profile={editor.id ? editor : undefined}
+          tailscaleAvailable={!!runtime.status.embeddedTailscaleAvailable}
           remoteOnly={!!runtime.status.remoteOnly}
           sessionOnly={runtime.status.credentialStorage === "session"}
           onSave={save}

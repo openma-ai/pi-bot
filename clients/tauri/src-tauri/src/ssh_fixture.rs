@@ -372,3 +372,135 @@ mod tests {
         });
     }
 }
+
+#[cfg(all(test, feature = "embedded-tailscale", pibo_tailscale_offline_test))]
+mod tailscale_offline {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    unsafe extern "C" {
+        fn pibo_tailscale_offline_marker() -> i32;
+    }
+    #[test]
+    fn http_sse_websocket_and_reconnect_through_ffi_socketpair_and_ssh() {
+        // This symbol exists only in the offline C double; the real SDK cannot run this test.
+        assert_eq!(unsafe { pibo_tailscale_offline_marker() }, 7319);
+        tauri::async_runtime::block_on(async {
+            let root =
+                std::env::temp_dir().join(format!("pibo-offline-fixture-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir(&root).unwrap();
+            let http = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+            let port = http.local_addr().unwrap().port();
+            std::fs::write(
+                root.join("daemon.json"),
+                format!(r#"{{"protocolVersion":"2026-10-13","http":"http://127.0.0.1:{port}"}}"#),
+            )
+            .unwrap();
+            std::fs::write(root.join("daemon.token"), "a".repeat(64)).unwrap();
+            let web = tokio::spawn(async move {
+                loop {
+                    let (mut socket, _) = http.accept().await.unwrap();
+                    tokio::spawn(async move {
+                        let mut request = Vec::new();
+                        let mut byte = [0];
+                        while !request.ends_with(b"\r\n\r\n") {
+                            socket.read_exact(&mut byte).await.unwrap();
+                            request.push(byte[0]);
+                            assert!(request.len() < 8192);
+                        }
+                        let request = String::from_utf8(request).unwrap();
+                        if !request.starts_with("GET /readyz") {
+                            assert!(request
+                                .to_lowercase()
+                                .contains(&format!("authorization: bearer {}", "a".repeat(64))));
+                        }
+                        if request.starts_with("GET /ws") {
+                            socket.write_all(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n").await.unwrap();
+                            // RFC 6455 masked text frame "Hi" from the client.
+                            let mut frame = [0; 8];
+                            socket.read_exact(&mut frame).await.unwrap();
+                            assert_eq!(frame, [0x81, 0x82, 1, 2, 3, 4, b'H' ^ 1, b'i' ^ 2]);
+                            socket.write_all(&[0x81, 2, b'H', b'i']).await.unwrap();
+                        } else {
+                            let body = if request.starts_with("GET /events") {
+                                "data: {\"fixture\":true}\n\n"
+                            } else {
+                                "{\"ok\":true}"
+                            };
+                            socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.unwrap();
+                        }
+                    });
+                }
+            });
+            let ssh = tokio::spawn(serve(root.clone()));
+            let mut profile = loop {
+                if let Ok(data) = std::fs::read(root.join("ssh-profile.json")) {
+                    break serde_json::from_slice::<crate::transport::Profile>(&data).unwrap();
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            };
+            profile.embedded_tailscale = true;
+            profile.host = Some("fixture@pibo-offline.invalid".into());
+            crate::tailscale::start("tskey-auth-offline-double-only").unwrap();
+            for _ in 0..2 {
+                let endpoint = crate::mobile_ssh::connect(&profile, PASSWORD)
+                    .await
+                    .unwrap();
+                assert!(endpoint
+                    .request("/fixture", "GET", "", "offline")
+                    .await
+                    .unwrap()
+                    .text()
+                    .await
+                    .unwrap()
+                    .contains("ok"));
+                assert!(endpoint
+                    .request("/events", "GET", "", "offline")
+                    .await
+                    .unwrap()
+                    .text()
+                    .await
+                    .unwrap()
+                    .contains("data:"));
+                let mut ws = TcpStream::connect(("127.0.0.1", endpoint.base.port().unwrap()))
+                    .await
+                    .unwrap();
+                ws.write_all(format!("GET /ws HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",endpoint.remote_host,"a".repeat(64)).as_bytes()).await.unwrap();
+                let mut response = Vec::new();
+                let mut byte = [0];
+                while !response.ends_with(b"\r\n\r\n") {
+                    ws.read_exact(&mut byte).await.unwrap();
+                    response.push(byte[0]);
+                }
+                assert!(String::from_utf8(response)
+                    .unwrap()
+                    .contains("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="));
+                ws.write_all(&[0x81, 0x82, 1, 2, 3, 4, b'H' ^ 1, b'i' ^ 2])
+                    .await
+                    .unwrap();
+                let mut frame = [0; 4];
+                ws.read_exact(&mut frame).await.unwrap();
+                assert_eq!(frame, [0x81, 2, b'H', b'i']);
+                drop(ws);
+                drop(endpoint);
+            }
+            // Changed host pins must still fail through the embedded route.
+            profile.host_key = Some(
+                russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519)
+                    .unwrap()
+                    .public_key()
+                    .to_openssh()
+                    .unwrap(),
+            );
+            assert!(crate::mobile_ssh::connect(&profile, PASSWORD)
+                .await
+                .is_err());
+            crate::tailscale::stop();
+            assert!(crate::tailscale::dial("pibo-offline.invalid", 1)
+                .await
+                .is_err());
+            ssh.abort();
+            web.abort();
+            let _ = std::fs::remove_dir_all(root);
+        });
+    }
+}

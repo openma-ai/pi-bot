@@ -11,6 +11,8 @@ export function validateProfile(value: unknown): RuntimeProfile {
     if (!Value.Check(RuntimeProfileSchema, value))
         throw Error('请检查连接配置：主机、目录和端口');
     const profile = value as RuntimeProfile;
+    if (profile.mode === 'ssh' && profile.embeddedTailscale)
+        throw Error('应用内 Tailscale 仅支持原生 Apple 客户端');
     if (profile.mode === 'ssh' && !profile.projectDir.startsWith('/') && !profile.projectDir.startsWith('~/'))
         throw Error('SSH 项目目录请填写绝对路径或 ~/ 开头的路径');
     return profile.mode === 'local' ? {

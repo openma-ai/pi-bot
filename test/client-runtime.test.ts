@@ -276,3 +276,7 @@ test('client gateway forwards existing SDK calls and private Pi auth to the chos
         await Promise.all(daemons.map(d => d.close()));
     }
 });
+
+test('browser runtime refuses native embedded routing instead of falling back to system SSH', () => {
+  assert.throws(() => managerModule!.validateProfile({mode:'ssh',host:'user@host',projectDir:'~/pi-bot',dataDir:'/runtime',serverPort:0,embeddedTailscale:true}), /原生 Apple/);
+});

@@ -5,13 +5,13 @@ mod mobile_ssh;
 mod runtime_distribution;
 #[cfg(target_os = "ios")]
 mod ssh_credentials;
-#[cfg(target_os = "android")]
+#[cfg(not(target_os = "ios"))]
 #[path = "ssh_credentials_android.rs"]
 mod ssh_credentials;
 #[cfg(feature = "client-fixtures")]
 pub mod ssh_fixture;
-#[cfg(any(target_os = "ios", target_os = "android"))]
 mod ssh_interactive;
+mod tailscale;
 mod transport;
 use serde_json::{json, Value};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
@@ -29,7 +29,7 @@ struct State {
 }
 impl State {
     fn status(&self) -> Value {
-        json!({"remoteOnly":cfg!(any(target_os = "ios", target_os = "android")),"credentialStorage":if cfg!(target_os="android") {"session"} else if cfg!(target_os="ios") {"keychain"} else {"system"},"profiles":self.profiles,"connecting":false,"active":self.active.as_ref().map(|(id,p,_)|json!({"id":id,"profileId":p.id,"mode":p.mode,"baseUrl":format!("/runtime/{id}"),"scope":p.id,"label":p.name,"profile":p}))})
+        json!({"embeddedTailscaleAvailable":cfg!(feature="embedded-tailscale"),"remoteOnly":cfg!(any(target_os = "ios", target_os = "android")),"credentialStorage":if cfg!(target_os="android") {"session"} else if cfg!(target_os="ios") {"keychain"} else {"system"},"profiles":self.profiles,"connecting":false,"active":self.active.as_ref().map(|(id,p,_)|json!({"id":id,"profileId":p.id,"mode":p.mode,"baseUrl":format!("/runtime/{id}"),"scope":p.id,"label":p.name,"profile":p}))})
     }
     fn retire(&mut self) {
         self.connection_epoch
@@ -135,7 +135,6 @@ async fn ssh_credentials_set(
     save: bool,
 ) -> Result<(), String> {
     main_window(&window)?;
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     {
         let s = state.lock().await;
         let p = s
@@ -143,12 +142,10 @@ async fn ssh_credentials_set(
             .iter()
             .find(|p| p.id == profile_id)
             .ok_or("Runtime 不存在")?;
+        if !cfg!(any(target_os = "ios", target_os = "android")) && !p.embedded_tailscale {
+            return Err("直连桌面使用系统 SSH 配置".into());
+        }
         ssh_credentials::configure(p, credentials, save)
-    }
-    #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    {
-        let _ = (state, profile_id, credentials, save);
-        Err("桌面使用系统 SSH 配置".into())
     }
 }
 #[tauri::command]
@@ -158,15 +155,7 @@ fn ssh_challenge_reply(
     answers: Option<Vec<String>>,
 ) -> Result<(), String> {
     main_window(&window)?;
-    #[cfg(any(target_os = "ios", target_os = "android"))]
-    {
-        ssh_interactive::respond(&id, answers)
-    }
-    #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    {
-        let _ = (id, answers);
-        Err("仅适用于 iOS".into())
-    }
+    ssh_interactive::respond(&id, answers)
 }
 
 #[tauri::command]
@@ -188,6 +177,21 @@ async fn runtime_control(
 ) -> Result<Value, String> {
     main_window(&window)?;
     match method.as_str() {
+        "tailscale/start" => {
+            let key = zeroize::Zeroizing::new(
+                params["authKey"]
+                    .as_str()
+                    .ok_or("请输入 Tailscale auth key")?
+                    .to_owned(),
+            );
+            tailscale::start(&key)?;
+            Ok(json!({"configured":true}))
+        }
+        "tailscale/stop" => {
+            state.lock().await.retire();
+            tailscale::stop();
+            Ok(json!({"configured":false}))
+        }
         "runtime/status" => Ok(state.lock().await.status()),
         "runtime/disconnect" => {
             let mut s = state.lock().await;
@@ -203,7 +207,6 @@ async fn runtime_control(
             if s.profiles.len() == 1 && !cfg!(any(target_os = "ios", target_os = "android")) {
                 return Err("至少保留一个 runtime".into());
             }
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             if let Some(p) = s.profiles.iter().find(|p| p.id == id) {
                 ssh_credentials::forget(p)?;
             }
@@ -256,8 +259,17 @@ async fn runtime_control(
                 };
                 #[cfg(not(any(target_os = "ios", target_os = "android")))]
                 let connection = async {
-                    let _ = app;
-                    transport::connect(&p).await
+                    if p.embedded_tailscale {
+                        let credentials = ssh_credentials::credentials(&p)?;
+                        mobile_ssh::connect_authenticated(
+                            &p,
+                            &credentials,
+                            Some(ssh_interactive::handler(app)),
+                        )
+                        .await
+                    } else {
+                        transport::connect(&p).await
+                    }
                 };
                 Some(Arc::new(tokio::select! {
                     _=cancelled=>return Err("连接已取消".into()),
@@ -270,7 +282,6 @@ async fn runtime_control(
             if epoch.load(std::sync::atomic::Ordering::SeqCst) != version {
                 return Err("连接已被更新操作取消".into());
             }
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             if let Some(old) = s.profiles.iter().find(|old| old.id == p.id) {
                 if !ssh_credentials::same_identity(old, &p) {
                     ssh_credentials::forget(old)?;
@@ -612,6 +623,7 @@ pub fn run() {
                     let handle = app.clone();
                     tauri::async_runtime::spawn(async move {
                         handle.state::<Shared>().lock().await.retire();
+                        tailscale::stop();
                         handle.exit(0);
                     });
                 }

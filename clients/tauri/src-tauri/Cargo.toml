@@ -31,6 +31,7 @@ security-framework = "3"
 tokio = { version = "1", features = ["process"] }
 
 [features]
+embedded-tailscale = []
 client-fixtures = ["dep:rand"]
 
 custom-protocol = ["tauri/custom-protocol"]

@@ -9,3 +9,9 @@ test('new remote-only iOS client can report zero profiles and preserve an approv
   for(const field of ['password','privateKey','passphrase','answers']) assert.equal(Value.Check(RuntimeProfileSchema, { ...p, [field]: 'must-never-be-profile-data' }), false);
   assert.equal(Value.Check(RuntimeProfileSchema, { ...p, hostKey: 'a'.repeat(4097) }), false);
 });
+test('embedded transport metadata is optional and never contains Tailnet credentials', () => {
+  const p = {mode:'ssh', host:'user@server.tail.ts.net', projectDir:'~/pi-bot', dataDir:'/runtime', serverPort:0, embeddedTailscale:true};
+  assert.equal(Value.Check(RuntimeProfileSchema,p),true);
+  for(const field of ['authKey','tailscaleAuthKey','stateDir']) assert.equal(Value.Check(RuntimeProfileSchema,{...p,[field]:'secret'}),false);
+  assert.equal(Value.Check(RuntimeProfileSchema,{...p,embeddedTailscale:'true'}),false);
+});

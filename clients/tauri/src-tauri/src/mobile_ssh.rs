@@ -140,10 +140,16 @@ pub async fn connect_authenticated(
         keepalive_max: 2,
         ..Default::default()
     });
-    let mut session = tokio::time::timeout(
-        Duration::from_secs(12),
-        ssh::connect(config, (host, p.ssh_port.unwrap_or(22)), PinnedHost(pin)),
-    )
+    let mut session = tokio::time::timeout(Duration::from_secs(12), async {
+        if p.embedded_tailscale {
+            let stream = crate::tailscale::dial(host, p.ssh_port.unwrap_or(22))
+                .await
+                .map_err(|e| russh::Error::IO(std::io::Error::other(e)))?;
+            ssh::connect_stream(config, stream, PinnedHost(pin)).await
+        } else {
+            ssh::connect(config, (host, p.ssh_port.unwrap_or(22)), PinnedHost(pin)).await
+        }
+    })
     .await
     .map_err(|_| "SSH 连接超时")?
     .map_err(|_| "SSH 连接失败：检查地址和已核验公钥，未知或变更的主机密钥会被拒绝")?;

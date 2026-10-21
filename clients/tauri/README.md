@@ -105,3 +105,7 @@ The shared chat UI shows complete assistant messages atomically; event deltas st
 ## Preview and production packages
 
 Use `npm run package:preview` for the isolated `Pi Bot Preview` macOS arm64 app. Use `npm run package:prod` only with existing Developer ID/notary profile references; it fails early when unavailable and produces a signed candidate until explicit `--notarize` succeeds. No automatic notarization is performed for preview. See [release workflow](../../docs/clients/DESKTOP-RELEASE.md) and [Android](../../docs/clients/ANDROID-TEST-BUILD.md). Windows/Linux/Intel installers have not been verified.
+
+Embedded userspace Tailnet transport is opt-in for Apple builds. See
+[embedded Tailscale](../../docs/embedded-tailscale.md) for architecture, pinned SDK
+builds, temporary credentials, offline tests and verification limits.
