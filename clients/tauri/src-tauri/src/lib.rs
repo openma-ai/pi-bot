@@ -536,6 +536,14 @@ pub fn run() {
                 let dir = app.path().app_data_dir()?;
                 std::fs::create_dir_all(&dir)?;
                 tauri::async_runtime::spawn(async move {
+                    let control_probe = match reqwest::Client::builder().no_proxy().timeout(std::time::Duration::from_secs(15)).build() {
+                        Ok(client) => match client.get("https://controlplane.tailscale.com/key?v=148").send().await {
+                            Ok(response) => json!({"status":response.status().as_u16()}),
+                            Err(error) => json!({"error":error.to_string()}),
+                        },
+                        Err(error) => json!({"error":error.to_string()}),
+                    };
+                    let _ = std::fs::write(dir.join("tailscale-control-probe.json"), serde_json::to_vec_pretty(&control_probe).unwrap());
                     let started = tokio::task::spawn_blocking(tailscale::browser_test_start).await;
                     if !matches!(started, Ok(Ok(()))) {
                         let _ = std::fs::write(dir.join("tailscale-browser-test.json"), b"{\"error\":\"SDK start failed\"}");

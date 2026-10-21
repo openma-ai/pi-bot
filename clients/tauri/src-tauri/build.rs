@@ -36,6 +36,7 @@ fn main() {
             std::path::Path::new(&dir).join("libtailscale.a").is_file(),
             "Build the pinned userspace archive with scripts/build-embedded-tailscale.sh first"
         );
+        println!("cargo:rerun-if-changed={dir}/libtailscale.a");
         println!("cargo:rustc-link-search=native={dir}");
         println!("cargo:rustc-link-lib=static=tailscale");
         println!("cargo:rustc-link-lib=framework=Security");

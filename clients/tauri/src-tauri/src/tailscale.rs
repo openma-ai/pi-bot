@@ -13,6 +13,7 @@ mod native {
     };
     unsafe extern "C" {
         fn tailscale_new() -> i32;
+        fn pibo_tailscale_use_system_routing();
         fn tailscale_set_dir(sd: i32, path: *const std::ffi::c_char) -> i32;
         fn tailscale_set_hostname(sd: i32, name: *const std::ffi::c_char) -> i32;
         fn tailscale_set_authkey(sd: i32, key: *const std::ffi::c_char) -> i32;
@@ -66,6 +67,9 @@ mod native {
             .mode(0o700)
             .create(&dir)
             .map_err(|_| "Cannot create temporary node directory")?;
+        unsafe {
+            pibo_tailscale_use_system_routing();
+        }
         let node = Arc::new(Node {
             sd: unsafe { tailscale_new() },
             dir,
@@ -119,6 +123,17 @@ mod native {
         unsafe extern "C" {
             fn tailscale_start(sd: i32) -> i32;
         }
+        use std::os::{fd::IntoRawFd, unix::fs::OpenOptionsExt};
+        let log = std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(node.dir.join("sdk-network.log"))
+            .map_err(|_| "Cannot create private SDK diagnostic log")?;
+        // The Go logger owns this descriptor; logs remain in this test node's temporary directory.
+        unsafe {
+            tailscale_set_logfd(node.sd, log.into_raw_fd());
+        }
         // Remove the placeholder before starting; interactive official login only.
         if unsafe { tailscale_set_authkey(node.sd, c"".as_ptr()) } != 0
             || unsafe { tailscale_set_hostname(node.sd, c"pibo-ios-simulator-test".as_ptr()) } != 0
@@ -151,8 +166,22 @@ mod native {
             free(out.cast());
         }
         let status = parsed.map_err(|_| "Invalid SDK status")?;
+        let diagnostics: Vec<String> = std::fs::read_to_string(node.dir.join("sdk-network.log"))
+            .unwrap_or_default()
+            .lines()
+            .filter(|line| {
+                line.contains("noise dial (")
+                    || line.contains("TLS cert verificication")
+                    || line.contains("unexpected HTTP response")
+            })
+            .filter(|line| !line.contains("tskey-"))
+            .rev()
+            .take(12)
+            .map(str::to_owned)
+            .collect();
+
         Ok(
-            serde_json::json!({"backendState":status["BackendState"],"authURL":status["AuthURL"],"health":status["Health"],"ips":status["TailscaleIPs"],"hostname":"pibo-ios-simulator-test","ephemeral":true}),
+            serde_json::json!({"networkDiagnostics":diagnostics,"backendState":status["BackendState"],"authURL":status["AuthURL"],"health":status["Health"],"ips":status["TailscaleIPs"],"hostname":"pibo-ios-simulator-test","ephemeral":true}),
         )
     }
     /// Local initialization only: never invokes start/up/dial or persists identity.

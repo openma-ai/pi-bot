@@ -175,3 +175,28 @@ No login URL or approved Tailnet membership was obtained. The test app was
 stopped and its temporary identity directory removed. Sanitized evidence:
 `artifacts/tailscale-simulator/browser-login-blocker.json`.
 Cloud peer was also unavailable, so live HTTP/WebSocket remain unverified.
+
+
+### Registration diagnosis and application socket fix
+
+Further actual-simulator comparison narrowed the failure to SDK interface binding:
+- The same app's no-proxy HTTPS GET to the official control-key endpoint returned 200.
+- Host DNS resolved the official control/log endpoints into 198.18.0.0/15 addresses.
+- SDK Noise dials on both ports 80/443 timed out; the official Apple netns code binds
+  sockets to a default interface, which can conflict with the existing route for
+  such DNS addresses. Its route-query option also failed in this simulator with
+  `no valid address found` and fell back to the default interface.
+- A tiny application Go/C bridge calls the official process-local
+  `netns.SetDisableBindConnToInterface(logger.Discard, true)` before node creation.
+  With that change, the simulator immediately completed Noise and received an
+  official browser authorization URL. Approval was still pending at that point.
+
+The bridge is built with a Go source overlay; the pinned official SDK checkout
+is not edited. Rerun the helper to rebuild existing archives. This makes the
+application's outer sockets follow existing OS routes; it does not modify system
+VPN/proxy/DNS/firewall/routing, create a TUN, disable TLS/Noise, or promise to bypass
+another VPN. Device VPN coexistence and live peer traffic still require testing.
+Private diagnostic SDK logs exist only in the temporary test-node directory;
+restricted reports omit keys and peer lists. The debug diagnostic additionally
+accesses only the official public control-key endpoint once. No production
+connection automatically triggers browser login.

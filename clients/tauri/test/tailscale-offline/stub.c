@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 int pibo_tailscale_offline_marker(void) { return 7319; }
+void pibo_tailscale_use_system_routing(void) {}
 int tailscale_new(void) { return 1; }
 int tailscale_set_dir(int s,const char*p) { return 0; }
 int tailscale_set_hostname(int s,const char*p) { return 0; }
