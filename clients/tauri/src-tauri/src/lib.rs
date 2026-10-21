@@ -549,9 +549,22 @@ pub fn run() {
                         let _ = std::fs::write(dir.join("tailscale-browser-test.json"), b"{\"error\":\"SDK start failed\"}");
                         return;
                     }
-                    for _ in 0..450 {
+                    let mut tested = false;
+                    let deadline = std::env::var("PIBOT_TAILSCALE_TEST_DEADLINE").ok().and_then(|v|v.parse::<u64>().ok())
+                        .unwrap_or_else(||std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()+900);
+                    while std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() < deadline {
                         let status = tokio::task::spawn_blocking(tailscale::browser_test_status).await;
                         if let Ok(result) = status {
+                            if !tested && result.as_ref().ok().is_some_and(|v|v["backendState"]=="Running") && std::env::var("PIBOT_TAILSCALE_PEER_TEST").as_deref()==Ok("100.104.147.6:8080") {
+                                tested=true;
+                                let result=tokio::time::timeout(std::time::Duration::from_secs(deadline.saturating_sub(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()).min(60)),async {
+                                    let mut result=Err("Not attempted".to_string());
+                                    for _ in 0..3 {tokio::time::sleep(std::time::Duration::from_secs(3)).await;result=tailscale::peer_test().await;if result.is_ok(){break;}}
+                                    result
+                                }).await;
+                                let report=match result {Ok(v)=>serde_json::to_value(v).unwrap(),Err(_)=>json!({"Err":"Peer test timeout"})};
+                                let _=std::fs::write(dir.join("tailscale-peer-test.json"),serde_json::to_vec_pretty(&report).unwrap());
+                            }
                             if let Ok(bytes) = serde_json::to_vec_pretty(&result) {
                                 let _ = std::fs::write(dir.join("tailscale-browser-test.json"), bytes);
                             }

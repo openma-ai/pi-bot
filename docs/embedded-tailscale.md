@@ -200,3 +200,30 @@ Private diagnostic SDK logs exist only in the temporary test-node directory;
 restricted reports omit keys and peer lists. The debug diagnostic additionally
 accesses only the official public control-key endpoint once. No production
 connection automatically triggers browser login.
+
+
+### Real Tailnet binary transport (2026-10-21)
+
+Approved simulator node 100.90.99.34 and isolated Docker peer 100.104.147.6 were
+Running. Official Tailnet-only Serve forwarded TCP 8080 to the synthetic container
+loopback service; no host/public ports or SSH were exposed. A debug-only fixed-peer
+probe used real libtailscale C ABI dial for HTTP and WebSocket (no localhost
+fallback). The successful report was written at 13:53:13 UTC, before the original
+13:53:48 UTC deadline: HTTP 256 binary bytes, WebSocket 256 binary bytes, both
+identical to bytes 0..255, SHA256
+`40aff2e9d2d8922e47afd4648e6967497158785fbd1da870e7110266bf944880`.
+A new connection returned the same synthetic server UUID. Initial probe failures
+included unsupported chunked decoding and transient empty HTTP responses; the
+probe now decodes chunked bodies and makes at most three bounded attempts.
+The same approved temporary identity/IP was restored for test-build updates;
+no new node approval was requested and the absolute deadline was retained.
+
+A preceding attempt's Docker status showed this peer using relay hkg with no
+CurAddr (Rx=1028, Tx=980). The success-round path snapshot was taken after the
+ephemeral peer disappeared, so direct versus relay for that exact successful
+round is unverified. Last SDK status file write was 13:53:47 UTC. Process stopped
+and temporary identity deletion were confirmed at 13:54:15 UTC; the exact earlier
+SDK shutdown instant was not instrumented. No session renewal occurred.
+Evidence: ignored `artifacts/tailnet-live/`. Ten native regression tests passed.
+These are simulator transport checks, not physical iPhone/VPN/lockscreen or full
+Pibo chat/desktop acceptance.

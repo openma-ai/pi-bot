@@ -53,6 +53,9 @@ mod native {
         NODE.get_or_init(Default::default)
     }
     pub fn start(key: &str) -> Result<(), String> {
+        configure(key, None)
+    }
+    fn configure(key: &str, reuse: Option<PathBuf>) -> Result<(), String> {
         if !key.starts_with("tskey-auth-") || key.len() > 1024 {
             return Err("请输入有效 Tailscale auth key".into());
         }
@@ -61,12 +64,23 @@ mod native {
             return Err("请先停止当前内嵌节点".into());
         }
         let key = CString::new(key).map_err(|_| "Invalid auth key")?;
-        let dir = std::env::temp_dir().join(format!("pibo-tailnet-{}", uuid::Uuid::new_v4()));
+        let existing = reuse.is_some();
+        let dir = reuse.unwrap_or_else(|| {
+            std::env::temp_dir().join(format!("pibo-tailnet-{}", uuid::Uuid::new_v4()))
+        });
         use std::os::unix::fs::DirBuilderExt;
-        std::fs::DirBuilder::new()
-            .mode(0o700)
-            .create(&dir)
-            .map_err(|_| "Cannot create temporary node directory")?;
+        if existing {
+            let metadata =
+                std::fs::symlink_metadata(&dir).map_err(|_| "Missing test identity directory")?;
+            if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                return Err("Invalid test directory".into());
+            }
+        } else {
+            std::fs::DirBuilder::new()
+                .mode(0o700)
+                .create(&dir)
+                .map_err(|_| "Cannot create temporary node directory")?;
+        }
         unsafe {
             pibo_tailscale_use_system_routing();
         }
@@ -114,7 +128,20 @@ mod native {
     }
     #[cfg(debug_assertions)]
     pub fn browser_test_start() -> Result<(), String> {
-        start("tskey-auth-local-placeholder")?;
+        let reuse = std::env::var("PIBOT_TAILSCALE_REUSE_DIR")
+            .ok()
+            .map(|name| {
+                if !name.starts_with("pibo-tailnet-")
+                    || name.contains('/')
+                    || name.contains('\\')
+                    || name.contains("..")
+                {
+                    return Err("Invalid test identity name".to_string());
+                }
+                Ok(std::env::temp_dir().join(name))
+            })
+            .transpose()?;
+        configure("tskey-auth-local-placeholder", reuse)?;
         let node = current()
             .lock()
             .map_err(|_| "Node lock unavailable")?
@@ -125,8 +152,8 @@ mod native {
         }
         use std::os::{fd::IntoRawFd, unix::fs::OpenOptionsExt};
         let log = std::fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
+            .create(true)
+            .append(true)
             .mode(0o600)
             .open(node.dir.join("sdk-network.log"))
             .map_err(|_| "Cannot create private SDK diagnostic log")?;
@@ -182,6 +209,122 @@ mod native {
 
         Ok(
             serde_json::json!({"networkDiagnostics":diagnostics,"backendState":status["BackendState"],"authURL":status["AuthURL"],"health":status["Health"],"ips":status["TailscaleIPs"],"hostname":"pibo-ios-simulator-test","ephemeral":true}),
+        )
+    }
+    #[cfg(debug_assertions)]
+    pub async fn peer_test() -> Result<serde_json::Value, String> {
+        use sha2::{Digest, Sha256};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        const HOST: &str = "100.104.147.6";
+        async fn http(path: &str, body: &[u8]) -> Result<Vec<u8>, String> {
+            let mut stream = dial(HOST, 8080).await?;
+            let method = if path == "/echo" { "POST" } else { "GET" };
+            stream.write_all(format!("{method} {path} HTTP/1.1\r\nHost: {HOST}:8080\r\nConnection: close\r\nContent-Length: {}\r\n\r\n",body.len()).as_bytes()).await.map_err(|e|e.to_string())?;
+            stream.write_all(body).await.map_err(|e| e.to_string())?;
+            let mut bytes = Vec::new();
+            stream
+                .take(65536)
+                .read_to_end(&mut bytes)
+                .await
+                .map_err(|e| e.to_string())?;
+            if !bytes.starts_with(b"HTTP/1.1 200 ") {
+                return Err(format!(
+                    "HTTP {path}: bytes={}, prefix={:?}",
+                    bytes.len(),
+                    String::from_utf8_lossy(&bytes[..bytes.len().min(256)])
+                ));
+            }
+            let split = bytes
+                .windows(4)
+                .position(|w| w == b"\r\n\r\n")
+                .ok_or("Missing HTTP header")?;
+            let body = &bytes[split + 4..];
+            if String::from_utf8_lossy(&bytes[..split])
+                .to_ascii_lowercase()
+                .contains("transfer-encoding: chunked")
+            {
+                let mut remaining = body;
+                let mut decoded = Vec::new();
+                loop {
+                    let end = remaining
+                        .windows(2)
+                        .position(|w| w == b"\r\n")
+                        .ok_or("Invalid chunk header")?;
+                    let size = usize::from_str_radix(
+                        std::str::from_utf8(&remaining[..end])
+                            .map_err(|_| "Invalid chunk size")?
+                            .split(';')
+                            .next()
+                            .unwrap(),
+                        16,
+                    )
+                    .map_err(|_| "Invalid chunk size")?;
+                    remaining = &remaining[end + 2..];
+                    if size == 0 {
+                        break;
+                    }
+                    if size > 65536
+                        || remaining.len() < size + 2
+                        || &remaining[size..size + 2] != b"\r\n"
+                    {
+                        return Err("Invalid chunk body".into());
+                    }
+                    decoded.extend_from_slice(&remaining[..size]);
+                    remaining = &remaining[size + 2..];
+                }
+                Ok(decoded)
+            } else {
+                Ok(body.to_vec())
+            }
+        }
+        let first: serde_json::Value =
+            serde_json::from_slice(&http("/health", &[]).await?).map_err(|e| e.to_string())?;
+        let payload: Vec<u8> = (0..=255).collect();
+        if http("/echo", &payload).await? != payload {
+            return Err("HTTP byte mismatch".into());
+        }
+        let mut ws = dial(HOST, 8080).await?;
+        ws.write_all(format!("GET /ws HTTP/1.1\r\nHost: {HOST}:8080\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n").as_bytes()).await.map_err(|e|e.to_string())?;
+        let mut header = Vec::new();
+        while !header.ends_with(b"\r\n\r\n") {
+            header.push(ws.read_u8().await.map_err(|e| e.to_string())?);
+            if header.len() > 8192 {
+                return Err("Oversize WS header".into());
+            }
+        }
+        let header = String::from_utf8_lossy(&header);
+        if !header.starts_with("HTTP/1.1 101 ") || !header.contains("s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+        {
+            return Err("Invalid WebSocket handshake".into());
+        }
+        let mask = [11, 22, 33, 44];
+        let mut frame = vec![0x82, 0xfe, 1, 0];
+        frame.extend_from_slice(&mask);
+        frame.extend(payload.iter().enumerate().map(|(i, b)| b ^ mask[i % 4]));
+        ws.write_all(&frame).await.map_err(|e| e.to_string())?;
+        let mut head = [0; 4];
+        ws.read_exact(&mut head).await.map_err(|e| e.to_string())?;
+        if head != [0x82, 126, 1, 0] {
+            return Err("Invalid WS binary frame".into());
+        }
+        let mut echoed = vec![0; 256];
+        ws.read_exact(&mut echoed)
+            .await
+            .map_err(|e| e.to_string())?;
+        if echoed != payload {
+            return Err("WebSocket byte mismatch".into());
+        }
+        ws.write_all(&[0x88, 0x80, 0, 0, 0, 0])
+            .await
+            .map_err(|e| e.to_string())?;
+        drop(ws);
+        let second: serde_json::Value =
+            serde_json::from_slice(&http("/health", &[]).await?).map_err(|e| e.to_string())?;
+        if first["run"] != second["run"] {
+            return Err("Peer run changed".into());
+        }
+        Ok(
+            serde_json::json!({"target":"100.104.147.6:8080","transport":"real libtailscale C ABI dial; no localhost fallback","serverRun":first["run"],"httpBinaryBytes":payload.len(),"webSocketBinaryBytes":echoed.len(),"sha256":format!("{:x}",Sha256::digest(&payload)),"reconnectSameServer":true}),
         )
     }
     /// Local initialization only: never invokes start/up/dial or persists identity.
@@ -307,3 +450,6 @@ pub use native::local_probe;
 
 #[cfg(all(feature = "embedded-tailscale", debug_assertions))]
 pub use native::{browser_test_start, browser_test_status};
+
+#[cfg(all(feature = "embedded-tailscale", debug_assertions))]
+pub use native::peer_test;
