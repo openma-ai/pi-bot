@@ -30,6 +30,7 @@ mod native {
         sd: i32,
         dir: PathBuf,
         closed: AtomicBool,
+        dialed: AtomicBool,
     }
     impl Node {
         fn close(&self) {
@@ -69,6 +70,7 @@ mod native {
             sd: unsafe { tailscale_new() },
             dir,
             closed: AtomicBool::new(false),
+            dialed: AtomicBool::new(false),
         });
         let path = CString::new(node.dir.to_string_lossy().as_bytes())
             .map_err(|_| "Invalid node directory")?;
@@ -87,6 +89,17 @@ mod native {
         }
         *slot = Some(node);
         Ok(())
+    }
+    pub fn state() -> &'static str {
+        match current().lock() {
+            Ok(slot) => match slot.as_ref() {
+                None => "notPrepared",
+                Some(node) if node.closed.load(Ordering::SeqCst) => "stopped",
+                Some(node) if node.dialed.load(Ordering::SeqCst) => "dialed",
+                Some(_) => "prepared",
+            },
+            Err(_) => "stopped",
+        }
     }
     pub fn stop() {
         if let Ok(mut slot) = current().lock() {
@@ -141,6 +154,7 @@ mod native {
             }
         };
         pending.armed = false;
+        node.dialed.store(true, Ordering::SeqCst);
         let stream = std::os::unix::net::UnixStream::from(fd);
         stream
             .set_nonblocking(true)
@@ -149,7 +163,7 @@ mod native {
     }
 }
 #[cfg(feature = "embedded-tailscale")]
-pub use native::{dial, start, stop};
+pub use native::{dial, start, state, stop};
 #[cfg(not(feature = "embedded-tailscale"))]
 pub fn start(_: &str) -> Result<(), String> {
     Err("此构建未启用 embedded-tailscale；请安装启用内嵌库的 Apple 构建".into())
@@ -172,4 +186,9 @@ mod tests {
         assert!(super::start("").is_err());
         assert!(super::start("not-an-auth-key").is_err());
     }
+}
+
+#[cfg(not(feature = "embedded-tailscale"))]
+pub fn state() -> &'static str {
+    "unavailable"
 }

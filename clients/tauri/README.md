@@ -114,3 +114,9 @@ Bidirectional chat files (8 MiB each, up to four per message), generated artifac
 cards, macOS saving and iOS system sharing are described in
 [file transfer](../../docs/file-transfer.md). Upgrade the runtime along with the
 client for file RPC support; ordinary text chat remains compatible.
+
+Safe static PNG/JPEG/WebP previews, real Pi image-content inputs with explicit
+text-only fallback, and the first-run/reconnect screen are covered in
+[images and connection flow](../../docs/images-and-connection-flow.md). The local
+UI acceptance fixture is in [test/ui](test/ui/README.md); it never connects a real
+Tailnet or calls a paid model.

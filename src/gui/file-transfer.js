@@ -14,6 +14,7 @@ export async function hashBytes(bytes) {
 export async function uploadFile(api, scope, file, signal, onProgress = () => {
 }) {
     signal?.throwIfAborted();
+    if(['image/png','image/jpeg','image/webp'].includes(file.type)&&file.size>5*1024*1024)throw Error('图片最多 5 MiB');
     if (file.size > FILE_LIMIT)
         throw Error('每个文件最多 8 MiB');
     let id;

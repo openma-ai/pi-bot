@@ -1,4 +1,5 @@
 export type ChannelMessage = {
+    imageInputStatus?: "attached" | "unsupported";
     attachments?: import("../../pi/types.ts").FileAttachment[];
     messageId: string;
     channelId: string;

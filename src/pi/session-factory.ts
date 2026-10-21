@@ -1,3 +1,4 @@
+import { attachmentImages } from './attachment-images.ts';
 import type { SandboxHost } from './sandbox.ts';
 import { createDesktopExtension, desktopToolNames, type DesktopClient } from './desktop-client.ts';
 import { imageBudgetForModel } from './image-budget.ts';
@@ -579,7 +580,11 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
         });
         const loader = new DefaultResourceLoader({
             cwd: dir, agentDir: dir, settingsManager: settings, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, extensionFactories: [...(options.extensions ?? []), ...(sandbox ? [sandbox.extension] : []), ...(background ? [background] : []), extension, createContextExtension({
-                    ...options.context, imageBudget: options.context?.imageBudget ?? imageBudgetForModel(options.model), onCompaction: info => {
+                    ...options.context, imageBudget: options.context?.imageBudget ?? imageBudgetForModel(options.model) ?? (options.model.input.includes('image') ? {
+                        // Application reservation, not a provider billing estimate.
+                        // Reject contexts that cannot reserve this space; never drop images.
+                        tokensPerImage: 65536, maxImages: options.model.inputLimits?.images?.maxPerRequest ?? 64, maxImageBytes: 5 * 1024 * 1024
+                    } : undefined), onCompaction: info => {
                         runtime.events?.emit(bot.id, {
                             type: 'compaction', ...info
                         });
@@ -792,7 +797,10 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                 consumed.clear();
                 wakeError = undefined;
                 try {
-                    await session.prompt(format(e));
+                    const input = attachmentImages(runtime, e, session.model ?? options.model);
+                    await session.prompt(format(e) + input.notice, {
+                        images: input.images, expandPromptTemplates: false
+                    });
                     if (scopeYielded)
                         throw new InferenceYieldError();
                     if (wakeError)
@@ -824,7 +832,8 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                 const target = inference;
                 // Explicit steer works while tools execute and while native
                 // settlement runs; prompt() races its isStreaming check there.
-                const work = session.steer(format(e));
+                const input = attachmentImages(runtime, e, session.model ?? options.model);
+                const work = session.steer(format(e) + input.notice, input.images);
                 enqueues.add(work);
                 try {
                     await work;

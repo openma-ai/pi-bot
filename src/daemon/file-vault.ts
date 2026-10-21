@@ -1,3 +1,4 @@
+import { safeImage, type SafeImage } from './image-files.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants, openSync, closeSync, writeSync, readSync, readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync, statSync, fstatSync, realpathSync, lstatSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -10,6 +11,7 @@ export type FileRef = {
     size: number;
     sha256: string;
     scope: string;
+    image?: SafeImage;
 };
 type RecordFile = FileRef & {
     owner: string;
@@ -85,9 +87,11 @@ export class FileVault {
         }
     }
     ref(f: RecordFile): FileRef {
-        const { id, name, mime, size, sha256, scope } = f;
+        const { id, name, mime, size, sha256, scope, image } = f;
         return {
-            id, name, mime, size, sha256, scope
+            id, name, mime, size, sha256, scope, ...(image ? {
+                image
+            } : {})
         };
     }
     begin(owner: string, scope: string, name: string, mime: string, size: number) {
@@ -149,7 +153,13 @@ export class FileVault {
         const f = this.check(owner, scope, id);
         if (f.received !== f.size)
             fail('File incomplete');
-        const hash = createHash('sha256').update(this.bytes(f)).digest('hex');
+        const bytes = this.bytes(f);
+        const image = safeImage(bytes, f.mime);
+        if (image) {
+            f.image = image;
+            f.mime = image.mime;
+        }
+        const hash = createHash('sha256').update(bytes).digest('hex');
         if (sha256 && sha256 !== hash)
             fail('File checksum mismatch');
         f.sha256 = hash;
@@ -199,6 +209,19 @@ export class FileVault {
             f.bound = true;
             this.save(f);
         }
+    }
+    imageInputs(owner: string, scope: string, ids: string[]) {
+        return ids.flatMap(id => {
+            const f = this.check(owner, scope, id);
+            if (!f.ready || !f.image)
+                return [];
+            const bytes = this.bytes(f), image = safeImage(bytes, f.mime);
+            if (!image || createHash('sha256').update(bytes).digest('hex') !== f.sha256)
+                fail('Image integrity check failed');
+            return [{
+                    type: 'image' as const, data: bytes.toString('base64'), mimeType: image!.mime
+                }];
+        });
     }
     context(owner: string, scope: string, ids: string[]) {
         return ids.map(id => {

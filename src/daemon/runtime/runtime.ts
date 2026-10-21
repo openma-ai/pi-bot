@@ -35,6 +35,17 @@ export class BotRuntime implements BotHost {
             throw new PiBotError("forbidden", "No client file context for this task");
         return source;
     }
+    fileImageInputs(e: Envelope) {
+        const source = this.fileSource(e);
+        return this.files.imageInputs(source.fileOwner!, this.fileScope(source), (source.attachments ?? []).filter(f => f.image).map(f => f.id));
+    }
+    fileImageStatus(e: Envelope, status: "attached" | "unsupported") {
+        const stored = this.store.get<Envelope>('inbox', e.id);
+        if (stored && stored.imageInputStatus !== status)
+            this.store.put('inbox', {
+                ...stored, imageInputStatus: status
+            });
+    }
     fileContext(e: Envelope) {
         this.assertTaskCurrent(e);
         const source = this.fileSource(e), scope = this.fileScope(source), owner = source.fileOwner!;

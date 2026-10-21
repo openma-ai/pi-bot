@@ -5,6 +5,13 @@ const scope = {
     botId: Id, groupId: optId, threadId: optId
 };
 export const FileRefSchema = O({
+    image: Type.Optional(O({
+        mime: Type.Union([Type.Literal("image/png"), Type.Literal("image/jpeg"), Type.Literal("image/webp")]), width: Type.Integer({
+            minimum: 1, maximum: 8192
+        }), height: Type.Integer({
+            minimum: 1, maximum: 8192
+        })
+    })),
     id: Id, name: Type.String(), mime: Type.String(), size: Type.Integer({
         minimum: 0, maximum: 8388608
     }), sha256: Type.String(), scope: Type.String()

@@ -32,6 +32,11 @@ export type ChatRoute = {
     senderId: string;
 };
 export type FileAttachment = {
+    image?: {
+        mime: "image/png" | "image/jpeg" | "image/webp";
+        width: number;
+        height: number;
+    };
     id: string;
     name: string;
     mime: string;
@@ -40,6 +45,7 @@ export type FileAttachment = {
     scope: string;
 };
 export type Envelope = {
+    imageInputStatus?: "attached" | "unsupported";
     attachments?: FileAttachment[];
     fileOwner?: string;
     id: string;

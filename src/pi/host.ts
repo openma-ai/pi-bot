@@ -63,6 +63,12 @@ export interface BotHost {
     readonly options: {
         readonly permission?: Permission;
     };
+    fileImageInputs?(e: Envelope): {
+        type: "image";
+        data: string;
+        mimeType: string;
+    }[];
+    fileImageStatus?(e: Envelope, status: "attached" | "unsupported"): void;
     fileContext?(e: Envelope): {
         outputDir: string;
         attachments: unknown[];

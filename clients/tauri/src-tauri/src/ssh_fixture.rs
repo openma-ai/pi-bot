@@ -457,6 +457,7 @@ mod tailscale_offline {
             profile.embedded_tailscale = true;
             profile.host = Some("fixture@pibo-offline.invalid".into());
             crate::tailscale::start("tskey-auth-offline-double-only").unwrap();
+            assert_eq!(crate::tailscale::state(), "prepared");
             for _ in 0..2 {
                 let endpoint = crate::mobile_ssh::connect(&profile, PASSWORD)
                     .await
@@ -530,7 +531,9 @@ mod tailscale_offline {
             assert!(crate::mobile_ssh::connect(&profile, PASSWORD)
                 .await
                 .is_err());
+            assert_eq!(crate::tailscale::state(), "dialed");
             crate::tailscale::stop();
+            assert_eq!(crate::tailscale::state(), "notPrepared");
             assert!(crate::tailscale::dial("pibo-offline.invalid", 1)
                 .await
                 .is_err());

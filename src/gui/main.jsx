@@ -1,3 +1,4 @@
+import {ConnectionLanding} from "./ConnectionLanding.jsx";
 import { NativeSshChallenge } from "./NativeSshChallenge.jsx";
 import { layoutMessages, isUserMessage } from "./message-layout.ts";
 import { senderLabelColor } from "./identity-color.ts";
@@ -1219,7 +1220,7 @@ function App({ runtime, setPiSettingsOpen }) {
                           {view === "peers" && <div className="peer-sender-name">{isUserMessage(m) ? "你" : botName(m.sender)}</div>}
                           <div className="bubble">
                           <MessageBody text={displayText(m)} />
-                          <FileCards files={m.attachments} api={api} scope={{botId:m.botId||selected,...(view==="group"?{groupId}:{})}} />
+                          <FileCards files={m.attachments} imageInputStatus={m.imageInputStatus} api={api} scope={{botId:m.botId||selected,...(view==="group"?{groupId}:{})}} />
 
                           {["queued", "processing"].includes(m.status) && (
                             <Text size="1" className="status">
@@ -1310,7 +1311,8 @@ function App({ runtime, setPiSettingsOpen }) {
                   </div>
                 )}
                 <div className="composer">
-                  <label className="attach-button">附件<input aria-label="上传聊天附件" type="file" multiple disabled={!api||busy||fileBusy||!fileScope.botId} onChange={pickFiles} /></label>
+                  <label className="attach-button">文件<input aria-label="上传聊天附件" type="file" multiple disabled={!api||busy||fileBusy||!fileScope.botId} onChange={pickFiles} /></label>
+                  <label className="attach-button">图片<input aria-label="上传图片" type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={!api||busy||fileBusy||!fileScope.botId} onChange={pickFiles} /></label>
                   {fileBusy&&<button onClick={()=>uploadCancel.current?.abort()}>取消上传</button>}
                   {fileError&&<span role="alert">{fileError}</span>}
                   {fileAttachments.map(f=><span key={f.id}>{f.name} <button onClick={()=>{setFileAttachments(old=>old.filter(x=>x.id!==f.id));void api.file.cancel({...fileScope,id:f.id}).catch(()=>{});}}>移除附件</button></span>)}
@@ -1768,11 +1770,11 @@ function RuntimeShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   return (
     <>
-      <App
+      {runtime.managed&&!runtime.status.active?<ConnectionLanding runtime={runtime} onSettings={()=>setSettingsOpen(true)}/>:<App
         key={runtime.status.active?.id || "disconnected"}
         runtime={runtime}
         setPiSettingsOpen={setSettingsOpen}
-      />
+      />}
       <Theme
         className="overlay-theme"
         appearance="dark"

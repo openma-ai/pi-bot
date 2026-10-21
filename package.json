@@ -45,6 +45,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "effect": "^3.22.1",
+    "image-size": "2.0.4",
     "lucide-react": "^0.468.0",
     "pi-chrome-use": "1.1.1",
     "pi-subagents": "0.77.0",

@@ -90,7 +90,7 @@ function Field({ label, value, onChange, placeholder, type = "text" }) {
     </label>
   );
 }
-function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionOnly = false, tailscaleAvailable = false }) {
+export function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionOnly = false, tailscaleAvailable = false,onboarding=false,tailState,knownProfile=!!profile }) {
   const [mode, setMode] = useState(profile?.mode || "ssh"),
     [name, setName] = useState(profile?.name || ""),
     [host, setHost] = useState(profile?.host || "");
@@ -126,6 +126,8 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionO
     setBusy(true);
     setError("");
     try {
+      if(onboarding && nativeAuth && !knownProfile && authMethod==="password" && !password)throw Error("请输入远程电脑的登录密码");
+      if(onboarding && nativeAuth && !knownProfile && authMethod==="privateKey" && !keyInput.current?.files?.[0])throw Error("请选择 SSH 私钥文件");
       await onSave(
         mode === "local"
           ? {
@@ -169,12 +171,12 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionO
         onClick={onCancel}
       >
         <ArrowLeft size={15} />
-        所有 runtime
+        {onboarding?"返回选择位置":"所有 runtime"}
       </Button>
       <div className="settings-pane-heading">
-        <Heading size="4">{profile ? "编辑 runtime" : "添加 runtime"}</Heading>
+        {!onboarding&&<Heading size="4">{profile ? "编辑 runtime" : "添加 runtime"}</Heading>}
         <Text as="p" size="2" color="gray">
-          先保存，再启用。已有任务和数据会留在原来的 server。
+          {onboarding?"填写已有服务的位置。保存后直接尝试连接，现有任务和数据不会迁移。":"先保存，再启用。已有任务和数据会留在原来的 server。"}
         </Text>
       </div>
       {!profile && !remoteOnly && (
@@ -194,7 +196,7 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionO
         </SegmentedControl.Root>
       )}
       <Field
-        label="Runtime 名称"
+        label={onboarding?"工作空间名称":"Runtime 名称"}
         value={name}
         onChange={setName}
         placeholder={mode === "local" ? "例如：个人工作区" : "例如：开发服务器"}
@@ -210,20 +212,21 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionO
           <Text size="1" color="gray">
             {nativeAuth ? "支持密码、Ed25519/RSA 私钥与交互验证；主机公钥必须通过可信渠道核验，不会自动接受未知或变更的主机。" : "使用客户端的 SSH 配置与密钥。远程需先安装并独立启动 Pi Bot。"}
           </Text>
-          {window.__PIBOT_NATIVE__ && tailscaleAvailable && <>
-            <label><input type="checkbox" checked={embeddedTailscale} onChange={e=>setEmbeddedTailscale(e.target.checked)} />应用内 Tailscale（实验性）</label>
+          {window.__PIBOT_NATIVE__ && tailscaleAvailable && (!onboarding || embeddedTailscale) && <>
+            {!onboarding&&<label><input type="checkbox" checked={embeddedTailscale} onChange={e=>setEmbeddedTailscale(e.target.checked)} />应用内 Tailscale（实验性）</label>}
             {embeddedTailscale && <>
-              <Text size="1" color="gray">仅此应用使用用户态 Tailnet；外层连接仍受当前 VPN 路由影响。启用 runtime 会使用 auth key 注册临时节点；状态只写临时目录，正常退出清理，异常退出可能留存。iOS 回前台会重新连接。</Text>
-              <Field label="Tailscale auth key（仅本次）" type="password" value={tailKey} onChange={setTailKey} />
-              <Button type="button" disabled={busy || !tailKey} onClick={async()=>{setBusy(true);setError("");const authKey=tailKey;setTailKey("");try{await window.__PIBOT_NATIVE__.call("runtime_control",{method:"tailscale/start",params:{authKey}});setTailReady(true);}catch(e){setError(String(e));}finally{setBusy(false);}}}>准备临时节点（启用时授权入网）</Button>
-              {tailReady && <Text size="1">临时节点已准备；保存设置后点击启用 runtime。</Text>}
+              <Text size="1" color="gray">{onboarding?"为 Pibo 授权此设备后，才会尝试连接私有网络。远程电脑需要另行登录；当前 VPN 仍可能影响连接。":"仅此应用使用用户态 Tailnet；外层连接仍受当前 VPN 路由影响。启用 runtime 会使用 auth key 注册临时节点；状态只写临时目录，正常退出清理，异常退出可能留存。iOS 回前台会重新连接。"}</Text>
+              <Text as="p" size="1">此应用：{tailReady||["prepared","dialed"].includes(tailState)?"已准备授权":"待授权"}。远程电脑需另行登录同一网络；此处无法代它登录。</Text>
+              <Field label="应用授权密钥（Tailscale，仅本次）" type="password" value={tailKey} onChange={setTailKey} />
+              <Button type="button" disabled={busy || !tailKey} onClick={async()=>{setBusy(true);setError("");const authKey=tailKey;setTailKey("");try{await window.__PIBOT_NATIVE__.call("runtime_control",{method:"tailscale/start",params:{authKey}});setTailReady(true);}catch(e){setError(String(e));}finally{setBusy(false);}}}>准备应用授权</Button>
+              {tailReady && <Text size="1">授权信息已准备；连接时才会注册临时节点。</Text>}
               <Button type="button" onClick={async()=>{try{await window.__PIBOT_NATIVE__.call("runtime_control",{method:"tailscale/stop",params:{}});setTailReady(false);}catch(e){setError(String(e));}}}>停止内嵌节点并断开</Button>
             </>}
           </>}
           {nativeAuth && <>
             <Field label="已核验的 SSH 主机公钥" value={hostKey} onChange={setHostKey} placeholder="ssh-ed25519 AAAA…（完整公钥，不是 SHA256 指纹）" />
             <label>认证方式<select aria-label="SSH 认证方式" value={authMethod} onChange={e=>{setAuthMethod(e.target.value);setPassword("");setPassphrase("");if(keyInput.current)keyInput.current.value="";}}><option value="password">密码</option><option value="privateKey">私钥文件</option><option value="interactive">交互验证</option></select></label>
-            {authMethod === "password" && <Field label="SSH 密码" value={password} onChange={setPassword} type="password" placeholder={profile?.id ? "留空保留已有凭据" : "输入 SSH 密码"} />}
+            {authMethod === "password" && <Field label="SSH 密码" value={password} onChange={setPassword} type="password" placeholder={onboarding?"输入登录密码（如已保存可留空）":profile?.id ? "留空保留已有凭据" : "输入 SSH 密码"} />}
             {authMethod === "privateKey" && <><label>私钥文件（不会显示正文）<input ref={keyInput} type="file" aria-label="导入 SSH 私钥" /></label><Field label="私钥口令（如已加密）" type="password" value={passphrase} onChange={setPassphrase} /></>}
             {authMethod !== "interactive" && <label><input type="checkbox" checked={interactive} onChange={e=>setInteractive(e.target.checked)} />需要附加交互验证（例如验证码）</label>}
             {!sessionOnly && remoteOnly && <label><input type="checkbox" checked={saveCredentials} onChange={e=>setSaveCredentials(e.target.checked)} />将本次凭据保存到此设备 Keychain</label>}
@@ -231,6 +234,7 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionO
           </>}
         </>
       )}
+      {onboarding&&<div className="settings-fields">{mode==="local"?<><Field label="本机服务数据目录" value={localDir} onChange={setLocalDir} placeholder="例如 /Users/me/pibo/work/runtime"/><Text size="1" color="gray">填写已启动服务的目录，其中应包含 daemon.json。客户端不会替你启动服务。</Text></>:<><Field label="远程 Pibo 项目目录" value={project} onChange={setProject} placeholder="例如 ~/pi-bot"/><Field label="服务数据目录" value={remoteDir} onChange={setRemoteDir} placeholder="例如 ~/pi-bot/work/runtime"/><Text size="1" color="gray">填写远程服务的实际目录（含 daemon.json）；路径不会自动创建。</Text></>}</div>}
       <Button
         type="button"
         variant="ghost"
@@ -317,9 +321,9 @@ function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionO
         </Button>
         <Button
           type="submit"
-          disabled={busy || !name.trim() || (mode === "ssh" && !host.trim())}
+          disabled={busy || (onboarding&&embeddedTailscale&&!tailReady&&!["prepared","dialed"].includes(tailState)) || !name.trim() || (mode === "ssh" && (!host.trim() || (onboarding&&(!project.trim()||!remoteDir.trim())))) || (onboarding&&mode==="local"&&!localDir.trim())}
         >
-          {busy ? "正在保存…" : profile ? "保存更改" : "添加 runtime"}
+          {busy ? "正在处理…" : onboarding?"连接工作空间":profile ? "保存更改" : "添加 runtime"}
         </Button>
       </Flex>
     </form>
@@ -368,6 +372,7 @@ function RuntimeSettings({ runtime }) {
         <RuntimeEditor
           key={editor.id || "new"}
           profile={editor.id ? editor : undefined}
+          tailState={runtime.status.tailscaleNodeState}
           tailscaleAvailable={!!runtime.status.embeddedTailscaleAvailable}
           remoteOnly={!!runtime.status.remoteOnly}
           sessionOnly={runtime.status.credentialStorage === "session"}
