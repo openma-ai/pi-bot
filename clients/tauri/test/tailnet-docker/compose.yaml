@@ -1,0 +1,41 @@
+name: pibo-tailnet-test
+services:
+  tailnet:
+    image: ghcr.io/tailscale/tailscale:v1.104.1
+    pull_policy: never
+    entrypoint: ["/usr/local/bin/tailscaled"]
+    command: ["--tun=userspace-networking", "--state=mem:", "--socket=/tmp/tailscale.sock", "--no-logs-no-support"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: ["/tmp:size=32m,mode=1777", "/var/run:size=8m,mode=755", "/var/lib/tailscale:size=16m,mode=700"]
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 128
+    restart: "no"
+    networks: [test]
+    logging:
+      driver: json-file
+      options: {max-size: "2m", max-file: "1"}
+  echo:
+    image: pibo-tailnet-echo:local
+    pull_policy: never
+    build: .
+    network_mode: service:tailnet
+    depends_on: [tailnet]
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: ["/tmp:size=4m,mode=1777"]
+    cpus: 0.25
+    mem_limit: 64m
+    pids_limit: 32
+    restart: "no"
+    logging:
+      driver: json-file
+      options: {max-size: "1m", max-file: "1"}
+networks:
+  test:
+    name: pibo-tailnet-test-net
+    driver: bridge
