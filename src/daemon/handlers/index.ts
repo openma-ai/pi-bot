@@ -1,6 +1,7 @@
 import type { PiBotDaemon } from '../core/daemon.ts';
 import type { DaemonConnection } from '../core/connection.ts';
 import { PiBotError } from '../core/errors.ts';
+import { fileHandler } from './file.ts';
 import { daemonHandler } from './daemon.ts';
 import { eventsHandler } from './events.ts';
 import { botHandler } from './bot.ts';
@@ -13,7 +14,7 @@ import { requestHandler } from './request.ts';
 import { taskHandler } from './task.ts';
 import { desktopHandler } from './desktop.ts';
 const handlers: Record<string, (d: PiBotDaemon, c: DaemonConnection, method: string, params: any) => Promise<any>> = {
-    daemon: daemonHandler, events: eventsHandler, bot: botHandler, group: groupHandler, thread: threadHandler, turn: turnHandler, routine: routineHandler, job: jobHandler, request: requestHandler, task: taskHandler, desktop: desktopHandler
+    file: fileHandler, daemon: daemonHandler, events: eventsHandler, bot: botHandler, group: groupHandler, thread: threadHandler, turn: turnHandler, routine: routineHandler, job: jobHandler, request: requestHandler, task: taskHandler, desktop: desktopHandler
 };
 export function handleMethod(d: PiBotDaemon, c: DaemonConnection, method: string, params: any) {
     const handler = handlers[method.split('/')[0]];

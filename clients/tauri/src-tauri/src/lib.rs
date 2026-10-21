@@ -1,3 +1,4 @@
+mod file_export;
 #[cfg(all(debug_assertions, target_os = "ios"))]
 mod ios_probe;
 #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
@@ -612,7 +613,8 @@ pub fn run() {
             stream_open,
             stream_close,
             credential_window,
-            credential_submit
+            credential_submit,
+            file_export::file_export
         ])
         .build(tauri::generate_context!())
         .expect("Cannot build Pi Bot application")

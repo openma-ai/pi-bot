@@ -4,6 +4,8 @@ import type { EventEnvelope } from '../../sdk/protocol/index.ts';
 import { PiBotError, toRpcError } from './errors.ts';
 export class DaemonConnection {
     readonly id = randomUUID();
+    /** Assigned by authenticated transport, never by RPC params. */
+    fileOwner: string = "local";
     status: 'awaitingInit' | 'initializing' | 'active' | 'closed' = 'awaitingInit';
     capabilities: Record<string, any> = {};
     private inFlight = 0;
@@ -13,6 +15,21 @@ export class DaemonConnection {
     private subscriptions = new Map<string, () => void>();
     private filters = new Map<string, any>();
     constructor(readonly daemon: PiBotDaemon, readonly transport: string) {
+    }
+    private fileView(value: any): any {
+        if (Array.isArray(value))
+            return value.map(v => this.fileView(v));
+        if (!value || typeof value !== "object")
+            return value;
+        const out: any = {};
+        for (const [key, v] of Object.entries(value)) {
+            if (key === "fileOwner")
+                continue;
+            out[key] = key === "attachments" && Array.isArray(v) ? v.filter(f => f && this.daemon.runtime.files.owns(this.fileOwner, f.id)).map(f => this.fileView(f)) : this.fileView(v);
+        }
+        if (Array.isArray(value.attachments) && value.attachments.length && !out.attachments?.length && typeof out.text === "string" && out.text.startsWith("生成文件："))
+            out.text = "文件仅对所属身份可见";
+        return out;
     }
     async request(frame: any): Promise<any> {
         if (this.status === 'active' && frame && typeof frame.id === 'string' && frame.id.startsWith('srv_') && frame.method === undefined) {
@@ -48,7 +65,7 @@ export class DaemonConnection {
                 throw new PiBotError('overloaded', 'Too many concurrent requests');
             this.inFlight++;
             try {
-                const result = await this.daemon.router.dispatch(this, frame.method, frame.params ?? {});
+                const result = this.fileView(await this.daemon.router.dispatch(this, frame.method, frame.params ?? {}));
                 return frame.id === undefined ? undefined : {
                     jsonrpc: '2.0', id: frame.id, result
                 };
@@ -73,6 +90,7 @@ export class DaemonConnection {
         return true;
     }
     push(frame: any) {
+        frame = this.fileView(frame);
         if (this.status === 'closed' || !this.accepts(frame))
             return;
         if (this.send && this.queue.length === 0 && this.send(frame) !== false)

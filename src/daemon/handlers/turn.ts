@@ -6,7 +6,7 @@ import type { Envelope } from '../../pi/types.ts';
 export async function turnHandler(d: PiBotDaemon, c: DaemonConnection, method: string, p: any): Promise<any> {
     const r = d.runtime, s = r.store;
     switch (method) {
-        case 'turn/start': return d.startTurn(p);
+        case 'turn/start': return d.startTurn(p, c.fileOwner);
         case 'turn/steer':
         case 'turn/interrupt': {
             const thread = d.required<Thread>('threads', p.threadId);

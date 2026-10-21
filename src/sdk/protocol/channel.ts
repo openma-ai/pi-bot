@@ -1,4 +1,5 @@
 export type ChannelMessage = {
+    attachments?: import("../../pi/types.ts").FileAttachment[];
     messageId: string;
     channelId: string;
     conversationId: string;

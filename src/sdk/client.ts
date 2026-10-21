@@ -37,6 +37,7 @@ export type ConnectOptions = {
     }>;
 };
 export class PiBotClient {
+    declare readonly file: Namespace<'file'>;
     declare readonly daemon: Namespace<'daemon'>;
     declare readonly bot: Namespace<'bot'>;
     declare readonly group: Namespace<'group'>;

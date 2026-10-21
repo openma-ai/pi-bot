@@ -5,7 +5,9 @@ import { O, empty, optId, limit, page, ok, filter } from './shared.ts';
 export const turnMethods = {
     'turn/start': {
         params: O({
-            botId: Id, text: Type.String({
+            attachments: Type.Optional(Type.Array(Id, {
+                maxItems: 4
+            })), botId: Id, text: Type.String({
                 minLength: 1, maxLength: 64000, pattern: '\\S'
             }), key: Id, groupId: optId, threadId: optId
         }), result: O({

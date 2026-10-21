@@ -413,6 +413,22 @@ mod tailscale_offline {
                                 .to_lowercase()
                                 .contains(&format!("authorization: bearer {}", "a".repeat(64))));
                         }
+                        let length = request
+                            .lines()
+                            .find_map(|line| {
+                                line.to_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .and_then(|v| v.trim().parse::<usize>().ok())
+                            })
+                            .unwrap_or(0);
+                        assert!(length < 1024 * 1024);
+                        let mut body = vec![0; length];
+                        socket.read_exact(&mut body).await.unwrap();
+                        if request.starts_with("POST /rpc") {
+                            socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",body.len()).as_bytes()).await.unwrap();
+                            socket.write_all(&body).await.unwrap();
+                            return;
+                        }
                         if request.starts_with("GET /ws") {
                             socket.write_all(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n").await.unwrap();
                             // RFC 6455 masked text frame "Hi" from the client.
@@ -461,6 +477,26 @@ mod tailscale_offline {
                     .await
                     .unwrap()
                     .contains("data:"));
+                // File chunks travel as JSON/base64 over the native bridge, never
+                // through lossy UTF-8 conversion of raw binary bytes.
+                use base64::Engine;
+                let binary: Vec<u8> = (0..=255).collect();
+                let frame=serde_json::json!({"data":base64::engine::general_purpose::STANDARD.encode(&binary),"name":"报告.bin"}).to_string();
+                let echoed = endpoint
+                    .request("/rpc", "POST", &frame, "offline")
+                    .await
+                    .unwrap()
+                    .text()
+                    .await
+                    .unwrap();
+                assert_eq!(echoed, frame);
+                let decoded: serde_json::Value = serde_json::from_str(&echoed).unwrap();
+                assert_eq!(
+                    base64::engine::general_purpose::STANDARD
+                        .decode(decoded["data"].as_str().unwrap())
+                        .unwrap(),
+                    binary
+                );
                 let mut ws = TcpStream::connect(("127.0.0.1", endpoint.base.port().unwrap()))
                     .await
                     .unwrap();

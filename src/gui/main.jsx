@@ -21,6 +21,8 @@ import {
   activityLabels,
   AvatarContext,
 } from "./BotAvatar.jsx";
+import {FileCards} from "./FileCards.jsx";
+import {uploadFile} from "./file-transfer.js";
 import { MessageBody } from "./MessageBody.jsx";
 import { botActivity, messageFailures } from "./presentation.ts";
 import {
@@ -424,12 +426,19 @@ function App({ runtime, setPiSettingsOpen }) {
   const [sendFailures, setSendFailures] = useState({});
   const sendScope = JSON.stringify([activeRuntime?.scope, view, selected, groupId, peerA, peerB, peerScope]);
   const sendFailure = sendFailures[sendScope];
+  const [fileAttachments,setFileAttachments]=useState([]),[fileBusy,setFileBusy]=useState(false),[fileError,setFileError]=useState("");
+  const uploadCancel=useRef();
+  const fileScope={botId:view==="peers"?peerA:selected,...(view==="group"?{groupId}:view==="peers"&&peerScope!=="direct"?{groupId:peerScope}:{})};
+  const fileScopeKey=JSON.stringify(fileScope);
+  const pendingFiles=useRef([]);pendingFiles.current=fileAttachments;
+  useEffect(()=>{setFileAttachments([]);setFileError("");uploadCancel.current?.abort();return ()=>{uploadCancel.current?.abort();for(const f of pendingFiles.current)void api?.file.cancel({...fileScope,id:f.id}).catch(()=>{});};},[fileScopeKey]);
+  async function pickFiles(event){const files=[...event.target.files];event.target.value="";if(fileAttachments.length+files.length>4){setFileError("每条消息最多 4 个附件");return;}setFileBusy(true);setFileError("");const controller=new AbortController();uploadCancel.current=controller;try{for(const file of files){const result=await uploadFile(api,fileScope,file,controller.signal);setFileAttachments(old=>[...old,result]);}}catch(e){if(e.name!=="AbortError")setFileError(String(e.message||e));}finally{setFileBusy(false);}}
   async function send(retry = false) {
-    if (!(retry ? sendFailure?.draft : draft)?.trim() || busy || !api || connectionPhase !== "ready") return;
+    if ((!(retry ? sendFailure?.draft : draft)?.trim() && !fileAttachments.length) || fileBusy || busy || !api || connectionPhase !== "ready") return;
     if (sendFailure?.uncertain && (retry || sendFailure.draft === draft)) return;
     setBusy(true);
     setNotice("");
-    const attempt = sendFailure && (retry || sendFailure.draft === draft) ? sendFailure : { key: crypto.randomUUID(), draft };
+    const attempt = sendFailure && (retry || sendFailure.draft === draft) ? sendFailure : { key: crypto.randomUUID(), draft:draft.trim()||"请查看附件", attachments:fileAttachments.map(f=>f.id) };
     try {
       const to =
         view === "group"
@@ -446,6 +455,7 @@ function App({ runtime, setPiSettingsOpen }) {
       await mutate(
         api.turn.start({
           botId: to,
+          ...(attempt.attachments?.length ? {attachments:attempt.attachments} : {}),
           text,
           key: attempt.key,
           groupId:
@@ -456,7 +466,7 @@ function App({ runtime, setPiSettingsOpen }) {
                 : undefined,
         }),
       );
-      setDraft((current) => current === attempt.draft ? "" : current);
+      setDraft((current) => current === attempt.draft ? "" : current); setFileAttachments([]);
       setSendFailures((old) => { const next = { ...old }; delete next[sendScope]; return next; });
       pinnedToEnd.current = true;
     } catch (e) {
@@ -1209,6 +1219,7 @@ function App({ runtime, setPiSettingsOpen }) {
                           {view === "peers" && <div className="peer-sender-name">{isUserMessage(m) ? "你" : botName(m.sender)}</div>}
                           <div className="bubble">
                           <MessageBody text={displayText(m)} />
+                          <FileCards files={m.attachments} api={api} scope={{botId:m.botId||selected,...(view==="group"?{groupId}:{})}} />
 
                           {["queued", "processing"].includes(m.status) && (
                             <Text size="1" className="status">
@@ -1299,6 +1310,10 @@ function App({ runtime, setPiSettingsOpen }) {
                   </div>
                 )}
                 <div className="composer">
+                  <label className="attach-button">附件<input aria-label="上传聊天附件" type="file" multiple disabled={!api||busy||fileBusy||!fileScope.botId} onChange={pickFiles} /></label>
+                  {fileBusy&&<button onClick={()=>uploadCancel.current?.abort()}>取消上传</button>}
+                  {fileError&&<span role="alert">{fileError}</span>}
+                  {fileAttachments.map(f=><span key={f.id}>{f.name} <button onClick={()=>{setFileAttachments(old=>old.filter(x=>x.id!==f.id));void api.file.cancel({...fileScope,id:f.id}).catch(()=>{});}}>移除附件</button></span>)}
                   <ComposerTextarea
                     className="message-input"
                     data-gramm="false"
@@ -1358,7 +1373,7 @@ function App({ runtime, setPiSettingsOpen }) {
                       !api ||
                       connectionPhase !== "ready" ||
                       busy ||
-                      !draft.trim() ||
+                      (!draft.trim() && !fileAttachments.length) || fileBusy ||
                       !!connectionError ||
                       data.configuration?.setupRequired
                     }

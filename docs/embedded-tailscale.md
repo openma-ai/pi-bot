@@ -119,3 +119,8 @@ physical-device background/foreground and VPN coexistence remain unverified.
 
 No real Tailnet key or login was used, no real node was created, and no existing
 service, system VPN/proxy setting, deployment or remote Git branch was changed.
+
+Follow-up: the file-transfer implementation resolved the disk/build-phase
+blockers and produced a local macOS preview app plus an unsigned iOS archive.
+See [file-transfer verification](file-transfer.md) for the current build results;
+the earlier disk failure remains part of the initial verification history.

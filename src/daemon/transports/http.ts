@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage } from 'node:http';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, extname } from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -192,6 +192,7 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
                         }, 503);
                     connection = daemon.connect(identity === 'host' ? 'http' : 'browser');
                     owners.set(connection.id, identity);
+                    connection.fileOwner = createHash("sha256").update(identity).digest("hex");
                 }
                 const results = [];
                 for (const frame of batch ? frames : [frames]) {

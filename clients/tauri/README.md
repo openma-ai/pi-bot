@@ -109,3 +109,8 @@ Use `npm run package:preview` for the isolated `Pi Bot Preview` macOS arm64 app.
 Embedded userspace Tailnet transport is opt-in for Apple builds. See
 [embedded Tailscale](../../docs/embedded-tailscale.md) for architecture, pinned SDK
 builds, temporary credentials, offline tests and verification limits.
+
+Bidirectional chat files (8 MiB each, up to four per message), generated artifact
+cards, macOS saving and iOS system sharing are described in
+[file transfer](../../docs/file-transfer.md). Upgrade the runtime along with the
+client for file RPC support; ordinary text chat remains compatible.

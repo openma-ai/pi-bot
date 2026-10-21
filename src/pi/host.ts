@@ -63,6 +63,12 @@ export interface BotHost {
     readonly options: {
         readonly permission?: Permission;
     };
+    fileContext?(e: Envelope): {
+        outputDir: string;
+        attachments: unknown[];
+        notice: string;
+    };
+    publishFile?(e: Envelope, name: string, mime: string, key: string, observedConversation?: Revision): unknown;
     createBot(name: string, description?: string, channelId?: string): Bot;
     channelBots(channelId?: string): Bot[];
     sendToBot(source: Envelope, to: string, text: string, key: string, options?: Envelope['peerPriority'] | {
@@ -74,7 +80,7 @@ export interface BotHost {
         toolCallId?: string;
         observedConversation?: Revision;
     }): CommitResult<Outbound>;
-    askUser(e: Envelope, text: string, key: string, choices?:string[]): Question;
+    askUser(e: Envelope, text: string, key: string, choices?: string[]): Question;
     startJob(e: Envelope, tool: string, args: unknown, key: string, execute: () => Promise<unknown>, options?: {
         quiet?: boolean;
         onSettled?: (state: Job['state']) => void;

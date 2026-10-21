@@ -1,4 +1,5 @@
-import {recoveryPlan} from '../runtime/task-recovery.ts';
+import { requestFileScope } from '../handlers/file.ts';
+import { recoveryPlan } from '../runtime/task-recovery.ts';
 import { PiSettings } from '../pi-settings.ts';
 import { handleMethod } from '../handlers/index.ts';
 import { resolve, join } from 'node:path';
@@ -23,7 +24,7 @@ import type { Envelope, Outbound } from '../../pi/types.ts';
 export class PiBotDaemon {
     status: DaemonStatus = 'starting';
     readonly startedAt = Date.now();
-    private lastTriggerHalted=false;
+    private lastTriggerHalted = false;
     readonly connections = new Map<string, DaemonConnection>();
     readonly router = new Router(this);
     piSettings?: PiSettings;
@@ -146,13 +147,24 @@ export class PiBotDaemon {
                 } : {})
             }));
         d.runtime.start();
-        d.lastTriggerHalted=d.trigger.halted;
-        d.runtime.store.transaction(()=>d.log.append('daemon/triggerChanged',{trigger:{implementation:'OpenMatter SQLite DurableInbox',halted:d.trigger.halted,queued:d.trigger.inspect().filter(r=>r.state!=='completed').length}}));
+        d.lastTriggerHalted = d.trigger.halted;
+        d.runtime.store.transaction(() => d.log.append('daemon/triggerChanged', {
+            trigger: {
+                implementation: 'OpenMatter SQLite DurableInbox', halted: d.trigger.halted, queued: d.trigger.inspect().filter(r => r.state !== 'completed').length
+            }
+        }));
         d.proactive.start();
         d.timer = setInterval(() => {
             if (!d.runtime.store.db.isTransaction)
                 d.trigger.flush();
-            if(d.lastTriggerHalted!==d.trigger.halted){d.lastTriggerHalted=d.trigger.halted;d.runtime.store.transaction(()=>d.log.append('daemon/triggerChanged',{trigger:{implementation:'OpenMatter SQLite DurableInbox',halted:d.trigger.halted,queued:d.trigger.inspect().filter(r=>r.state!=='completed').length}}));}
+            if (d.lastTriggerHalted !== d.trigger.halted) {
+                d.lastTriggerHalted = d.trigger.halted;
+                d.runtime.store.transaction(() => d.log.append('daemon/triggerChanged', {
+                    trigger: {
+                        implementation: 'OpenMatter SQLite DurableInbox', halted: d.trigger.halted, queued: d.trigger.inspect().filter(r => r.state !== 'completed').length
+                    }
+                }));
+            }
             void d.runtime.deliver(async () => {
             }).catch(() => {
             });
@@ -290,7 +302,14 @@ export class PiBotDaemon {
     async handle(c: DaemonConnection, method: string, p: any): Promise<any> {
         return handleMethod(this, c, method, p);
     }
-    startTurn(p: any) {
+    startTurn(p: any, fileOwner = "local") {
+        const fileScope = requestFileScope(this, p);
+        const attachments = p.attachments?.map((id: string) => this.runtime.files.metadata(fileOwner, fileScope, id));
+        const fileInput = {
+            fileOwner, ...(attachments?.length ? {
+                attachments
+            } : {})
+        };
         if ((this.live?.configuration as any)?.setupRequired)
             throw new PiBotError('setupRequired', 'Configure native Pi first');
         if (this.live?.budget && (this.live.budget.requests >= this.live.budget.maxRequests || this.live.budget.expiresAt <= Date.now()))
@@ -300,7 +319,7 @@ export class PiBotDaemon {
             const group: any = this.required('groups', p.groupId);
             if (!group.memberIds.includes(p.botId))
                 throw new PiBotError('forbidden', 'Bot is not a group member');
-            e = this.runtime.acceptGroupUser(p.groupId, p.text, p.key);
+            e = this.runtime.acceptGroupUser(p.groupId, p.text, p.key, fileInput);
         }
         else {
             const bot: any = this.required('bots', p.botId);
@@ -316,9 +335,11 @@ export class PiBotDaemon {
                 } : undefined;
             }
             e = this.runtime.accept({
-                to: p.botId, text: p.text, key: p.key, route
+                ...fileInput, to: p.botId, text: p.text, key: p.key, route
             });
         }
+        if (attachments?.length)
+            this.runtime.files.bind(fileOwner, fileScope, attachments.map((f: any) => f.id));
         const thread = this.runtime.tracker.ensure(e);
         return {
             inputId: e.id, threadId: thread.id, status: 'queued', ...(e.deliveries ? {
@@ -372,11 +393,21 @@ export class PiBotDaemon {
             } : {})
         } : routineView(table, this.required(table, key));
     }
-    taskRecovery(id:string){
-        const e=this.required<Envelope>('inbox',id);
-        if(e.state!=='uncertain')return {canRetry:false,reason:'inactive'};
-        try{this.runtime.assertTaskCurrent(e);}catch{return {canRetry:false,reason:'superseded'};}
-        return recoveryPlan(this.runtime.store,e);
+    taskRecovery(id: string) {
+        const e = this.required<Envelope>('inbox', id);
+        if (e.state !== 'uncertain')
+            return {
+                canRetry: false, reason: 'inactive'
+            };
+        try {
+            this.runtime.assertTaskCurrent(e);
+        }
+        catch {
+            return {
+                canRetry: false, reason: 'superseded'
+            };
+        }
+        return recoveryPlan(this.runtime.store, e);
     }
     reconcile(id: string) {
         const r = this.runtime, s = r.store;
@@ -392,11 +423,12 @@ export class PiBotDaemon {
                 outcome: 'processed'
             };
         }
-        const plan=this.taskRecovery(id);
-        if(!plan.canRetry)throw new PiBotError('reviewRequired','Effects require host review; no automatic replay');
+        const plan = this.taskRecovery(id);
+        if (!plan.canRetry)
+            throw new PiBotError('reviewRequired', 'Effects require host review; no automatic replay');
         r.assertTaskCurrent(e);
         r.reconcileInbox(id, {
-            outcome: 'queued', evidence: [plan.reason+':'+id], note: 'Host verified checkpoint: '+plan.reason+'; no mutable effects or output'
+            outcome: 'queued', evidence: [plan.reason + ':' + id], note: 'Host verified checkpoint: ' + plan.reason + '; no mutable effects or output'
         });
         return {
             outcome: 'queued'

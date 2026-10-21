@@ -31,7 +31,17 @@ export type ChatRoute = {
     threadId: string;
     senderId: string;
 };
+export type FileAttachment = {
+    id: string;
+    name: string;
+    mime: string;
+    size: number;
+    sha256: string;
+    scope: string;
+};
 export type Envelope = {
+    attachments?: FileAttachment[];
+    fileOwner?: string;
     id: string;
     from: string;
     to: string;
@@ -94,6 +104,7 @@ export type Question = {
     createdAt: number;
 };
 export type Outbound = {
+    attachments?: FileAttachment[];
     toolCallId?: string;
     id: string;
     botId: string;

@@ -25,3 +25,5 @@
   --radius-md: 8px;
   --radius-lg: 12px;
 }
+
+.file-cards{display:grid;gap:8px;margin-top:8px}.file-card{display:grid;gap:4px;padding:10px;border:1px solid var(--color-border,#555);border-radius:8px;overflow-wrap:anywhere}.file-card small{opacity:.7}.file-card button{padding:6px}.attach-button input{max-width:180px}

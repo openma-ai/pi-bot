@@ -10,7 +10,9 @@ export function projectChannelMessage(table: 'inbox' | 'outbox', value: Envelope
     const botId = incoming ? e.to : o.botId;
     const channelId = value.route?.channelId ?? `local:${botId}`;
     return {
-        messageId: value.id, channelId, conversationId: value.route?.conversationId ?? channelId, threadId: value.route?.threadId ?? null, direction: incoming ? 'inbound' : 'outbound', sourceKind: incoming ? e.kind : 'bot', sender: incoming ? e.from : o.botId, recipient: incoming ? e.to : value.route?.senderId ?? 'user', botId, taskId: value.taskId, causationId: value.replyTo, text: redactChannelText(value.text), status: value.state, receivedAt: value.createdAt, ...(incoming ? {
+        ...(value.attachments?.length ? {
+            attachments: value.attachments
+        } : {}), messageId: value.id, channelId, conversationId: value.route?.conversationId ?? channelId, threadId: value.route?.threadId ?? null, direction: incoming ? 'inbound' : 'outbound', sourceKind: incoming ? e.kind : 'bot', sender: incoming ? e.from : o.botId, recipient: incoming ? e.to : value.route?.senderId ?? 'user', botId, taskId: value.taskId, causationId: value.replyTo, text: redactChannelText(value.text), status: value.state, receivedAt: value.createdAt, ...(incoming ? {
             groupMessageId: e.groupMessageId, mentions: e.mentions, groupAttention: e.groupAttention, admittedAt: e.admittedAt, consumedAt: e.consumedAt, resolvedAt: e.resolvedAt, deliveryTarget: e.deliveryTarget, peerPriority: e.peerPriority, error: e.error ? redactChannelText(e.error) : undefined
         } : {
             deliveredAt: o.deliveredAt

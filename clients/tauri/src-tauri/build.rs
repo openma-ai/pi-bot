@@ -11,14 +11,45 @@ fn main() {
             "Embedded Tailscale supports Apple targets only"
         );
         println!("cargo:rerun-if-env-changed=PIBO_TAILSCALE_LIB_DIR");
-        let dir = std::env::var("PIBO_TAILSCALE_LIB_DIR").expect(
-            "Set PIBO_TAILSCALE_LIB_DIR to the target-specific directory containing libtailscale.a",
+        // Xcode's Tauri phase filters arbitrary environment variables. The pinned
+        // project-local helper output is therefore also a deterministic default.
+        let platform = if target == "ios" {
+            if std::env::var("TARGET").unwrap().contains("-sim") {
+                "ios-sim"
+            } else {
+                "ios"
+            }
+        } else {
+            "macos"
+        };
+        let fallback = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("../.tailscale-build")
+            .join(platform);
+        let dir = std::env::var("PIBO_TAILSCALE_LIB_DIR")
+            .unwrap_or_else(|_| fallback.to_string_lossy().into_owned());
+        assert!(
+            std::path::Path::new(&dir).join("libtailscale.a").is_file(),
+            "Build the pinned userspace archive with scripts/build-embedded-tailscale.sh first"
         );
         println!("cargo:rustc-link-search=native={dir}");
         println!("cargo:rustc-link-lib=static=tailscale");
         println!("cargo:rustc-link-lib=framework=Security");
         println!("cargo:rustc-link-lib=framework=SystemConfiguration");
         println!("cargo:rustc-link-lib=resolv");
+    }
+    let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+    if os == "macos" || os == "ios" {
+        println!("cargo:rerun-if-changed=native/file_export.m");
+        cc::Build::new()
+            .file("native/file_export.m")
+            .flag("-fobjc-arc")
+            .flag("-fblocks")
+            .compile("pibo_file_export");
+        println!("cargo:rustc-link-lib=framework=Foundation");
+        println!(
+            "cargo:rustc-link-lib=framework={}",
+            if os == "ios" { "UIKit" } else { "AppKit" }
+        );
     }
     tauri_build::build()
 }
