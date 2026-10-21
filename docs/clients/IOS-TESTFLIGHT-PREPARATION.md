@@ -243,3 +243,40 @@ their browser and sign in personally. Export-compliance/France distribution
 intent and testing-channel scope still require confirmation. No new upload was
 attempted. Unsigned artifacts and exact logs are under ignored
 `artifacts/testflight-1021.15.01/`; they cannot be installed through TestFlight.
+
+## Correction: unsigned Organizer handoff cannot be distributed (2026-10-22)
+
+Opening the final unsigned archive in Organizer showed an enabled Distribute App
+button, but the user's subsequent manual flow correctly rejected it with **No
+Team Found in Archive**. That button was not evidence of distribution readiness.
+The archive's ApplicationProperties explicitly have empty Team/SigningIdentity,
+and its app has no embedded provisioning profile, because the diagnostic archive
+was built with CODE_SIGNING_ALLOWED=NO and DEVELOPMENT_TEAM empty. Do not edit
+those archive fields to pretend it was signed.
+
+The canonical XcodeGen project and generated target's Release settings now pin
+the already verified Team 962863MJ5J, Manual signing, Apple Distribution, and
+existing Pibo App Store Distribution profile. Debug settings are unchanged. The
+iOS Tauri config explicitly enables embedded-tailscale so a normal iOS build
+cannot silently omit the SDK. Its pinned iOS archive must be built beforehand.
+
+For this exact already-built 07e61cd application, a **local-only** manual handoff
+project is prepared at
+`clients/tauri/src-tauri/gen/apple/pibo-testflight.xcodeproj`.
+Its release scheme links the verified real Release `libapp.a` symlink under
+`artifacts/testflight-1021.15.01/link/`, uses that candidate's Info.plist (0.1.0 /
+1021.15.01), and intentionally omits the Tauri CLI Rust build phase. It performs
+no automatic provisioning or signing until the user explicitly builds/archives.
+It is for this frozen local candidate, not a reusable source build after Rust or
+frontend edits; rebuild those inputs and reverify before preparing a later one.
+Only `xcodebuild -showBuildSettings` has been run for the corrected settings.
+
+The user must open this **project**, choose scheme pi-bot-desktop_iOS and a generic
+iOS device destination, and personally start Product > Archive to create a new
+properly signed archive. The assistant has not started another signing request.
+A successful new archive should show Team 962863MJ5J and a real signing identity;
+only then consider distribution. The prior Team-configured signing attempt
+already failed with errSecAuthFailed / CSSMERR_CSP_OPERATION_AUTH_DENIED, so fixing
+Team does not resolve or bypass that independent key-access refusal. If another
+authorization or error appears, the user handles the actual prompt and reports
+the result; do not change ACL/trust or create signing assets automatically.

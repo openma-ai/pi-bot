@@ -6,5 +6,10 @@
       "minimumSystemVersion": "16.0",
       "bundleVersion": "2"
     }
+  },
+  "build": {
+    "features": [
+      "embedded-tailscale"
+    ]
   }
 }

@@ -416,7 +416,10 @@
 				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "pi-bot-desktop_iOS/pi-bot-desktop_iOS.entitlements";
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = 962863MJ5J;
+				PROVISIONING_PROFILE_SPECIFIER = "Pibo App Store Distribution";
 				ENABLE_BITCODE = NO;
 				ENABLE_DEBUG_DYLIB = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
