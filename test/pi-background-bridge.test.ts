@@ -91,3 +91,28 @@ test('deep sequential native calls inherit the detached original after clear', a
     });
     assert.deepEqual(origins, [original, original]);
 });
+
+test('codemode 1.2 streams output before settlement and preserves store writes', async () => {
+    const { CodemodeSandbox } = await import('@earendil-works/pi-codemode');
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let observed!: () => void;
+    const streamed = new Promise<void>(resolve => { observed = resolve; });
+    const output: unknown[] = [];
+    const sandbox = new CodemodeSandbox({ tools: [{ name: 'hold', execute: async () => { await gate; return 'done'; } }] });
+    try {
+        const pending = sandbox.execute("text('before'); await tools.hold(); store('answer', 42); text('after'); return 7", {
+            onOutput: item => { output.push(item); observed(); }
+        });
+        await Promise.race([streamed, new Promise((_, reject) => setTimeout(() => reject(Error('output was not streamed')), 5000).unref())]);
+        assert.deepEqual(output, [{ type: 'text', text: 'before' }]);
+        release();
+        const result = await pending;
+        assert.equal(result.ok, true);
+        if (result.ok) {
+            assert.equal(result.value, 7);
+            assert.deepEqual(result.storeWrites.set, { answer: 42 });
+        }
+        assert.deepEqual(output, [{ type: 'text', text: 'before' }, { type: 'text', text: 'after' }]);
+    } finally { release(); await sandbox.close(); }
+});

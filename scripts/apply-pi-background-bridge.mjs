@@ -4,10 +4,10 @@ import {fileURLToPath} from 'node:url';
 import {dirname,join,resolve} from 'node:path';
 const sdk=dirname(fileURLToPath(import.meta.resolve('@earendil-works/pi-coding-agent')));
 const pkg=JSON.parse(await readFile(join(sdk,'../package.json'),'utf8'));
-if(pkg.version!=='1.1.0')throw Error('Background bridge supports only Pi 1.1.0; review it before upgrading');
+if(pkg.version!=='1.2.0')throw Error('Background bridge supports only Pi 1.2.0; review it before upgrading');
 const codemode=dirname(fileURLToPath(import.meta.resolve('@earendil-works/pi-codemode')));
 const codemodePkg=JSON.parse(await readFile(join(codemode,'../package.json'),'utf8'));
-if(codemodePkg.version!=='1.1.0')throw Error('Codemode bridge supports only 1.1.0');
+if(codemodePkg.version!=='1.2.0')throw Error('Codemode bridge supports only 1.2.0');
 const sourcePath=file=>file.startsWith('codemode/')?join(codemode,file.slice(9)):join(sdk,file);
 const specs=[
  ['core/nested-tool-calls.js',[
@@ -41,10 +41,10 @@ const specs=[
   ['import { randomBytes } from "node:crypto";','import { randomBytes } from "node:crypto";\nimport { AsyncLocalStorage } from "node:async_hooks";\nconst outputFileDirectory = new AsyncLocalStorage();\nexport const withOutputFileDirectory = (directory, run) => outputFileDirectory.run(directory, run);'],
   ['return join(tmpdir(), `${prefix}', 'return join(outputFileDirectory.getStore() ?? process.env.PI_TOOL_OUTPUT_DIR ?? tmpdir(), `${prefix}'],
  ]],
- ['codemode/runtime/host.js',[
+ ['codemode/runtime/execution.js',[
   ['this.signal = options.signal;','this.signal = options.signal;\n        this.onOutput = options.onOutput;'],
   ['this.output.push(message.item);','this.output.push(message.item);\n                try { this.onOutput?.(message.item); } catch { /* observation cannot corrupt worker dispatch */ }'],
-  ['signal: options.signal,','signal: options.signal,\n            onOutput: options.onOutput,'],
+  ['timeoutMs: options.timeoutMs ?? this.timeoutMs,\n            signal: options.signal,','timeoutMs: options.timeoutMs ?? this.timeoutMs,\n            signal: options.signal,\n            onOutput: options.onOutput,'],
  ]],
  ['codemode/types.d.ts',[
   ['export interface CodemodeExecuteOptions {','export interface CodemodeExecuteOptions {\n    /** Observes script text, console and images without ending the execution. */\n    onOutput?: (item: CodemodeOutputItem) => void;'],
@@ -67,7 +67,7 @@ for(const [file,replacements] of specs){
  }
  edits.set(file,{file,text,original});
 }
-const backups=resolve('work/pi-background-sdk-original');
+const backups=resolve(`work/pi-background-sdk-original/pi-${pkg.version}-codemode-${codemodePkg.version}`);
 for(const [file,edit] of edits)if(edit.text===edit.original)edits.delete(file);
 for(const {file,text,original} of edits.values()){const backup=join(backups,file);await mkdir(dirname(backup),{recursive:true});await writeFile(backup,original,{flag:'wx'}).catch(e=>{if(e.code!=='EEXIST')throw e;});await writeFile(sourcePath(file),text);}
-console.log(`Pi 1.1.0 background bridge ready (${edits.size} files updated)`);
+console.log(`Pi 1.2.0 / codemode 1.2.0 background bridge ready (${edits.size} files updated)`);

@@ -104,6 +104,8 @@ test('task replacement/cancellation closes stale action and pending-delivery rac
     let release!: () => void;
     const gate = new Promise<void>(r => release = r);
     let effects = 0;
+    let began!: () => void;
+    const dispatched = new Promise<void>(resolve => { began = resolve; });
     try {
         const chat = new SimulatedChat(runtime);
         const channel = chat.channel('alpha', ['alice']);
@@ -115,10 +117,13 @@ test('task replacement/cancellation closes stale action and pending-delivery rac
         });
         runtime.sendMessage(old, 'old pending message', 'old-out');
         const started = runtime.startJob(old, 'ordinary-started-effect', {}, 'started', async () => {
+            began();
             await gate;
             effects++;
             return 'complete';
         });
+        // The contract below concerns an already dispatched effect, not a queued job.
+        await dispatched;
         const corrected = chat.send({
             ...base, key: 'new', text: 'corrected task', taskControl: 'replace'
         });

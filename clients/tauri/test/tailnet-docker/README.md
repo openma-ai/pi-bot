@@ -67,3 +67,48 @@ other container uses them; never prune global images or caches. Existing
 
 References: https://github.com/tailscale/tailscale/pkgs/container/tailscale
 and https://tailscale.com/docs/reference/tailscale-cli/serve
+
+## Runbook desktop verification (2026-10-21)
+
+`Dockerfile.desktop-test` reuses the existing `pi-bot-desktop:local` project base
+and executes `scripts/setup-linux-desktop.sh`, then the unchanged
+`container/start-desktop.sh --runtime` / `run-runtime.sh` / `run-desktop.sh`.
+Build from a staging context containing only tracked project sources; never copy
+personal directories, `.env`, work data or Git metadata into the image. The
+observed base was arm64 Node 24.18.0 / Debian trixie glibc 2.41. The original
+runbook uses Chromium `--no-sandbox`; this remains confined to the test container.
+
+The final incremental image `pibo-tailnet-desktop:local` is `1ef4cec5077c`, with
+Pi agent/core/AI/MCP/TUI and codemode **1.2.0**, native computer-use plugin 0.7.16.
+The earlier 1.1.0 recovery images are only build recovery snapshots. The root
+Tauri API dependency is required for the shared GUI build's dynamic imports.
+
+Start only the desktop service with both compose files and `up -d --no-deps desktop`.
+Its limits are 1 CPU, 1536 MiB, 768 PIDs, 128 MiB shared memory, readonly root,
+no capabilities, no-new-privileges, no restart, no volumes, no published ports;
+`/tmp`, `/data`, `/app/work` are bounded tmpfs. The first 256-PID limit was
+insufficient for Chromium windows and caused `Cannot fork`; it was increased
+only for this test container. Existing Tailnet and echo containers stayed alive.
+The desktop broker's random bearer is generated in tmpfs, never exported to chat.
+
+`node scripts/test-desktop-image.mjs tailnet-native-a tailnet-native-b` passed
+shared-profile, native keyboard focus isolation, native mouse, foreign-window
+and off-screen denial, manual takeover/resume and distinct PNG frame checks.
+`desktop-novnc-check.mjs` runs with `node --import tsx` inside this container.
+It opens only a container-loopback synthetic viewer, relays authenticated RFB to
+the existing broker, and checks actual noVNC canvas pixels, `RFB-KEYBOARD` entry
+and a mouse click. During manual control it drives only its bound synthetic
+viewer via CDP; agent calls remain paused. No model API is invoked. All passed.
+Evidence is under ignored `artifacts/desktop-120/`; the noVNC PNG is 128903 bytes,
+SHA256 `f0b35c74fd14598529466be77ee7be81470e7f5c3b380dcd21d666c9221ea4da`.
+This verifies Linux-container Chromium, not Mac browser or iOS-over-Tailnet VNC.
+No additional Tailnet desktop forward has been enabled yet. The prior simulator
+identity was deleted after its 13:53:48 UTC deadline; new iOS testing needs a new
+browser-approved temporary session after desktop access is configured.
+
+The three task containers are `pibo-tailnet-test-tailnet-1`,
+`pibo-tailnet-test-echo-1`, and `pibo-tailnet-test-desktop-1`; no volumes exist.
+To suspend reversibly, pause these exact containers, then unpause them. A later
+explicit teardown may use both compose files with `down`; this loses the
+in-memory Tailnet identity and desktop tmpfs, so export synthetic evidence first.
+Never run global prune. Keep the unrelated `pi-bot-desktop` container untouched.

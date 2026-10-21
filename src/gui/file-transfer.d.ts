@@ -1,5 +1,5 @@
 import type { PiBotClient } from '../sdk/client.ts';
-import type { FileAttachment } from '../pi/types.ts';
+import type { FileAttachment } from '../sdk/protocol/channel.ts';
 export type FileScope = {
     botId: string;
     groupId?: string;

@@ -1,0 +1,8 @@
+# Reuse the already-audited project image built by container/Dockerfile.
+FROM pi-bot-desktop:local
+USER root
+WORKDIR /app
+COPY . .
+RUN ./scripts/setup-linux-desktop.sh && npm cache clean --force && rm -rf /var/lib/apt/lists/* && chown -R node:node /app/work /data
+USER node
+LABEL org.pibo.test="tailnet-desktop" org.pibo.runbook="scripts/setup-linux-desktop.sh;container/start-desktop.sh;container/run-desktop.sh"

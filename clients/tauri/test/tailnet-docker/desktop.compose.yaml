@@ -1,0 +1,22 @@
+# Add to compose.yaml; start only desktop with --no-deps.
+services:
+  desktop:
+    image: pibo-tailnet-desktop:local
+    pull_policy: never
+    command: ["--runtime"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /data:size=256m,uid=1000,gid=1000,mode=700
+      - /app/work:size=128m,uid=1000,gid=1000,mode=700
+    shm_size: 128m
+    cpus: 1
+    mem_limit: 1536m
+    pids_limit: 768
+    restart: "no"
+    networks: [test]
+    logging:
+      driver: json-file
+      options: {max-size: "4m", max-file: "1"}

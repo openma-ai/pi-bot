@@ -1,6 +1,6 @@
 # Pi background execution and observation
 
-This local extension wraps Pi 1.1.0's existing codemode and bash definitions.
+This local extension wraps Pi 1.2.0's existing codemode and bash definitions.
 QuickJS, MCP dispatch, native tool hooks and bash execution remain owned by Pi.
 It separates execution from waiting: a quick call returns its final result;
 new input or a bounded wait yields a receipt for the same running execution.
@@ -127,3 +127,5 @@ Reports retain sanitized inbox, job, tool/result, cell and outbox evidence under
 fresh `work/background-smoke/<run>/` directories. Fees are SDK estimates from
 reported usage, not provider invoices. This is a focused custom fixture, not
 a multi-agent benchmark or a complete model behavior evaluation.
+
+The bridge pins codemode 1.2.0 with the matching Pi agent/core/AI/MCP/TUI 1.2.0 family. Agent 1.1.0 cannot be mixed with codemode 1.2.0: its MCP declaration imports were removed. The output observation patch now targets `runtime/execution.js`, specifically `execute()`; the new deterministic `start()` API is unchanged. Patch anchors are checked before any write, and original files are backed up by SDK version. `test/pi-background-bridge.test.ts` verifies live output before settlement and successful store writes using the real worker/WASM sandbox.

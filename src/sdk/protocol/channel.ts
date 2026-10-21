@@ -1,6 +1,8 @@
+import type { FileAttachment } from '../../pi/types.ts';
+export type { FileAttachment } from '../../pi/types.ts';
 export type ChannelMessage = {
     imageInputStatus?: "attached" | "unsupported";
-    attachments?: import("../../pi/types.ts").FileAttachment[];
+    attachments?: FileAttachment[];
     messageId: string;
     channelId: string;
     conversationId: string;
