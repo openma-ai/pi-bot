@@ -24,9 +24,9 @@ Path(sys.argv[3]).write_text(json.dumps({"Replace":{str(Path(sys.argv[1]).resolv
 PYOVERLAY
 export GOFLAGS="${GOFLAGS:-} -overlay=$overlay"
 case "$platform" in
- macos) make -B -C "$source" c-archive; archive=libtailscale.a ;;
- ios) make -B -C "$source" c-archive-ios; archive=libtailscale_ios.a ;;
- ios-sim) make -B -C "$source" c-archive-ios-sim; archive=libtailscale_ios_sim.a ;;
+ macos) make -B -C "$source" PWD="$source" c-archive; archive=libtailscale.a ;;
+ ios) make -B -C "$source" PWD="$source" c-archive-ios; archive=libtailscale_ios.a ;;
+ ios-sim) make -B -C "$source" PWD="$source" c-archive-ios-sim; archive=libtailscale_ios_sim.a ;;
 esac
 output="$root/.tailscale-build/$platform"
 mkdir -p "$output"
