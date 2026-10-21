@@ -15,6 +15,11 @@ int tailscale_set_authkey(int s,const char*p) { return 0; }
 int tailscale_set_ephemeral(int s,int v) { return v==1 ? 0 : -1; }
 int tailscale_set_logfd(int s,int v) { return v==-1 ? 0 : -1; }
 int tailscale_close(int s) { return 0; }
+int tailscale_start(int s) { return 0; }
+int tailscale_status_json(int s,char **out) {
+ *out=strdup("{\"BackendState\":\"NeedsLogin\",\"AuthURL\":\"https://login.tailscale.com/a/synthetic-offline\",\"TailscaleIPs\":[],\"PrivateNodeKey\":\"not-for-renderer\"}");
+ return 0;
+}
 struct pair { int a,b; };
 static void *copy(void *arg) {
  struct pair *p=arg; char b[8192]; ssize_t n;

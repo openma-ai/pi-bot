@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Dialog,
   Tabs,
@@ -97,6 +97,27 @@ export function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, s
   const [embeddedTailscale, setEmbeddedTailscale] = useState(!!profile?.embeddedTailscale);
   const [tailKey, setTailKey] = useState("");
   const [tailReady,setTailReady] = useState(false);
+  const tailPollGeneration = useRef(0);
+  const [tailStatus,setTailStatus] = useState(null), [tailStatusError,setTailStatusError] = useState("");
+  useEffect(() => {
+    if (!embeddedTailscale || !tailscaleAvailable || !window.__PIBOT_NATIVE__) return;
+    let disposed = false, pending = false;
+    const poll = async () => {
+      if (pending) return;
+      pending = true; const generation = tailPollGeneration.current;
+      try {
+        const status = await window.__PIBOT_NATIVE__.call("runtime_control", {method:"tailscale/status",params:{}});
+        if (!disposed && generation === tailPollGeneration.current) {
+          setTailStatus(status); setTailStatusError("");
+          if (status.backendState === "Running") setTailReady(true);
+          else if (["NeedsLogin","NeedsMachineAuth","Stopped","NotPrepared"].includes(status.backendState)) setTailReady(false);
+        }
+      } catch { if (!disposed && generation === tailPollGeneration.current) setTailStatusError("暂时无法读取应用网络状态，请稍后重试"); }
+      finally { pending = false; }
+    };
+    void poll(); const timer = setInterval(poll, 2000);
+    return () => { disposed = true; clearInterval(timer); };
+  }, [embeddedTailscale,tailscaleAvailable]);
   const nativeAuth = remoteOnly || embeddedTailscale;
   const keyInput = useRef();
   const [authMethod,setAuthMethod]=useState("password"), [passphrase,setPassphrase]=useState(""), [saveCredentials,setSaveCredentials]=useState(false), [interactive,setInteractive]=useState(false);
@@ -215,12 +236,19 @@ export function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, s
           {window.__PIBOT_NATIVE__ && tailscaleAvailable && (!onboarding || embeddedTailscale) && <>
             {!onboarding&&<label><input type="checkbox" checked={embeddedTailscale} onChange={e=>setEmbeddedTailscale(e.target.checked)} />应用内 Tailscale（实验性）</label>}
             {embeddedTailscale && <>
-              <Text size="1" color="gray">{onboarding?"为 Pibo 授权此设备后，才会尝试连接私有网络。远程电脑需要另行登录；当前 VPN 仍可能影响连接。":"仅此应用使用用户态 Tailnet；外层连接仍受当前 VPN 路由影响。启用 runtime 会使用 auth key 注册临时节点；状态只写临时目录，正常退出清理，异常退出可能留存。iOS 回前台会重新连接。"}</Text>
-              <Text as="p" size="1">此应用：{tailReady||["prepared","dialed"].includes(tailState)?"已准备授权":"待授权"}。远程电脑需另行登录同一网络；此处无法代它登录。</Text>
-              <Field label="应用授权密钥（Tailscale，仅本次）" type="password" value={tailKey} onChange={setTailKey} />
-              <Button type="button" disabled={busy || !tailKey} onClick={async()=>{setBusy(true);setError("");const authKey=tailKey;setTailKey("");try{await window.__PIBOT_NATIVE__.call("runtime_control",{method:"tailscale/start",params:{authKey}});setTailReady(true);}catch(e){setError(String(e));}finally{setBusy(false);}}}>准备应用授权</Button>
-              {tailReady && <Text size="1">授权信息已准备；连接时才会注册临时节点。</Text>}
-              <Button type="button" onClick={async()=>{try{await window.__PIBOT_NATIVE__.call("runtime_control",{method:"tailscale/stop",params:{}});setTailReady(false);}catch(e){setError(String(e));}}}>停止内嵌节点并断开</Button>
+              <Text size="1" color="gray">仅为 Pibo 连接私有网络。请在系统浏览器登录并批准此设备；远程电脑需另行加入同一网络。现有 VPN 仍可能影响连接。</Text>
+              <Text as="p" size="1" role="status">{tailStatus?.backendState === "Running" ? "此应用已连接 Tailscale，可继续配置远程电脑。" : tailStatus?.backendState === "NeedsMachineAuth" ? "此设备正在等待网络管理员批准。" : tailStatus?.backendState === "Prepared" ? "授权信息已准备，连接时注册临时节点。" : tailStatus?.authURL ? "请打开授权页面，在浏览器完成登录和批准，再返回 Pibo。" : tailStatus && !["NotPrepared","Stopped"].includes(tailStatus.backendState) ? "正在准备应用网络，请稍候…" : tailReady ? "授权信息已准备，连接时注册临时节点。" : "此应用尚未登录 Tailscale。"}</Text>
+              {tailStatusError && <Text as="p" color="red" size="1">{tailStatusError}</Text>}
+              <Flex gap="2" wrap="wrap">
+                <Button type="button" disabled={busy || (tailStatus && !["NotPrepared","Stopped"].includes(tailStatus.backendState))} onClick={async()=>{tailPollGeneration.current++;setBusy(true);setError("");setTailReady(false);try{await window.__PIBOT_NATIVE__.call("runtime_control",{method:"tailscale/browserStart",params:{}});setTailStatus({backendState:"Starting"});}catch(e){setError(String(e));}finally{setBusy(false);}}}>登录 Tailscale</Button>
+                {tailStatus?.authURL && <Button type="button" variant="soft" disabled={busy} onClick={async()=>{setBusy(true);setError("");try{await window.__PIBOT_NATIVE__.call("runtime_control",{method:"tailscale/openLogin",params:{}});}catch(e){setError(String(e));}finally{setBusy(false);}}}>打开授权页面</Button>}
+                <Button type="button" variant="ghost" disabled={busy} onClick={async()=>{tailPollGeneration.current++;setBusy(true);try{await window.__PIBOT_NATIVE__.call("runtime_control",{method:"tailscale/stop",params:{}});setTailReady(false);setTailStatus({backendState:"NotPrepared"});setTailStatusError("");}catch(e){setError(String(e));}finally{setBusy(false);}}}>{tailStatus?.backendState === "Running" ? "停止节点并断开" : "取消授权并停止"}</Button>
+              </Flex>
+              <Text size="1" color="gray">节点身份仅存于本次应用的临时目录，停止或正常退出会清理；异常退出可能留存。此处没有后台常驻或绕过 VPN 的保证。</Text>
+              <details><summary>高级：使用已有 auth key</summary>
+                <Field label="应用授权密钥（仅本次，不会保存）" type="password" value={tailKey} onChange={setTailKey} />
+                <Button type="button" disabled={busy || !tailKey} onClick={async()=>{tailPollGeneration.current++;setBusy(true);setError("");const authKey=tailKey;setTailKey("");try{await window.__PIBOT_NATIVE__.call("runtime_control",{method:"tailscale/start",params:{authKey}});setTailReady(true);}catch(e){setError(String(e));}finally{setBusy(false);}}}>准备应用授权</Button>
+              </details>
             </>}
           </>}
           {nativeAuth && <>
@@ -321,7 +349,7 @@ export function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, s
         </Button>
         <Button
           type="submit"
-          disabled={busy || (onboarding&&embeddedTailscale&&!tailReady&&!["prepared","dialed"].includes(tailState)) || !name.trim() || (mode === "ssh" && (!host.trim() || (onboarding&&(!project.trim()||!remoteDir.trim())))) || (onboarding&&mode==="local"&&!localDir.trim())}
+          disabled={busy || (onboarding&&embeddedTailscale&&!tailReady&&tailStatus?.backendState!=="Running"&&!(tailStatus===null&&["prepared","dialed"].includes(tailState))) || !name.trim() || (mode === "ssh" && (!host.trim() || (onboarding&&(!project.trim()||!remoteDir.trim())))) || (onboarding&&mode==="local"&&!localDir.trim())}
         >
           {busy ? "正在处理…" : onboarding?"连接工作空间":profile ? "保存更改" : "添加 runtime"}
         </Button>

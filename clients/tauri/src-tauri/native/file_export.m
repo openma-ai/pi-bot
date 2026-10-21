@@ -36,3 +36,17 @@ void pibo_export_file(const char *source,const char *name,PiboExportDone done,vo
 #endif
  });
 }
+
+// URL is restricted to the official Tailscale authorization endpoint by Rust.
+void pibo_open_login(const char *value,PiboExportDone done,void *context) {
+ NSString *string=[NSString stringWithUTF8String:value];
+ dispatch_async(dispatch_get_main_queue(), ^{
+  NSURL *url=[NSURL URLWithString:string];
+  if(!url){done(-1,context);return;}
+#if TARGET_OS_IPHONE
+  [UIApplication.sharedApplication openURL:url options:@{} completionHandler:^(BOOL success){done(success?1:-1,context);}];
+#else
+  done([NSWorkspace.sharedWorkspace openURL:url]?1:-1,context);
+#endif
+ });
+}

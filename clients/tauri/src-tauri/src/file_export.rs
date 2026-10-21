@@ -66,7 +66,7 @@ pub async fn file_export(
         let path = std::ffi::CString::new(path.to_string_lossy().as_bytes())
             .map_err(|_| "Invalid path")?;
         let name = std::ffi::CString::new(name).map_err(|_| "Invalid name")?;
-        let (sender, receiver) = tokio::sync::oneshot::channel();
+        let (sender, receiver) = tokio::sync::oneshot::channel::<i32>();
         unsafe {
             pibo_export_file(
                 path.as_ptr(),
@@ -95,5 +95,39 @@ mod tests {
             assert!(!super::safe_name(name));
         }
         assert!(super::safe_name("报告.pdf"));
+    }
+}
+
+pub async fn open_tailscale_login(url: &str) -> Result<(), String> {
+    if !crate::tailscale::official_login_url(url) {
+        return Err("Invalid authorization URL".into());
+    }
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        unsafe extern "C" {
+            fn pibo_open_login(
+                url: *const std::ffi::c_char,
+                done: unsafe extern "C" fn(i32, *mut std::ffi::c_void),
+                context: *mut std::ffi::c_void,
+            );
+        }
+        let url = std::ffi::CString::new(url).map_err(|_| "Invalid authorization URL")?;
+        let (sender, receiver) = tokio::sync::oneshot::channel::<i32>();
+        unsafe {
+            pibo_open_login(
+                url.as_ptr(),
+                exported,
+                Box::into_raw(Box::new(sender)) as *mut std::ffi::c_void,
+            );
+        }
+        if receiver.await.map_err(|_| "打开浏览器被中断")? == 1 {
+            Ok(())
+        } else {
+            Err("无法打开系统浏览器，请重试".into())
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    {
+        Err("Browser authorization requires an Apple client".into())
     }
 }

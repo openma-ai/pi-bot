@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {ConnectionLanding} from '../src/gui/ConnectionLanding.jsx';import {connectionIssue,usableProfiles} from '../src/gui/connection-flow.js';
+import test from 'node:test';import assert from 'node:assert/strict';import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {ConnectionLanding} from '../src/gui/ConnectionLanding.jsx';import {RuntimeEditor} from '../src/gui/SettingsPage.jsx';import {connectionIssue,usableProfiles} from '../src/gui/connection-flow.js';
 const runtime=(remoteOnly=false)=>({status:{profiles:[],remoteOnly,embeddedTailscaleAvailable:true,active:null},connect:async()=>{},refresh:async()=>{}});
 test('desktop and iOS landing offer appropriate locations before exposing chat',()=>{
  const desktop=renderToStaticMarkup(React.createElement(ConnectionLanding,{runtime:runtime()}));assert.match(desktop,/这台 Mac/);assert.match(desktop,/远程电脑/);assert.doesNotMatch(desktop,/消息输入|给 bot 发消息/);
@@ -12,4 +12,13 @@ test('connection feedback separates application authorization, unknown remote lo
 });
 test('placeholder defaults are excluded from reconnect choices without mutating saved profiles',()=>{
  const profiles=[{id:'placeholder',dataDir:'/path/to/existing/pi-bot/data'},{id:'real',dataDir:'/srv/pibo/data'}];assert.deepEqual(usableProfiles(profiles).map(p=>p.id),['real']);assert.equal(profiles.length,2);
+});
+
+test('native connection editor offers browser authorization without requiring an auth key',()=>{
+ const previous=globalThis.window;let calls=0;
+ globalThis.window={__PIBOT_NATIVE__:{call:async()=>{calls++;throw Error('not requested');}}};
+ try {
+  const html=renderToStaticMarkup(React.createElement(RuntimeEditor,{profile:{id:'test',mode:'ssh',name:'Synthetic',embeddedTailscale:true},onSave:()=>{},onCancel:()=>{},remoteOnly:true,tailscaleAvailable:true,onboarding:true}));
+  assert.match(html,/登录 Tailscale/);assert.match(html,/取消授权并停止/);assert.match(html,/<summary>高级：使用已有 auth key<\/summary>/);assert.match(html,/此应用尚未登录/);assert.equal(calls,0,'rendering must never create a node');
+ } finally { if(previous===undefined)delete globalThis.window;else globalThis.window=previous; }
 });

@@ -198,3 +198,48 @@ standard-encryption choice was prepared but not submitted. Apple's next question
 is whether the app will be distributed in France; no answer or final Save has
 been submitted. This distribution intent and the export declaration require user
 confirmation. No internal group/tester has been created yet.
+
+## Release browser authorization and current upload blocker (2026-10-21)
+
+The embedded Apple build now exposes user-triggered browser authorization in
+normal Release Settings/first-run configuration: **登录 Tailscale**, then
+**打开授权页面** when the official SDK supplies its URL. The system browser opens
+only a validated `https://login.tailscale.com/a/...` endpoint obtained natively
+from the active SDK node, never an arbitrary renderer-supplied URL. Status shows
+pending login, administrator approval, connected, stopped, or unavailable. Cancel
+closes the node and removes its temporary identity; a new login requires another
+explicit action. There is no product 15-minute deadline and no automatic login
+on launch. The advanced one-session auth-key option remains available.
+
+Public status contains only backendState/authURL/this-node IPs, never raw SDK
+status, peers, diagnostic logs or keys. SDK logging is discarded for product
+nodes. Status polling does not implicitly start tsnet (its upstream LocalClient
+normally would); a prepared auth-key node starts only on explicit connection.
+Credentials/identity stay out of profiles and artifacts. All debug simulator
+probes, fixed peer addresses, reuse environment variables and probe timers remain
+compiled out of Release. The browser-start path uses no placeholder auth key.
+
+Verified without joining a network: offline ABI tests cover explicit start,
+duplicate rejection, passive status, cancellation/restart and existing
+HTTP/SSE/WebSocket/reconnect; native tests cover official URL restrictions;
+frontend tests and a local synthetic phone-mode mock cover default browser login,
+waiting/open-page controls and cancellation. The real iOS Release library and
+unsigned archive compile/link with the official SDK. This is not a new live
+Release browser-login/device acceptance test, nor iOS Tailnet noVNC acceptance.
+
+Current candidate identity remains `dev.pibot.ios`, version 0.1.0, candidate build
+1021.15.01 (not yet checked against current ASC builds). Existing Team 962863MJ5J
+and Pibo App Store Distribution profile match; distribution identity is listed
+valid. Manual signing failed at CodeSign with `errSecInternalComponent`, after
+linking. No explicit authorization dialog was observed and the error alone does
+not establish whether the Keychain is locked or the exact private-key access
+cause. No trust settings, key ACL, certificate, account privilege or signing
+resource was changed, and failed signing was not repeatedly retried. The user
+should inspect the existing login Keychain/signing-key access locally; never
+send a Keychain password to chat. App Store Connect currently redirects the task
+browser to login with `authResult=FAILED` and its sign-in component did not load.
+The user can open https://appstoreconnect.apple.com/apps/6823234702/testflight in
+their browser and sign in personally. Export-compliance/France distribution
+intent and testing-channel scope still require confirmation. No new upload was
+attempted. Unsigned artifacts and exact logs are under ignored
+`artifacts/testflight-1021.15.01/`; they cannot be installed through TestFlight.

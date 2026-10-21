@@ -32,6 +32,7 @@ mod native {
         dir: PathBuf,
         closed: AtomicBool,
         dialed: AtomicBool,
+        started: AtomicBool,
     }
     impl Node {
         fn close(&self) {
@@ -53,12 +54,12 @@ mod native {
         NODE.get_or_init(Default::default)
     }
     pub fn start(key: &str) -> Result<(), String> {
-        configure(key, None)
-    }
-    fn configure(key: &str, reuse: Option<PathBuf>) -> Result<(), String> {
         if !key.starts_with("tskey-auth-") || key.len() > 1024 {
             return Err("请输入有效 Tailscale auth key".into());
         }
+        configure(key, None)
+    }
+    fn configure(key: &str, reuse: Option<PathBuf>) -> Result<(), String> {
         let mut slot = current().lock().map_err(|_| "Node lock unavailable")?;
         if slot.is_some() {
             return Err("请先停止当前内嵌节点".into());
@@ -89,6 +90,7 @@ mod native {
             dir,
             closed: AtomicBool::new(false),
             dialed: AtomicBool::new(false),
+            started: AtomicBool::new(false),
         });
         let path = CString::new(node.dir.to_string_lossy().as_bytes())
             .map_err(|_| "Invalid node directory")?;
@@ -125,6 +127,72 @@ mod native {
                 node.close();
             }
         }
+    }
+    // Explicit product action only. No auth key, debug flags, persistent identity or deadline.
+    pub fn browser_start() -> Result<(), String> {
+        configure("", None)?;
+        let node = current()
+            .lock()
+            .map_err(|_| "Node lock unavailable")?
+            .clone()
+            .ok_or("Missing node")?;
+        unsafe extern "C" {
+            fn tailscale_start(sd: i32) -> i32;
+        }
+        let hostname = CString::new(format!(
+            "pibo-{}",
+            &uuid::Uuid::new_v4().simple().to_string()[..8]
+        ))
+        .unwrap();
+        if unsafe { tailscale_set_hostname(node.sd, hostname.as_ptr()) } != 0
+            || unsafe { tailscale_start(node.sd) } != 0
+        {
+            stop();
+            return Err("无法启动应用内网络，请重试".into());
+        }
+        node.started.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+    fn sdk_status(node: &Node) -> Result<serde_json::Value, String> {
+        unsafe extern "C" {
+            fn tailscale_status_json(sd: i32, out: *mut *mut std::ffi::c_char) -> i32;
+            fn free(ptr: *mut std::ffi::c_void);
+        }
+        let mut out = std::ptr::null_mut();
+        if unsafe { tailscale_status_json(node.sd, &mut out) } != 0 || out.is_null() {
+            return Err("网络状态暂不可用，请重试".into());
+        }
+        let parsed = serde_json::from_slice::<serde_json::Value>(
+            unsafe { std::ffi::CStr::from_ptr(out) }.to_bytes(),
+        );
+        unsafe {
+            free(out.cast());
+        }
+        parsed.map_err(|_| "网络状态暂不可用".into())
+    }
+    pub fn status() -> Result<serde_json::Value, String> {
+        let node = current()
+            .lock()
+            .map_err(|_| "Node lock unavailable")?
+            .clone();
+        let Some(node) = node else {
+            return Ok(serde_json::json!({"backendState":"NotPrepared","authURL":null,"ips":[]}));
+        };
+        if node.closed.load(Ordering::SeqCst) {
+            return Ok(serde_json::json!({"backendState":"Stopped","authURL":null,"ips":[]}));
+        }
+        // LocalClient() starts tsnet implicitly: status must not initiate registration.
+        if !node.started.load(Ordering::SeqCst) {
+            return Ok(serde_json::json!({"backendState":"Prepared","authURL":null,"ips":[]}));
+        }
+        let status = sdk_status(&node)?;
+        // Never return raw SDK state, peers, diagnostics, credentials or node keys.
+        let auth_url = status["AuthURL"]
+            .as_str()
+            .filter(|s| super::official_login_url(s));
+        Ok(
+            serde_json::json!({"backendState":status["BackendState"],"authURL":auth_url,"ips":status["TailscaleIPs"]}),
+        )
     }
     #[cfg(debug_assertions)]
     pub fn browser_test_start() -> Result<(), String> {
@@ -169,6 +237,7 @@ mod native {
             stop();
             return Err("Cannot start temporary browser-login node".into());
         }
+        node.started.store(true, Ordering::SeqCst);
         Ok(())
     }
     #[cfg(debug_assertions)]
@@ -390,6 +459,7 @@ mod native {
         let owned = node.clone();
         let task = tokio::task::spawn_blocking(move || {
             let mut fd = -1;
+            owned.started.store(true, Ordering::SeqCst);
             if unsafe { tailscale_dial(owned.sd, c"tcp".as_ptr(), address.as_ptr(), &mut fd) } != 0
                 || fd < 0
             {
@@ -415,7 +485,7 @@ mod native {
     }
 }
 #[cfg(feature = "embedded-tailscale")]
-pub use native::{dial, start, state, stop};
+pub use native::{browser_start, dial, start, state, status, stop};
 #[cfg(not(feature = "embedded-tailscale"))]
 pub fn start(_: &str) -> Result<(), String> {
     Err("此构建未启用 embedded-tailscale；请安装启用内嵌库的 Apple 构建".into())
@@ -433,6 +503,56 @@ pub async fn dial(_: &str, _: u16) -> Result<tokio::io::DuplexStream, String> {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn authorization_links_stay_on_the_official_browser_endpoint() {
+        assert!(super::official_login_url(
+            "https://login.tailscale.com/a/synthetic-test"
+        ));
+        for url in [
+            "http://login.tailscale.com/a/test",
+            "https://login.tailscale.com.evil.invalid/a/test",
+            "https://evil.invalid/a/test",
+            "https://name@login.tailscale.com/a/test",
+            "https://login.tailscale.com/a/test?redirect=evil",
+            "https://login.tailscale.com/a/test#evil",
+            "https://login.tailscale.com/admin",
+            "https://login.tailscale.com/a/",
+        ] {
+            assert!(!super::official_login_url(url), "{url}");
+        }
+    }
+    #[cfg(all(feature = "embedded-tailscale", pibo_tailscale_offline_test))]
+    #[test]
+    fn tailscale_offline_browser_flow_is_explicit_and_cancellable() {
+        super::stop();
+        assert_eq!(super::status().unwrap()["backendState"], "NotPrepared");
+        super::start("tskey-auth-synthetic-offline").unwrap();
+        assert_eq!(
+            super::status().unwrap()["backendState"],
+            "Prepared",
+            "status cannot start a prepared node"
+        );
+        super::stop();
+        super::browser_start().unwrap();
+        assert!(
+            super::browser_start().is_err(),
+            "never start duplicate nodes"
+        );
+        let status = super::status().unwrap();
+        assert_eq!(status["backendState"], "NeedsLogin");
+        assert!(super::official_login_url(
+            status["authURL"].as_str().unwrap()
+        ));
+        assert_eq!(
+            status.as_object().unwrap().len(),
+            3,
+            "no raw SDK status or keys"
+        );
+        super::stop();
+        assert_eq!(super::status().unwrap()["backendState"], "NotPrepared");
+        super::browser_start().unwrap();
+        super::stop();
+    }
     #[test]
     fn startup_requires_explicit_valid_auth_key() {
         assert!(super::start("").is_err());
@@ -453,3 +573,26 @@ pub use native::{browser_test_start, browser_test_status};
 
 #[cfg(all(feature = "embedded-tailscale", debug_assertions))]
 pub use native::peer_test;
+
+/// Only the official default control server's browser authorization endpoint is allowed.
+pub fn official_login_url(value: &str) -> bool {
+    reqwest::Url::parse(value).is_ok_and(|url| {
+        url.scheme() == "https"
+            && url.host_str() == Some("login.tailscale.com")
+            && url.port().is_none()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.path().starts_with("/a/")
+            && url.path().len() > 3
+            && url.query().is_none()
+            && url.fragment().is_none()
+    })
+}
+#[cfg(not(feature = "embedded-tailscale"))]
+pub fn browser_start() -> Result<(), String> {
+    Err("此构建未启用 embedded-tailscale".into())
+}
+#[cfg(not(feature = "embedded-tailscale"))]
+pub fn status() -> Result<serde_json::Value, String> {
+    Err("此构建未启用 embedded-tailscale".into())
+}

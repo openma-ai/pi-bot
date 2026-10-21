@@ -2,7 +2,13 @@ const query=new URLSearchParams(location.search);const phone=query.has('phone');
 if(phone){Object.defineProperty(navigator,'platform',{get:()=> 'iPhone'});Object.defineProperty(navigator,'maxTouchPoints',{get:()=>5});}
 const profiles=query.has('returning')?[{id:'saved',name:'开发工作空间',mode:'ssh',host:'me@dev.example',dataDir:'/srv/pibo/data',projectDir:'/srv/pibo',serverPort:0,...(query.has('tailnet')?{embeddedTailscale:true}: {})}]:[];
 const state={profiles,active:null,remoteOnly:phone,credentialStorage:phone?'keychain':'system',connecting:false,embeddedTailscaleAvailable:true,tailscaleNodeState:'notPrepared'};
-window.__PIBOT_NATIVE__={call:async(command,args)=>{if(command==='runtime_control'){if(args.method==='tailscale/start'){state.tailscaleNodeState='prepared';return {configured:true};}if(args.method==='tailscale/stop'){state.tailscaleNodeState='notPrepared';return {configured:false};}}if(command==='ssh_credentials_set')return null;if(command==='runtime_distribution_status')return {available:false};if(command==='layout_diagnostics_enabled')return false;return null;}};
+window.__PIBOT_NATIVE__={call:async(command,args)=>{if(command==='runtime_control'){
+ if(args.method==='tailscale/browserStart'){state.tailBackend='NeedsLogin';state.tailscaleNodeState='prepared';return {started:true};}
+ if(args.method==='tailscale/status')return {backendState:state.tailBackend||'NotPrepared',authURL:state.tailBackend==='NeedsLogin'?'https://login.tailscale.com/a/synthetic-ui-only':null,ips:[]};
+ if(args.method==='tailscale/openLogin'){state.mockBrowserOpened=true;return {opened:true};}
+ if(args.method==='tailscale/start'){state.tailscaleNodeState='prepared';return {configured:true};}
+ if(args.method==='tailscale/stop'){state.tailBackend='NotPrepared';state.tailscaleNodeState='notPrepared';return {configured:false};}
+ }if(command==='ssh_credentials_set')return null;if(command==='runtime_distribution_status')return {available:false};if(command==='layout_diagnostics_enabled')return false;return null;}};
 window.__TAURI_INTERNALS__={invoke:async()=>1,transformCallback:()=>1};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener:()=>{}};
 const original=fetch;window.fetch=async(input,options={})=>{const url=new URL(input,location.href);if(url.pathname==='/client/rpc'){const f=JSON.parse(options.body);try{
  let result=state;if(f.method==='runtime/configure'){state.profiles=[...state.profiles.filter(p=>p.id!==f.params.profile.id),f.params.profile];}

@@ -2,7 +2,7 @@ export function connectionIssue(error, profile, nodeState) {
     const raw = String(error?.message || error || '连接没有完成');
     if (profile?.embeddedTailscale && (/先授权|准备内嵌|未启用 embedded|重新授权/.test(raw) || ['notPrepared', 'stopped'].includes(nodeState)))
         return {
-            title: '先授权这台设备', detail: '应用内网络还没有准备好。返回连接信息，为 Pibo 输入授权密钥；这不会替远程电脑登录。', kind: 'app-auth'
+            title: '先授权这台设备', detail: '应用内网络还没有准备好。返回连接信息，在浏览器登录并批准 Pibo；这不会替远程电脑登录。', kind: 'app-auth'
         };
     if (/凭据|密码|认证|Keychain|privateKey/.test(raw))
         return {

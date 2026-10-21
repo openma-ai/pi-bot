@@ -178,6 +178,25 @@ async fn runtime_control(
 ) -> Result<Value, String> {
     main_window(&window)?;
     match method.as_str() {
+        "tailscale/browserStart" => {
+            tokio::task::spawn_blocking(tailscale::browser_start)
+                .await
+                .map_err(|_| "授权启动被中断")??;
+            Ok(json!({"started":true}))
+        }
+        "tailscale/status" => tokio::task::spawn_blocking(tailscale::status)
+            .await
+            .map_err(|_| "状态读取被中断")?,
+        "tailscale/openLogin" => {
+            let status = tokio::task::spawn_blocking(tailscale::status)
+                .await
+                .map_err(|_| "状态读取被中断")??;
+            let url = status["authURL"]
+                .as_str()
+                .ok_or("授权页面尚未就绪，请稍后重试")?;
+            file_export::open_tailscale_login(url).await?;
+            Ok(json!({"opened":true}))
+        }
         "tailscale/start" => {
             let key = zeroize::Zeroizing::new(
                 params["authKey"]
