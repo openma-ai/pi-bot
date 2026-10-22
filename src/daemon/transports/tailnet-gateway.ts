@@ -10,9 +10,20 @@ export function tailnetAddress(host: string) {
     const parts = host.split('.').map(Number);
     return parts.length === 4 && parts.every((n, i) => Number.isInteger(n) && n >= 0 && n <= 255 && String(n) === host.split('.')[i]) && parts[0] === 100 && parts[1]! >= 64 && parts[1]! <= 127;
 }
-export function createTailnetGateway(options: {
+export interface TailnetListener {
     host: string;
     port: number;
+    listenMode?: 'interface' | 'serve-loopback';
+}
+/** No automatic bind fallback: a missing Tailnet interface must fail closed. */
+export function tailnetBindAddress(options: TailnetListener) {
+    if (!tailnetAddress(options.host) || !Number.isInteger(options.port) || options.port < 1 || options.port > 65535)
+        throw Error('Tailnet ingress requires an explicit 100.64.0.0/10 address and port');
+    if (options.listenMode !== undefined && !['interface', 'serve-loopback'].includes(options.listenMode))
+        throw Error('Unknown Tailnet listener mode');
+    return options.listenMode === 'serve-loopback' ? '127.0.0.1' : options.host;
+}
+export function createTailnetGateway(options: TailnetListener & {
     runtime: {
         url: string;
         token: string;
@@ -20,8 +31,7 @@ export function createTailnetGateway(options: {
     dataDir: string;
     name?: string;
 }) {
-    if (!tailnetAddress(options.host) || !Number.isInteger(options.port) || options.port < 1 || options.port > 65535)
-        throw Error('Tailnet ingress requires an explicit 100.64.0.0/10 address and port');
+    tailnetBindAddress(options);
     const target = new URL(options.runtime.url);
     if (target.protocol !== 'http:' || target.hostname !== '127.0.0.1' || !target.port || target.username || target.password || target.pathname !== '/' || target.search || target.hash)
         throw Error('Gateway target must be loopback');
@@ -279,7 +289,7 @@ export async function listenTailnetGateway(options: Parameters<typeof createTail
     const gateway = createTailnetGateway(options);
     await new Promise<void>((yes, no) => {
         gateway.server.once('error', no);
-        gateway.server.listen(options.port, options.host, () => {
+        gateway.server.listen(options.port, tailnetBindAddress(options), () => {
             gateway.server.off('error', no);
             yes();
         });

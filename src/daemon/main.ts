@@ -3,6 +3,7 @@ import { writeFileSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { PiBotDaemon } from './core/daemon.ts';
 import { listenHttp } from './transports/http.ts';
+import { tailnetListenerOptions } from './transports/tailnet-listener.ts';
 import { listenStdio } from './transports/stdio.ts';
 import { connectAuto } from './transports/auto.ts';
 import { PROTOCOL_VERSION } from '../sdk/protocol/version.ts';
@@ -106,6 +107,9 @@ export async function main(args = process.argv.slice(2)) {
     if (command !== 'daemon')
         throw Error('Usage: pi-bot daemon|client|status|stop|chat');
     const listen = option('--listen') ?? 'http://127.0.0.1:' + Number(process.env.PI_BOT_GUI_PORT ?? 4317);
+    const tailnet = tailnetListenerOptions(args);
+    if (tailnet && (listen === 'stdio' || listen === 'off'))
+        throw Error('Tailnet ingress requires the local HTTP runtime listener');
     const daemon = await PiBotDaemon.create({
         dataDir, piOptions: option('--pi-dir') ? {
             agentDir: resolve(option('--pi-dir')!)
@@ -120,13 +124,10 @@ export async function main(args = process.argv.slice(2)) {
         const url = new URL(listen);
         if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1')
             throw Error('Only a loopback HTTP listener is supported');
-        const tailnet = option('--tailnet-listen');
-        if (args.includes('--tailnet-listen') && (!tailnet || !/^100\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}:[0-9]{1,5}$/.test(tailnet)))
-            throw Error('Use --tailnet-listen 100.x.x.x:port');
         transport = await listenHttp(daemon, {
             port: Number(url.port), staticDir: option('--static'), ...(tailnet ? {
                 tailnet: {
-                    host: tailnet.split(':')[0]!, port: Number(tailnet.split(':')[1]), name: option('--name')
+                    ...tailnet, name: option('--name')
                 }
             } : {})
         });

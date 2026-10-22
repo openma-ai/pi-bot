@@ -5,12 +5,12 @@ import { join, resolve, extname } from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { PiBotDaemon } from '../core/daemon.ts';
 import type { DaemonConnection } from '../core/connection.ts';
-import { listenTailnetGateway } from './tailnet-gateway.ts';
+import { listenTailnetGateway, type TailnetListener } from './tailnet-gateway.ts';
 import { avatarFile } from '../avatar-media.ts';
 export async function listenHttp(daemon: PiBotDaemon, options: {
     port?: number;
     staticDir?: string;
-    tailnet?: {host:string;port:number;name?:string};
+    tailnet?: TailnetListener & {name?:string};
 } = {}) {
     const token = randomBytes(32).toString('hex');
     writeFileSync(join(daemon.dataDir, 'daemon.token'), token, {

@@ -62,10 +62,38 @@ npm run pi-bot -- tailnet-cancel --data-dir /absolute/workspace/data
 npm run pi-bot -- tailnet-revoke --data-dir /absolute/workspace/data --device DEVICE_ID
 ```
 
-Replace placeholders before running. The new listener requires that IP to exist
-on the server; a userspace-only Docker node has no such interface, so needs an
-explicit supported Serve/forward integration before this CLI path can be used
-there. This change does not automatically configure Serve, firewall or routing.
+Replace placeholders before running. Without any Tailnet flags, the daemon only
+opens its ordinary loopback listener. `--tailnet-listen` alone requires the given
+100.x IP to exist on the server and fails if it cannot bind: there is no fallback.
+
+For an explicitly approved userspace-only node, add `--tailnet-serve-loopback`:
+
+```sh
+npm run pi-bot -- daemon --data-dir /absolute/workspace/data \
+  --listen http://127.0.0.1:4318 --tailnet-listen 100.x.x.x:4319 \
+  --tailnet-serve-loopback --name 'My workspace'
+```
+
+This binds the gateway **only to 127.0.0.1:4319** while requiring the advertised
+`Host: 100.x.x.x:4319` on every incoming request. The flag requires an explicit,
+valid `--tailnet-listen` and a local HTTP runtime; it accepts no arbitrary bind
+address. CLI options are validated before daemon creation. A separately approved
+Tailscale TCP Serve forward must target `tcp://127.0.0.1:4319` in the **same network
+namespace**. TCP forwarding preserves the original Host; an HTTP reverse proxy
+that changes Host is deliberately rejected. The local owner administration
+endpoint stays on the ordinary runtime's loopback listener, and remote paired
+devices cannot call it. No Serve/Funnel, ACL, Docker or host port configuration is
+created by this option. Stop the daemon to close its listeners; disabling this
+single Serve port is a separate owner action. Never use a global Serve reset to
+remove unrelated forwards.
+
+For the proposed isolated Docker test, this enables the new direct-runtime
+container to share the test Tailnet container's network namespace without TUN or
+NET_ADMIN. Its desktop broker should use 127.0.0.1:8091 rather than the existing
+HTTP echo's 8080. The original desktop container and unrelated Mac containers
+remain separate. Actual port availability, node IP/login and ACL must still be
+checked after Docker becomes available; no current live state is inferred from
+old configuration files.
 
 `/pibo/service` returns a minimal service/version/name advertisement.
 `tailnet-pair` opens a 120-second, 96-bit, single-use code with at most five
@@ -123,3 +151,13 @@ coexistence. Actual login, saving persistent network credentials, opening a real
 listener/Serve forwarding each need a concrete new confirmation before testing.
 No real login, persistent credential write, listener, TestFlight build/upload or
 system security/network change was performed for this iteration.
+
+## Explicit userspace forwarding adapter follow-up
+
+`--tailnet-serve-loopback` was added and tested without starting Docker, Tailscale
+or Serve, or writing real network credentials. Five focused listener/gateway
+tests cover malformed/ambiguous flags, fail-closed binding selection, the actual
+loopback socket, advertised Host rejection, local-owner pairing, authenticated
+health, remote-admin denial and device revocation. These use only synthetic
+127.0.0.1 services. TypeScript check and the full `npm test` aggregate passed: 327/327 tests, no
+skips, approximately 13 seconds (`/tmp/pibo-tailnet-forward-aggregate.log`).
