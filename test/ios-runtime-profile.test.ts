@@ -15,3 +15,8 @@ test('embedded transport metadata is optional and never contains Tailnet credent
   for(const field of ['authKey','tailscaleAuthKey','stateDir']) assert.equal(Value.Check(RuntimeProfileSchema,{...p,[field]:'secret'}),false);
   assert.equal(Value.Check(RuntimeProfileSchema,{...p,embeddedTailscale:'true'}),false);
 });
+test('native direct Tailnet profile needs only device address and service port, never SSH or secrets',()=>{
+ const p={mode:'tailnet',host:'100.100.1.2',serverPort:4319,embeddedTailscale:true,dataDir:''};assert.equal(Value.Check(RuntimeProfileSchema,p),true);
+ for(const field of ['token','authKey','privateKey','password','projectDir','hostKey'])assert.equal(Value.Check(RuntimeProfileSchema,{...p,[field]:'secret'}),false);
+ for(const host of ['127.0.0.1','example.com','user@100.100.1.2','100.63.1.2'])assert.equal(Value.Check(RuntimeProfileSchema,{...p,host}),false);
+});

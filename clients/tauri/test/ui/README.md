@@ -23,3 +23,9 @@ Tailnet node and uses an empty, disposable Pi directory. Its session factory has
 no model/provider calls. Native save/share are mocked; do not interpret this as
 physical-device or native-sheet testing. Existing user runtimes, settings and
 photos are not read or changed. Stop with Ctrl-C.
+
+Direct Tailnet flow: `?phone=1&approve=1&success=1` simulates browser approval,
+returns two synthetic peers (one offline), and enables mocked service checking
+and pairing. Omit `approve=1` to test cancellation. `window.__PIBO_TEST__` exposes
+only this fixture's synthetic state and native call names for duplicate/lifecycle
+assertions; it is not included in production UI.

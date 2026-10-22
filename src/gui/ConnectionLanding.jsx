@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Theme, Heading, Text, Button, Flex, Card, Badge } from '@radix-ui/themes';
 import { Laptop, Cloud, ArrowRight, ArrowLeft, Network, Check, LoaderCircle } from 'lucide-react';
+import { TailnetConnect } from './TailnetConnect.jsx';
 import { RuntimeEditor } from './SettingsPage.jsx';
 import { connectionIssue, usableProfiles } from './connection-flow.js';
 export function ConnectionLanding({ runtime, onSettings }) {
@@ -18,8 +19,8 @@ export function ConnectionLanding({ runtime, onSettings }) {
     });
     useEffect(() => {
         if (phone && kind === "local")
-            setKind("remote");
-    }, [phone, kind]);
+            setKind(runtime.status.embeddedTailscaleAvailable ? "tailnet" : "remote");
+    }, [phone, kind, runtime.status.embeddedTailscaleAvailable]);
     useEffect(() => {
         heading.current?.focus();
     }, [step]);
@@ -29,9 +30,9 @@ export function ConnectionLanding({ runtime, onSettings }) {
     const choices = [...(!phone ? [{
                 id: 'local', name: '这台 Mac', description: '使用本机已启动的 Pibo 工作空间', icon: Laptop
             }] : []), {
-            id: 'remote', name: '远程电脑', description: phone ? '连接你已有的远程工作空间' : '沿用这台 Mac 的 SSH 配置与密钥', icon: Cloud
+            id: 'remote', name: 'SSH（高级）', description: phone ? '连接你已有的远程工作空间' : '沿用这台 Mac 的 SSH 配置与密钥', icon: Cloud
         }, ...(runtime.status.embeddedTailscaleAvailable ? [{
-                id: 'tailnet', name: '通过 Tailscale', description: '可选 · 只为 Pibo 连接私有网络', icon: Network
+                id: 'tailnet', name: '通过 Tailscale', description: '登录网络、选择电脑，配对后直接使用 Pibo', icon: Network
             }] : [])];
     async function connect(profile) {
         const version = ++attempt.current;
@@ -65,6 +66,7 @@ export function ConnectionLanding({ runtime, onSettings }) {
         await connect(profile);
     }
     function create() {
+        if (kind === 'tailnet') { setCandidate({id:crypto.randomUUID(),mode:'tailnet'});setStep('configure');return; }
         setCandidate({
             id: crypto.randomUUID(), name: kind === 'local' ? '本机工作空间' : '远程工作空间', mode: kind === 'local' ? 'local' : 'ssh', dataDir: '', ...(kind === 'local' ? {} : {
                 host: '', projectDir: '~/pi-bot', serverPort: 0, ...(kind === 'tailnet' ? {
@@ -82,12 +84,13 @@ export function ConnectionLanding({ runtime, onSettings }) {
             })}>重新读取</Button></>}</div> : <>
  {profiles.length > 0 && <div className="landing-returning"><Text as="p" size="2" weight="medium">继续使用</Text>{[...profiles].sort((a, b) => Number(b.id === last) - Number(a.id === last)).map(p => <Card key={p.id} className="landing-saved"><Flex justify="between" align="center" gap="3"><div><Text as="p" weight="medium">{p.name}</Text><Text size="1" color="gray">{p.mode === 'local' ? '这台 Mac' : p.embeddedTailscale ? '私有网络 · Tailscale' : '远程电脑'}</Text></div><Flex gap="2"><Button variant="ghost" onClick={() => {
                 setCandidate(p);
-                setStep('configure');
+                setKind(p.mode==='tailnet'?'tailnet':p.mode==='local'?'local':'remote');setStep('configure');
             }}>修改</Button><Button onClick={() => void connect(p)}>继续连接</Button></Flex></Flex></Card>)}</div>}
  <fieldset className="landing-choices"><legend>{profiles.length ? '添加其他连接' : '工作空间在哪里？'}</legend>{choices.map(({ id, name, description, icon: Icon }) => <label key={id} className="landing-choice" data-selected={kind === id}><input type="radio" name="connection-kind" value={id} checked={kind === id} onChange={() => setKind(id)}/><Icon size={21} aria-hidden="true"/><span><strong>{name}</strong><small>{description}</small></span>{kind === id && <Check size={16} className="choice-check"/>}</label>)}</fieldset>
  {kind === 'tailnet' && <Text as="p" color="gray" size="1">需要分别授权此应用，并让远程电脑登录同一网络。外层连接仍受当前 VPN 路由影响。</Text>}
  <Flex justify="end" mt="5"><Button onClick={create}>继续<ArrowRight size={16}/></Button></Flex></>}</>}
- {step === 'configure' && <RuntimeEditor key={candidate.id} profile={candidate} knownProfile={profiles.some(p => p.id === candidate.id)} onboarding onSave={save} onCancel={() => setStep('choose')} remoteOnly={phone} sessionOnly={runtime.status.credentialStorage === 'session'} tailscaleAvailable={runtime.status.embeddedTailscaleAvailable} tailState={runtime.status.tailscaleNodeState}/>}
+ {step === 'configure' && candidate?.mode === 'tailnet' && <TailnetConnect profile={candidate} onSave={save} onCancel={()=>setStep('choose')} />}
+ {step === 'configure' && candidate?.mode !== 'tailnet' && <RuntimeEditor key={candidate.id} profile={candidate} knownProfile={profiles.some(p => p.id === candidate.id)} onboarding onSave={save} onCancel={() => setStep('choose')} remoteOnly={phone} sessionOnly={runtime.status.credentialStorage === 'session'} tailscaleAvailable={runtime.status.embeddedTailscaleAvailable} tailState={runtime.status.tailscaleNodeState}/>}
  {step === 'connecting' && <div className="landing-connecting" role="status"><LoaderCircle size={30} className="landing-spinner"/><Text as="p">{candidate?.embeddedTailscale ? '正在连接私有网络、验证远程电脑并查找服务。' : '正在验证连接并查找运行中的服务。'}</Text><Text as="p" size="2" color="gray">{candidate?.name} · 不会启动或重启远程服务</Text><Button variant="soft" color="gray" onClick={() => {
         attempt.current++;
         void runtime.cancelConnect().catch(() => {

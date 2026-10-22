@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <TargetConditionals.h>
+#import <AuthenticationServices/AuthenticationServices.h>
 #if TARGET_OS_IPHONE
 #import <UIKit/UIKit.h>
 #else
@@ -37,16 +38,45 @@ void pibo_export_file(const char *source,const char *name,PiboExportDone done,vo
  });
 }
 
-// URL is restricted to the official Tailscale authorization endpoint by Rust.
+// No custom callback is required: SDK status polling closes the sheet on Running.
+@interface PiboAuthAnchor : NSObject <ASWebAuthenticationPresentationContextProviding>
+@end
+@implementation PiboAuthAnchor
+- (ASPresentationAnchor)presentationAnchorForWebAuthenticationSession:(ASWebAuthenticationSession *)session {
+#if TARGET_OS_IPHONE
+ for(UIScene *scene in UIApplication.sharedApplication.connectedScenes) if([scene isKindOfClass:UIWindowScene.class] && scene.activationState==UISceneActivationStateForegroundActive) for(UIWindow *window in ((UIWindowScene*)scene).windows) if(window.isKeyWindow)return window;
+ return nil;
+#else
+ return NSApp.keyWindow ?: NSApp.windows.firstObject;
+#endif
+}
+@end
+static ASWebAuthenticationSession *piboAuth;
+static PiboAuthAnchor *piboAnchor;
+void pibo_close_login(void) {dispatch_async(dispatch_get_main_queue(),^{[piboAuth cancel];piboAuth=nil;piboAnchor=nil;});}
 void pibo_open_login(const char *value,PiboExportDone done,void *context) {
  NSString *string=[NSString stringWithUTF8String:value];
  dispatch_async(dispatch_get_main_queue(), ^{
-  NSURL *url=[NSURL URLWithString:string];
-  if(!url){done(-1,context);return;}
-#if TARGET_OS_IPHONE
-  [UIApplication.sharedApplication openURL:url options:@{} completionHandler:^(BOOL success){done(success?1:-1,context);}];
-#else
-  done([NSWorkspace.sharedWorkspace openURL:url]?1:-1,context);
-#endif
+  if(piboAuth){done(1,context);return;}
+  NSURL *url=[NSURL URLWithString:string];if(!url){done(-1,context);return;}
+  piboAnchor=[PiboAuthAnchor new];
+  __block __weak ASWebAuthenticationSession *weakSession;
+  piboAuth=[[ASWebAuthenticationSession alloc] initWithURL:url callbackURLScheme:@"pibo-auth" completionHandler:^(NSURL *callback,NSError *error){(void)callback;(void)error;if(piboAuth==weakSession){piboAuth=nil;piboAnchor=nil;}}];
+  weakSession=piboAuth;
+  piboAuth.presentationContextProvider=piboAnchor;
+  // Reuse the user's browser session; credentials remain owned by the OS browser.
+  BOOL started=[piboAuth start];if(!started){piboAuth=nil;piboAnchor=nil;}
+  done(started?1:-1,context);
  });
+}
+
+// SDK working files are private, non-backed-up, and protected while iOS is locked.
+int pibo_protect_node_directory(const char *value) {
+ NSString *path=[NSString stringWithUTF8String:value];NSError *error=nil;
+ NSURL *url=[NSURL fileURLWithPath:path isDirectory:YES];
+ if(![url setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:&error])return -1;
+#if TARGET_OS_IPHONE
+ if(![NSFileManager.defaultManager setAttributes:@{NSFileProtectionKey:NSFileProtectionComplete} ofItemAtPath:path error:&error])return -1;
+#endif
+ return 0;
 }

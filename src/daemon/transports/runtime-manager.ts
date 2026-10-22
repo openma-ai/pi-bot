@@ -5,11 +5,13 @@ import { createServer } from 'node:net';
 import { request as httpRequest } from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { Value } from 'typebox/value';
-import { RuntimeProfileSchema, type RuntimeProfile, type RuntimeStatus } from '../../sdk/protocol/client-runtime.ts';
+import { RuntimeProfileSchema, type RuntimeProfile as AnyRuntimeProfile, type RuntimeStatus } from '../../sdk/protocol/client-runtime.ts';
 import { ensureServer, type ServerEndpoint } from './server-start.ts';
+type RuntimeProfile=Exclude<AnyRuntimeProfile,{mode:"tailnet"}>;
 export function validateProfile(value: unknown): RuntimeProfile {
     if (!Value.Check(RuntimeProfileSchema, value))
         throw Error('请检查连接配置：主机、目录和端口');
+    if ((value as AnyRuntimeProfile).mode === "tailnet") throw Error("应用内 Tailscale 仅支持原生 Apple 客户端");
     const profile = value as RuntimeProfile;
     if (profile.mode === 'ssh' && profile.embeddedTailscale)
         throw Error('应用内 Tailscale 仅支持原生 Apple 客户端');
@@ -247,7 +249,7 @@ export class RuntimeManager {
         const p = this.prepare(value), next = this.upsert(p);
         this.persist(next);
         this.profiles = next;
-        if (this.active?.profileId === p.id && this.active.profile && connectionKey(this.active.profile) === connectionKey(p)) {
+        if (this.active?.profileId === p.id && this.active.profile && connectionKey(validateProfile(this.active.profile)) === connectionKey(p)) {
             this.active.profile = p;
             this.active.label = p.name;
         }

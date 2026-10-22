@@ -25,5 +25,5 @@ export function connectionIssue(error, profile, nodeState) {
     };
 }
 export function usableProfiles(profiles = []) {
-    return profiles.filter(p => p.dataDir && !p.dataDir.startsWith('/path/to/') && p.dataDir !== '/path/to/existing/pi-bot/data');
+    return profiles.filter(p => p.mode === 'tailnet' || p.dataDir && !p.dataDir.startsWith('/path/to/') && p.dataDir !== '/path/to/existing/pi-bot/data');
 }

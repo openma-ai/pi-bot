@@ -21,6 +21,7 @@ pub struct Profile {
     pub mode: String,
     #[serde(default, skip_serializing_if = "is_false")]
     pub embedded_tailscale: bool,
+    #[serde(default)]
     pub data_dir: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<String>,
@@ -58,18 +59,23 @@ impl Profile {
         }
     }
     pub fn validate(&self) -> Result<(), String> {
-        if !["local", "ssh"].contains(&self.mode.as_str())
-            || self.data_dir.is_empty()
+        if !["local", "ssh", "tailnet"].contains(&self.mode.as_str())
+            || (self.mode != "tailnet" && self.data_dir.is_empty())
             || self.data_dir.len() > 2048
             || self.data_dir.chars().any(|c| c.is_control())
         {
             return Err("请检查 runtime 目录".into());
         }
-        if self.embedded_tailscale && (self.mode != "ssh" || self.host_key.is_none()) {
+        if self.embedded_tailscale
+            && (self.mode == "local" || (self.mode == "ssh" && self.host_key.is_none()))
+        {
             return Err("内嵌 Tailscale 需要 SSH 模式和已核验主机公钥".into());
         }
         if self.name.len() > 300 || self.name.chars().any(|c| c.is_control()) {
             return Err("Invalid runtime name".into());
+        }
+        if self.mode == "tailnet" {
+            crate::tailnet_transport::destination(self)?;
         }
         if self.mode == "ssh" {
             let h = self.host.as_deref().unwrap_or("");

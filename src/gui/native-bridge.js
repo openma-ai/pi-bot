@@ -54,6 +54,6 @@ if (window.__TAURI_INTERNALS__) {
       path: url.pathname + url.search, method: options.method || "GET", body: options.body || "",
       connection: new Headers(options.headers).get("X-PiBot-Connection") || "",
     });
-    return new Response(response.body || null, { status: response.status, headers: { "content-type": response.contentType } });
+    return new Response(response.binary ? Uint8Array.from(atob(response.body), c=>c.charCodeAt(0)) : response.body || null, { status: response.status, headers: { "content-type": response.contentType } });
   };
 }

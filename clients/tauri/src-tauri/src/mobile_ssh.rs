@@ -40,7 +40,7 @@ pub fn destination(p: &Profile) -> Result<(&str, &str), String> {
     Ok((user, host))
 }
 pub struct Tunnel {
-    task: JoinHandle<()>,
+    pub(crate) task: JoinHandle<()>,
 }
 impl Drop for Tunnel {
     fn drop(&mut self) {

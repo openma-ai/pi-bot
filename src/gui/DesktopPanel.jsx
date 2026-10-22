@@ -15,6 +15,7 @@ export function DesktopPanel({
     [open, setOpen] = useState(false),
     [control, setControl] = useState(false),
     [controlling, setControlling] = useState(false);
+  const [screen,setScreen]=useState('');
   const canvas = useRef(null),
     rfb = useRef(null),
     apiRef = useRef(api);
@@ -37,11 +38,24 @@ export function DesktopPanel({
       clearInterval(t);
     };
   }, [botId, enabled]);
+  useEffect(()=>{
+    if(!ready || !enabled)return;
+    const abort=new AbortController();let objectUrl;
+    fetch(`${baseUrl}/api/desktop/${botId}/screen?t=${stamp}`,{signal:abort.signal}).then(async response=>{if(!response.ok)throw Error("屏幕暂不可用");const blob=await response.blob();if(abort.signal.aborted)return;objectUrl=URL.createObjectURL(blob);setScreen(objectUrl);}).catch(e=>{if(!abort.signal.aborted)setError(String(e.message||e));});
+    return()=>{abort.abort();if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  },[ready,enabled,botId,baseUrl,stamp]);
   useEffect(() => {
     if (!open || !ready) return;
-    const t = setTimeout(() => {
+    let cancelled=false, nativeId;
+    const t = setTimeout(async () => {
       if (!canvas.current) return;
-      const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${baseUrl}/api/desktop/${botId}/ws`;
+      let url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${baseUrl}/api/desktop/${botId}/ws`;
+      if(window.__PIBOT_NATIVE__) {
+        nativeId=crypto.randomUUID();
+        try {url=await window.__PIBOT_NATIVE__.call("desktop_open",{id:nativeId,path:`${baseUrl}/api/desktop/${botId}/ws`});}
+        catch(e){if(!cancelled)setError(String(e));return;}
+        if(cancelled){void window.__PIBOT_NATIVE__.call("stream_close",{id:nativeId});return;}
+      }
       const v = new RFB(canvas.current, url, { shared: true });
       v.scaleViewport = true;
       v.resizeSession = false;
@@ -52,7 +66,8 @@ export function DesktopPanel({
       });
     }, 0);
     return () => {
-      clearTimeout(t);
+      cancelled=true;clearTimeout(t);
+      if(nativeId)void window.__PIBOT_NATIVE__?.call("stream_close",{id:nativeId});
       const previous = rfb.current;
       rfb.current = null;
       previous?.disconnect();
@@ -61,7 +76,7 @@ export function DesktopPanel({
         .current("/api/desktop/control", { botId, take: false })
         .catch(() => {});
     };
-  }, [open, ready, botId]);
+  }, [open, ready, botId, baseUrl]);
   useEffect(
     () =>
       registerBeforeSwitch?.(async () => {
@@ -116,7 +131,7 @@ export function DesktopPanel({
             aria-label={`打开 ${name} 的屏幕`}
           >
             <img
-              src={`${baseUrl}/api/desktop/${botId}/screen?t=${stamp}`}
+              src={screen || undefined}
               alt={`${name} 的实时屏幕`}
               onError={() => setError("屏幕暂不可用")}
             />

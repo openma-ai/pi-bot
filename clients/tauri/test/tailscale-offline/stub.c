@@ -12,11 +12,12 @@ int tailscale_new(void) { return 1; }
 int tailscale_set_dir(int s,const char*p) { return 0; }
 int tailscale_set_hostname(int s,const char*p) { return 0; }
 int tailscale_set_authkey(int s,const char*p) { return 0; }
-int tailscale_set_ephemeral(int s,int v) { return v==1 ? 0 : -1; }
+int tailscale_set_ephemeral(int s,int v) { return (v==0 || v==1) ? 0 : -1; }
 int tailscale_set_logfd(int s,int v) { return v==-1 ? 0 : -1; }
 int tailscale_close(int s) { return 0; }
 int tailscale_start(int s) { return 0; }
 int tailscale_status_json(int s,char **out) {
+ if(getenv("PIBO_OFFLINE_RUNNING")){*out=strdup("{\"BackendState\":\"Running\",\"TailscaleIPs\":[\"100.100.1.9\"],\"Peer\":{}}");return 0;}
  *out=strdup("{\"BackendState\":\"NeedsLogin\",\"AuthURL\":\"https://login.tailscale.com/a/synthetic-offline\",\"TailscaleIPs\":[],\"PrivateNodeKey\":\"not-for-renderer\"}");
  return 0;
 }
@@ -27,7 +28,7 @@ static void *copy(void *arg) {
  done: shutdown(p->b,SHUT_WR); close(p->a);close(p->b);free(p);return NULL;
 }
 int tailscale_dial(int s,const char*net,const char*addr,int*out) {
- unsigned port; if(strcmp(net,"tcp") || sscanf(addr,"pibo-offline.invalid:%u",&port)!=1 || port>65535) return -1;
+ unsigned port; if(strcmp(net,"tcp") || (sscanf(addr,"pibo-offline.invalid:%u",&port)!=1 && sscanf(addr,"100.100.1.2:%u",&port)!=1) || port>65535) return -1;
  int tcp=socket(AF_INET,SOCK_STREAM,0), fds[2];
  struct sockaddr_in a={.sin_family=AF_INET,.sin_port=htons(port),.sin_addr.s_addr=htonl(INADDR_LOOPBACK)};
  if(connect(tcp,(void*)&a,sizeof(a)) || socketpair(AF_UNIX,SOCK_STREAM,0,fds)) {close(tcp);return -1;}

@@ -1,3 +1,4 @@
+mod desktop_transport;
 mod file_export;
 #[cfg(all(debug_assertions, target_os = "ios"))]
 mod ios_probe;
@@ -12,6 +13,8 @@ mod ssh_credentials;
 #[cfg(feature = "client-fixtures")]
 pub mod ssh_fixture;
 mod ssh_interactive;
+mod tailnet_secrets;
+mod tailnet_transport;
 mod tailscale;
 mod transport;
 use serde_json::{json, Value};
@@ -60,7 +63,8 @@ impl State {
         if !(suffix == "/rpc"
             || suffix.starts_with("/events?")
             || suffix == "/events"
-            || suffix.starts_with("/pi/"))
+            || suffix.starts_with("/pi/")
+            || suffix.starts_with("/api/desktop/"))
         {
             return Err("此开发版仅支持聊天、任务状态和模型设置".into());
         }
@@ -178,15 +182,31 @@ async fn runtime_control(
 ) -> Result<Value, String> {
     main_window(&window)?;
     match method.as_str() {
+        "tailscale/probe" => tailnet_transport::probe(&params).await,
+        "tailscale/pair" => tailnet_transport::pair(&params).await,
+        "tailscale/forgetDevice" => {
+            tailnet_secrets::remove(&tailnet_transport::account(&params)?)?;
+            Ok(json!({"removed":true}))
+        }
         "tailscale/browserStart" => {
             tokio::task::spawn_blocking(tailscale::browser_start)
                 .await
                 .map_err(|_| "授权启动被中断")??;
             Ok(json!({"started":true}))
         }
-        "tailscale/status" => tokio::task::spawn_blocking(tailscale::status)
-            .await
-            .map_err(|_| "状态读取被中断")?,
+        "tailscale/status" => {
+            let status = tokio::task::spawn_blocking(tailscale::status)
+                .await
+                .map_err(|_| "状态读取被中断")??;
+            if status["backendState"] == "Running" {
+                file_export::close_tailscale_login();
+            }
+            Ok(status)
+        }
+        "tailscale/closeLogin" => {
+            file_export::close_tailscale_login();
+            Ok(json!({"closed":true}))
+        }
         "tailscale/openLogin" => {
             let status = tokio::task::spawn_blocking(tailscale::status)
                 .await
@@ -207,9 +227,16 @@ async fn runtime_control(
             tailscale::start(&key)?;
             Ok(json!({"configured":true}))
         }
+        "tailscale/logout" => {
+            state.lock().await.retire();
+            tailscale::logout()?;
+            file_export::close_tailscale_login();
+            Ok(json!({"loggedOut":true}))
+        }
         "tailscale/stop" => {
             state.lock().await.retire();
             tailscale::stop();
+            file_export::close_tailscale_login();
             Ok(json!({"configured":false}))
         }
         "runtime/status" => Ok(state.lock().await.status()),
@@ -240,7 +267,7 @@ async fn runtime_control(
             let mut p: Profile = serde_json::from_value(params["profile"].clone())
                 .map_err(|_| "请检查 runtime 配置")?;
             p.validate()?;
-            if cfg!(any(target_os = "ios", target_os = "android")) && p.mode != "ssh" {
+            if cfg!(any(target_os = "ios", target_os = "android")) && p.mode == "local" {
                 return Err("移动客户端仅支持远程 runtime".into());
             }
             if p.id.is_empty() {
@@ -269,6 +296,9 @@ async fn runtime_control(
                 };
                 #[cfg(any(target_os = "ios", target_os = "android"))]
                 let connection = async {
+                    if p.mode == "tailnet" {
+                        return tailnet_transport::connect(&p).await;
+                    }
                     let credentials = ssh_credentials::credentials(&p)?;
                     mobile_ssh::connect_authenticated(
                         &p,
@@ -279,7 +309,9 @@ async fn runtime_control(
                 };
                 #[cfg(not(any(target_os = "ios", target_os = "android")))]
                 let connection = async {
-                    if p.embedded_tailscale {
+                    if p.mode == "tailnet" {
+                        tailnet_transport::connect(&p).await
+                    } else if p.embedded_tailscale {
                         let credentials = ssh_credentials::credentials(&p)?;
                         mobile_ssh::connect_authenticated(
                             &p,
@@ -341,12 +373,45 @@ async fn runtime_control(
     }
 }
 
+#[tauri::command]
+async fn desktop_open(
+    window: tauri::Window,
+    state: tauri::State<'_, Shared>,
+    path: String,
+    id: String,
+) -> Result<String, String> {
+    main_window(&window)?;
+    if id.len() > 64 || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+        return Err("Invalid stream ID".into());
+    }
+    let mut s = state.lock().await;
+    if s.streams.len() >= 32 || s.streams.contains_key(&id) {
+        return Err("连接过多或重复".into());
+    }
+    let (ep, suffix) = s.route(&path)?;
+    let bot = suffix
+        .strip_prefix("/api/desktop/")
+        .and_then(|s| s.strip_suffix("/ws"))
+        .ok_or("Invalid desktop path")?;
+    if bot.is_empty()
+        || !bot
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return Err("Invalid desktop ID".into());
+    }
+    let (url, task) = desktop_transport::open(ep, suffix).await?;
+    s.streams.insert(id, task);
+    Ok(url)
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Reply {
     status: u16,
     body: String,
     content_type: String,
+    binary: bool,
 }
 #[tauri::command]
 async fn runtime_request(
@@ -383,10 +448,18 @@ async fn runtime_request(
     if bytes.len() > 8 * 1024 * 1024 {
         return Err("Runtime response too large".into());
     }
+    let binary =
+        !content_type.starts_with("application/json") && !content_type.starts_with("text/");
+    use base64::Engine;
     Ok(Reply {
         status,
-        body: String::from_utf8_lossy(&bytes).into(),
+        body: if binary {
+            base64::engine::general_purpose::STANDARD.encode(&bytes)
+        } else {
+            String::from_utf8_lossy(&bytes).into()
+        },
         content_type,
+        binary,
     })
 }
 #[tauri::command]
@@ -680,6 +753,7 @@ pub fn run() {
             runtime_install,
             runtime_control,
             runtime_request,
+            desktop_open,
             stream_open,
             stream_close,
             credential_window,

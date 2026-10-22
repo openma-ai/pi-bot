@@ -13,6 +13,27 @@ export async function main(args = process.argv.slice(2)) {
     };
     const command = args[0] ?? 'daemon';
     const dataDir = resolve(option('--data-dir') ?? process.env.PI_BOT_DIR ?? 'work/gui/demo');
+    if (command === 'tailnet-pair' || command === 'tailnet-devices' || command === 'tailnet-revoke' || command === 'tailnet-cancel') {
+        const info = JSON.parse(readFileSync(join(dataDir, 'daemon.json'), 'utf8'));
+        const url = new URL(info.http);
+        if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.pathname !== '/' || !url.port || url.username || url.password || url.search || url.hash)
+            throw Error('Only local daemon control is supported');
+        const token = readFileSync(join(dataDir, 'daemon.token'), 'utf8').trim();
+        const action = ({
+            'tailnet-pair': 'pair', 'tailnet-devices': 'list', 'tailnet-revoke': 'revoke', 'tailnet-cancel': 'cancel'
+        } as const)[command];
+        const response = await fetch(new URL('/tailnet/admin', url), {
+            method: 'POST', headers: {
+                authorization: 'Bearer ' + token, 'content-type': 'application/json'
+            }, body: JSON.stringify({
+                action, id: option('--device')
+            }), signal: AbortSignal.timeout(5000)
+        });
+        if (!response.ok)
+            throw Error('Local Tailnet administration failed: ' + response.status);
+        console.log(JSON.stringify(await response.json()));
+        return;
+    }
     if (command === 'ensure') {
         const { ensureServer } = await import('./transports/server-start.ts');
         const endpoint = await ensureServer({
@@ -99,8 +120,15 @@ export async function main(args = process.argv.slice(2)) {
         const url = new URL(listen);
         if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1')
             throw Error('Only a loopback HTTP listener is supported');
+        const tailnet = option('--tailnet-listen');
+        if (args.includes('--tailnet-listen') && (!tailnet || !/^100\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}:[0-9]{1,5}$/.test(tailnet)))
+            throw Error('Use --tailnet-listen 100.x.x.x:port');
         transport = await listenHttp(daemon, {
-            port: Number(url.port), staticDir: option('--static')
+            port: Number(url.port), staticDir: option('--static'), ...(tailnet ? {
+                tailnet: {
+                    host: tailnet.split(':')[0]!, port: Number(tailnet.split(':')[1]), name: option('--name')
+                }
+            } : {})
         });
         const http = transport as Awaited<ReturnType<typeof listenHttp>>;
         writeFileSync(join(dataDir, 'daemon.json'), JSON.stringify({

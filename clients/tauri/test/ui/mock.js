@@ -2,10 +2,16 @@ const query=new URLSearchParams(location.search);const phone=query.has('phone');
 if(phone){Object.defineProperty(navigator,'platform',{get:()=> 'iPhone'});Object.defineProperty(navigator,'maxTouchPoints',{get:()=>5});}
 const profiles=query.has('returning')?[{id:'saved',name:'开发工作空间',mode:'ssh',host:'me@dev.example',dataDir:'/srv/pibo/data',projectDir:'/srv/pibo',serverPort:0,...(query.has('tailnet')?{embeddedTailscale:true}: {})}]:[];
 const state={profiles,active:null,remoteOnly:phone,credentialStorage:phone?'keychain':'system',connecting:false,embeddedTailscaleAvailable:true,tailscaleNodeState:'notPrepared'};
-window.__PIBOT_NATIVE__={call:async(command,args)=>{if(command==='runtime_control'){
+window.__PIBO_TEST__=state;state.nativeCalls=[];
+window.__PIBOT_NATIVE__={call:async(command,args)=>{if(command==='runtime_control'){state.nativeCalls.push(args.method);
  if(args.method==='tailscale/browserStart'){state.tailBackend='NeedsLogin';state.tailscaleNodeState='prepared';return {started:true};}
- if(args.method==='tailscale/status')return {backendState:state.tailBackend||'NotPrepared',authURL:state.tailBackend==='NeedsLogin'?'https://login.tailscale.com/a/synthetic-ui-only':null,ips:[]};
- if(args.method==='tailscale/openLogin'){state.mockBrowserOpened=true;return {opened:true};}
+ if(args.method==='tailscale/status')return {backendState:state.tailBackend||'NotPrepared',authURL:state.tailBackend==='NeedsLogin'?'https://login.tailscale.com/a/synthetic-ui-only':null,ips:[],peers:state.tailBackend==='Running'?[{name:'合成开发电脑',dnsName:'synthetic.test',ip:'100.100.1.2',online:true},{name:'合成离线电脑',ip:'100.100.1.3',online:false}]:[]};
+ if(args.method==='tailscale/openLogin'){state.mockBrowserOpened=true;if(query.has('approve'))state.tailBackend='Running';return {opened:true};}
+ if(args.method==='tailscale/probe')return {name:'合成 Pibo 工作空间',pairing:true};
+ if(args.method==='tailscale/pair')return {paired:true,deviceId:'synthetic'};
+ if(args.method==='tailscale/forgetDevice')return {removed:true};
+ if(args.method==='tailscale/closeLogin')return {closed:true};
+ if(args.method==='tailscale/logout'){state.tailBackend='NotPrepared';return {loggedOut:true};}
  if(args.method==='tailscale/start'){state.tailscaleNodeState='prepared';return {configured:true};}
  if(args.method==='tailscale/stop'){state.tailBackend='NotPrepared';state.tailscaleNodeState='notPrepared';return {configured:false};}
  }if(command==='ssh_credentials_set')return null;if(command==='runtime_distribution_status')return {available:false};if(command==='layout_diagnostics_enabled')return false;return null;}};

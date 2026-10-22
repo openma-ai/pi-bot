@@ -131,3 +131,15 @@ pub async fn open_tailscale_login(url: &str) -> Result<(), String> {
         Err("Browser authorization requires an Apple client".into())
     }
 }
+
+pub fn close_tailscale_login() {
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        unsafe extern "C" {
+            fn pibo_close_login();
+        }
+        unsafe {
+            pibo_close_login();
+        }
+    }
+}

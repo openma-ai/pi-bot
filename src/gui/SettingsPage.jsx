@@ -1,3 +1,4 @@
+import { TailnetConnect } from './TailnetConnect.jsx';
 import React, { useState, useRef, useEffect } from "react";
 import {
   Dialog,
@@ -27,7 +28,7 @@ import { PiSettingsPanel } from "./PiSettingsDialog.jsx";
 import { NativeRuntimeDownload } from "./NativeRuntimeDownload.jsx";
 const kindLabel = (profile) => (profile.mode === "local" ? "Local" : "Cloud");
 function RuntimeIcon({ profile, size = 20 }) {
-  return profile?.mode === "ssh" ? (
+  return profile?.mode !== "local" ? (
     <Cloud size={size} />
   ) : (
     <Laptop size={size} />
@@ -90,7 +91,7 @@ function Field({ label, value, onChange, placeholder, type = "text" }) {
     </label>
   );
 }
-export function RuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionOnly = false, tailscaleAvailable = false,onboarding=false,tailState,knownProfile=!!profile }) {
+function LegacyRuntimeEditor({ profile, onSave, onCancel, remoteOnly = false, sessionOnly = false, tailscaleAvailable = false,onboarding=false,tailState,knownProfile=!!profile }) {
   const [mode, setMode] = useState(profile?.mode || "ssh"),
     [name, setName] = useState(profile?.name || ""),
     [host, setHost] = useState(profile?.host || "");
@@ -499,7 +500,7 @@ function RuntimeSettings({ runtime }) {
                   {profile.name}
                 </Text>
                 <Text size="1" color="gray">
-                  {profile.mode === "ssh" ? profile.host : "在本机运行"}
+                  {profile.mode !== "local" ? profile.host : "在本机运行"}
                 </Text>
               </div>
               <div className="runtime-card-footer">
@@ -621,3 +622,5 @@ export function SettingsPage({ open, onOpenChange, runtime }) {
     </Dialog.Root>
   );
 }
+
+export function RuntimeEditor(props) { return props.profile?.mode === "tailnet" ? <TailnetConnect profile={props.profile} onSave={props.onSave} onCancel={props.onCancel}/> : <LegacyRuntimeEditor {...props}/>; }

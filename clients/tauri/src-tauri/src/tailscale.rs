@@ -33,6 +33,8 @@ mod native {
         closed: AtomicBool,
         dialed: AtomicBool,
         started: AtomicBool,
+        persistent: AtomicBool,
+        saved: Mutex<Vec<u8>>,
     }
     impl Node {
         fn close(&self) {
@@ -46,6 +48,10 @@ mod native {
     impl Drop for Node {
         fn drop(&mut self) {
             self.close();
+            use zeroize::Zeroize;
+            if let Ok(saved) = self.saved.get_mut() {
+                saved.zeroize();
+            }
             let _ = std::fs::remove_dir_all(&self.dir);
         }
     }
@@ -82,6 +88,18 @@ mod native {
                 .create(&dir)
                 .map_err(|_| "Cannot create temporary node directory")?;
         }
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        {
+            unsafe extern "C" {
+                fn pibo_protect_node_directory(path: *const std::ffi::c_char) -> i32;
+            }
+            let path =
+                CString::new(dir.to_string_lossy().as_bytes()).map_err(|_| "Invalid node path")?;
+            if unsafe { pibo_protect_node_directory(path.as_ptr()) } != 0 {
+                let _ = std::fs::remove_dir_all(&dir);
+                return Err("无法保护网络工作目录".into());
+            }
+        }
         unsafe {
             pibo_tailscale_use_system_routing();
         }
@@ -91,6 +109,8 @@ mod native {
             closed: AtomicBool::new(false),
             dialed: AtomicBool::new(false),
             started: AtomicBool::new(false),
+            persistent: AtomicBool::new(false),
+            saved: Mutex::new(Vec::new()),
         });
         let path = CString::new(node.dir.to_string_lossy().as_bytes())
             .map_err(|_| "Invalid node directory")?;
@@ -128,8 +148,25 @@ mod native {
             }
         }
     }
-    // Explicit product action only. No auth key, debug flags, persistent identity or deadline.
+    // Explicit product action. Restore the device-only Keychain identity; no test flags or deadline.
     pub fn browser_start() -> Result<(), String> {
+        static START: Mutex<()> = Mutex::new(());
+        let _start = START.lock().map_err(|_| "Login lock unavailable")?;
+        let result = browser_start_impl();
+        if result.is_err() {
+            stop();
+        }
+        result
+    }
+    fn browser_start_impl() -> Result<(), String> {
+        if current()
+            .lock()
+            .map_err(|_| "Node lock unavailable")?
+            .as_ref()
+            .is_some_and(|n| !n.closed.load(Ordering::SeqCst))
+        {
+            return Ok(());
+        }
         configure("", None)?;
         let node = current()
             .lock()
@@ -139,11 +176,28 @@ mod native {
         unsafe extern "C" {
             fn tailscale_start(sd: i32) -> i32;
         }
-        let hostname = CString::new(format!(
-            "pibo-{}",
-            &uuid::Uuid::new_v4().simple().to_string()[..8]
-        ))
-        .unwrap();
+        node.persistent.store(true, Ordering::SeqCst);
+        if let Some(bytes) = crate::tailnet_secrets::load("node-state-v1")? {
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+            if bytes.len() > 1024 * 1024 {
+                stop();
+                return Err("保存的网络身份过大".into());
+            }
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(node.dir.join("tailscaled.state"))
+                .and_then(|mut f| f.write_all(&bytes))
+                .map_err(|_| "无法恢复网络身份")?;
+            *node.saved.lock().map_err(|_| "Identity lock unavailable")? = bytes;
+        }
+        if unsafe { tailscale_set_ephemeral(node.sd, 0) } != 0 {
+            stop();
+            return Err("无法配置持久网络身份".into());
+        }
+        let hostname = CString::new("pibo").unwrap();
         if unsafe { tailscale_set_hostname(node.sd, hostname.as_ptr()) } != 0
             || unsafe { tailscale_start(node.sd) } != 0
         {
@@ -186,12 +240,34 @@ mod native {
             return Ok(serde_json::json!({"backendState":"Prepared","authURL":null,"ips":[]}));
         }
         let status = sdk_status(&node)?;
-        // Never return raw SDK state, peers, diagnostics, credentials or node keys.
+        let slot = current().lock().map_err(|_| "Node lock unavailable")?;
+        if !slot
+            .as_ref()
+            .is_some_and(|active| Arc::ptr_eq(active, &node))
+            || node.closed.load(Ordering::SeqCst)
+        {
+            return Ok(
+                serde_json::json!({"backendState":"Stopped","authURL":null,"ips":[],"peers":[]}),
+            );
+        }
+        if status["BackendState"] == "Running" && node.persistent.load(Ordering::SeqCst) {
+            if let Ok(bytes) = std::fs::read(node.dir.join("tailscaled.state")) {
+                if bytes.len() > 1024 * 1024 {
+                    return Err("网络身份过大，无法安全保存".into());
+                }
+                let mut saved = node.saved.lock().map_err(|_| "Identity lock unavailable")?;
+                if *saved != bytes {
+                    crate::tailnet_secrets::save("node-state-v1", &bytes)?;
+                    *saved = bytes;
+                }
+            }
+        }
+        // Return only the minimum device-picker fields; no raw SDK diagnostics or keys.
         let auth_url = status["AuthURL"]
             .as_str()
             .filter(|s| super::official_login_url(s));
         Ok(
-            serde_json::json!({"backendState":status["BackendState"],"authURL":auth_url,"ips":status["TailscaleIPs"]}),
+            serde_json::json!({"backendState":status["BackendState"],"authURL":auth_url,"ips":status["TailscaleIPs"],"peers":super::peers(&status)}),
         )
     }
     #[cfg(debug_assertions)]
@@ -277,7 +353,7 @@ mod native {
             .collect();
 
         Ok(
-            serde_json::json!({"networkDiagnostics":diagnostics,"backendState":status["BackendState"],"authURL":status["AuthURL"],"health":status["Health"],"ips":status["TailscaleIPs"],"hostname":"pibo-ios-simulator-test","ephemeral":true}),
+            serde_json::json!({"networkDiagnostics":diagnostics,"backendState":status["BackendState"],"authURL":status["AuthURL"],"health":status["Health"],"ips":status["TailscaleIPs"],"peers":super::peers(&status),"hostname":"pibo-ios-simulator-test","ephemeral":true}),
         )
     }
     #[cfg(debug_assertions)]
@@ -429,6 +505,21 @@ mod native {
         }
         Ok(serde_json::json!({"cycles":cycles,"finalState":state(),"networkStarted":false}))
     }
+    pub fn credential_scope(host: &str) -> Result<String, String> {
+        let node = current()
+            .lock()
+            .map_err(|_| "Node lock unavailable")?
+            .clone()
+            .ok_or("请先登录网络")?;
+        if node.closed.load(Ordering::SeqCst) || !node.started.load(Ordering::SeqCst) {
+            return Err("请先登录网络".into());
+        }
+        let status = sdk_status(&node)?;
+        if status["BackendState"] != "Running" {
+            return Err("网络尚未连接".into());
+        }
+        super::scope_from_status(&status, host)
+    }
     pub async fn dial(host: &str, port: u16) -> Result<tokio::net::UnixStream, String> {
         let node = current()
             .lock()
@@ -438,26 +529,17 @@ mod native {
         if node.closed.load(Ordering::SeqCst) {
             return Err("内嵌节点已停止，请重新授权".into());
         }
-        // Cancellation closes a pending blocking dial; no orphan connect worker.
-        struct PendingDial {
-            node: Arc<Node>,
-            armed: bool,
-        }
-        impl Drop for PendingDial {
-            fn drop(&mut self) {
-                if self.armed {
-                    self.node.close();
-                }
-            }
-        }
-        let mut pending = PendingDial {
-            node: node.clone(),
-            armed: true,
-        };
+        static DIALS: OnceLock<Arc<tokio::sync::Semaphore>> = OnceLock::new();
+        let permit = DIALS
+            .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(8)))
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| "网络连接繁忙，请稍后重试")?;
         let address =
             CString::new(format!("{host}:{port}")).map_err(|_| "Invalid Tailnet address")?;
         let owned = node.clone();
         let task = tokio::task::spawn_blocking(move || {
+            let _permit = permit;
             let mut fd = -1;
             owned.started.store(true, Ordering::SeqCst);
             if unsafe { tailscale_dial(owned.sd, c"tcp".as_ptr(), address.as_ptr(), &mut fd) } != 0
@@ -471,11 +553,9 @@ mod native {
         let fd = match tokio::time::timeout(std::time::Duration::from_secs(10), task).await {
             Ok(result) => result.map_err(|_| "Tailnet worker failed")??,
             Err(_) => {
-                node.close();
-                return Err("Tailnet 连接超时；节点已停止，请重新授权".into());
+                return Err("Tailnet 连接超时，请检查设备在线状态和 ACL 后重试".into());
             }
         };
-        pending.armed = false;
         node.dialed.store(true, Ordering::SeqCst);
         let stream = std::os::unix::net::UnixStream::from(fd);
         stream
@@ -485,7 +565,7 @@ mod native {
     }
 }
 #[cfg(feature = "embedded-tailscale")]
-pub use native::{browser_start, dial, start, state, status, stop};
+pub use native::{browser_start, credential_scope, dial, start, state, status, stop};
 #[cfg(not(feature = "embedded-tailscale"))]
 pub fn start(_: &str) -> Result<(), String> {
     Err("此构建未启用 embedded-tailscale；请安装启用内嵌库的 Apple 构建".into())
@@ -534,10 +614,7 @@ mod tests {
         );
         super::stop();
         super::browser_start().unwrap();
-        assert!(
-            super::browser_start().is_err(),
-            "never start duplicate nodes"
-        );
+        super::browser_start().unwrap(); // idempotent: reuse the active node
         let status = super::status().unwrap();
         assert_eq!(status["backendState"], "NeedsLogin");
         assert!(super::official_login_url(
@@ -545,8 +622,8 @@ mod tests {
         ));
         assert_eq!(
             status.as_object().unwrap().len(),
-            3,
-            "no raw SDK status or keys"
+            4,
+            "only curated status and peers"
         );
         super::stop();
         assert_eq!(super::status().unwrap()["backendState"], "NotPrepared");
@@ -595,4 +672,86 @@ pub fn browser_start() -> Result<(), String> {
 #[cfg(not(feature = "embedded-tailscale"))]
 pub fn status() -> Result<serde_json::Value, String> {
     Err("此构建未启用 embedded-tailscale".into())
+}
+
+pub fn peers(status: &serde_json::Value) -> Vec<serde_json::Value> {
+    status["Peer"].as_object().into_iter().flat_map(|m|m.values()).filter_map(|p|{
+        let ips=p["TailscaleIPs"].as_array()?.iter().filter_map(|ip|ip.as_str()).filter(|ip|ip.parse::<std::net::Ipv4Addr>().is_ok_and(|ip|ip.octets()[0]==100&&(64..=127).contains(&ip.octets()[1]))).take(1).collect::<Vec<_>>();
+        if ips.is_empty(){return None;}
+        Some(serde_json::json!({"name":p["HostName"].as_str().unwrap_or("设备").chars().filter(|c|!c.is_control()).take(100).collect::<String>(),"dnsName":p["DNSName"].as_str().unwrap_or("").chars().filter(|c|!c.is_control()).take(255).collect::<String>(),"ip":ips[0],"online":p["Online"].as_bool().unwrap_or(false)}))
+    }).take(256).collect()
+}
+pub fn logout() -> Result<(), String> {
+    stop();
+    crate::tailnet_secrets::remove("node-state-v1")
+}
+
+pub fn resume() -> Result<(), String> {
+    if state() == "notPrepared" || state() == "stopped" {
+        if crate::tailnet_secrets::load("node-state-v1")?.is_none() {
+            return Err("请先登录应用内 Tailscale 网络".into());
+        }
+        browser_start()?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod peer_tests {
+    #[test]
+    fn pairing_credentials_are_bound_to_network_and_peer_identity() {
+        let mut s = serde_json::json!({"CurrentTailnet":{"StableID":"network-a"},"Peer":{"key":{"ID":"node-a","TailscaleIPs":["100.100.1.2"]}}});
+        let original = super::scope_from_status(&s, "100.100.1.2").unwrap();
+        s["CurrentTailnet"]["StableID"] = serde_json::json!("network-b");
+        assert_ne!(
+            original,
+            super::scope_from_status(&s, "100.100.1.2").unwrap()
+        );
+        s["CurrentTailnet"]["StableID"] = serde_json::json!("network-a");
+        s["Peer"]["key"]["ID"] = serde_json::json!("node-b");
+        assert_ne!(
+            original,
+            super::scope_from_status(&s, "100.100.1.2").unwrap()
+        );
+        assert!(super::scope_from_status(&s, "100.100.1.3").is_err());
+    }
+    #[test]
+    fn peer_picker_never_exposes_node_keys_or_external_addresses() {
+        let status = serde_json::json!({"Peer":{"secret-key-map-id":{"HostName":"desk\nname","DNSName":"desk.example.","TailscaleIPs":["192.168.1.1","100.100.1.2"],"Online":true,"PrivateNodeKey":"secret"},"bad":{"TailscaleIPs":["10.0.0.2"]}}});
+        let peers = super::peers(&status);
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0]["name"], "deskname");
+        assert_eq!(peers[0]["ip"], "100.100.1.2");
+        assert_eq!(peers[0].as_object().unwrap().len(), 4);
+        assert!(!serde_json::to_string(&peers).unwrap().contains("secret"));
+    }
+}
+
+fn scope_from_status(status: &serde_json::Value, host: &str) -> Result<String, String> {
+    let network = status["CurrentTailnet"]["StableID"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            status["CurrentTailnet"]["MagicDNSSuffix"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+        })
+        .ok_or("网络身份不可用，请重新连接")?;
+    let peer = status["Peer"]
+        .as_object()
+        .and_then(|m| {
+            m.values().find(|p| {
+                p["TailscaleIPs"]
+                    .as_array()
+                    .is_some_and(|ips| ips.iter().any(|ip| ip.as_str() == Some(host)))
+            })
+        })
+        .and_then(|p| p["ID"].as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or("设备身份不可用，请刷新设备列表")?;
+    Ok(format!("{network}\n{peer}"))
+}
+#[cfg(not(feature = "embedded-tailscale"))]
+pub fn credential_scope(_: &str) -> Result<String, String> {
+    Err("此构建不支持内嵌 Tailscale".into())
 }

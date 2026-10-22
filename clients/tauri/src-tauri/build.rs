@@ -52,6 +52,7 @@ fn main() {
             .flag("-fblocks")
             .compile("pibo_file_export");
         println!("cargo:rustc-link-lib=framework=Foundation");
+        println!("cargo:rustc-link-lib=framework=AuthenticationServices");
         println!(
             "cargo:rustc-link-lib=framework={}",
             if os == "ios" { "UIKit" } else { "AppKit" }

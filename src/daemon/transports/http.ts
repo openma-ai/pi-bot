@@ -5,15 +5,18 @@ import { join, resolve, extname } from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { PiBotDaemon } from '../core/daemon.ts';
 import type { DaemonConnection } from '../core/connection.ts';
+import { listenTailnetGateway } from './tailnet-gateway.ts';
 import { avatarFile } from '../avatar-media.ts';
 export async function listenHttp(daemon: PiBotDaemon, options: {
     port?: number;
     staticDir?: string;
+    tailnet?: {host:string;port:number;name?:string};
 } = {}) {
     const token = randomBytes(32).toString('hex');
     writeFileSync(join(daemon.dataDir, 'daemon.token'), token, {
         mode: 0o600
     });
+    let gateway: Awaited<ReturnType<typeof listenTailnetGateway>> | undefined;
     const sessions = new Map<string, string>();
     const owners = new Map<string, string>();
     const streams = new Set<any>();
@@ -56,6 +59,17 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
             return json({
                 status: daemon.status
             }, url.pathname === '/healthz' || daemon.status === 'ready' ? 200 : 503);
+        }
+        if (url.pathname === '/tailnet/admin' && req.method === 'POST') {
+            if (authenticate(req, true) !== 'host' || req.headers.origin) return json({error:'Forbidden'},403);
+            if (!gateway) return json({error:'Tailnet listener is disabled'},409);
+            let text=''; for await(const chunk of req){text+=chunk;if(Buffer.byteLength(text)>1024)return json({error:'Too large'},413);}
+            try {const input=JSON.parse(text); if(input.action==='pair')return json(gateway.beginPairing());
+                if(input.action==='cancel'){gateway.cancelPairing();return json({ok:true});}
+                if(input.action==='revoke')return json({revoked:gateway.revoke(String(input.id))});
+                if(input.action==='list')return json({devices:gateway.listDevices()});
+                return json({error:'Unknown action'},400);
+            }catch{return json({error:'Invalid request'},400);}
         }
         // Direct host form channel: auth answers never enter JSON-RPC or durable events.
         if (url.pathname.startsWith('/pi/')) {
@@ -435,8 +449,10 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
     });
     await new Promise<void>(done => server.listen(options.port ?? Number(process.env.PI_BOT_GUI_PORT ?? 4317), '127.0.0.1', done));
     const url = 'http://127.0.0.1:' + (server.address() as any).port;
+    if(options.tailnet) { try { gateway=await listenTailnetGateway({...options.tailnet,runtime:{url,token},dataDir:daemon.dataDir}); } catch(error){await new Promise<void>(done=>server.close(()=>done()));throw error;} }
     return {
         server, url, token, async close() {
+            await gateway?.close();
             for (const res of streams)
                 res.end();
             for (const c of ws.clients)

@@ -1,0 +1,125 @@
+# Direct application Tailnet connections
+
+Local implementation, 2026-10-22. Branch `feat/embedded-tailscale`.
+Upstream `main` at `7c78b356a1ca165283bd7ddc12b98b72dc595176` was fetched and
+already contained in the working branch. Existing local/SSH profiles remain valid.
+
+## Product flow
+
+On native Apple clients, choose Tailscale → log in using the system authentication
+sheet → choose an online peer → check its Pibo service → pair once → enter the
+workspace. SSH remains an advanced connection choice. A peer being online does
+not establish that Pibo is installed or ready. Service discovery checks only the
+selected address/port; there is no port scan or Tailnet management API credential.
+The initial port is 4319 and can be changed explicitly.
+
+The SDK is the existing pinned libtailscale C ABI (`d1dc45d039edb7759ecbee6ba2aea0c4bca884b8`,
+Tailscale 1.104.1). The flow is inspired by Rootshell; this change independently
+implements it without incorporating Rootshell source. Authorization uses
+ASWebAuthenticationSession, while SDK status polling dismisses it on Running.
+Closing the sheet is not proof of login. Login cancellation, node stop, local
+identity deletion and server-side pairing revocation have separate semantics.
+
+- Login restores a non-ephemeral node from a non-synchronizing, device-only
+  Keychain item. Running status snapshots `tailscaled.state` to that item.
+- The SDK needs working state on disk while running: its temporary directory is
+  mode 700, restored state mode 600, excluded from backup, and protected with
+  NSFileProtectionComplete on iOS. Normal shutdown removes it. A process crash
+  may leave this private working directory; the Keychain is the authoritative
+  restart snapshot. This is not a claim that active SDK state exists only in RAM.
+- Stopping/cancelling the network closes its current session but retains a saved
+  identity. Disconnecting a runtime does not stop the network node.
+- “退出网络并清除本机节点身份” stops the node and deletes this app's local node
+  snapshot. It does not delete the device in the Tailnet administrator console,
+  and does not revoke Pibo service pairings. Remove the old network device there
+  if necessary before deliberately registering a replacement.
+- “清除本机配对” deletes the selected service's local bearer; it does not revoke
+  its server record. The server owner can revoke that record separately.
+- Pairing credentials are bound to the control-plane Tailnet ID (MagicDNS suffix
+  fallback), peer stable ID, IPv4 and port, rather than IP alone. Switching
+  Tailnets or replacing a peer cannot silently forward an old service credential.
+
+A native loopback tunnel opens TCP streams with SDK `dial`. Existing RPC, SSE,
+chunked file/image RPC and desktop HTTP/WS use that tunnel. The WebView receives
+no service bearer. Desktop WS has an additional loopback proxy with a random
+per-view ticket, exact app-Origin checks and native header injection. Its task is
+aborted when the view/runtime closes. The CSP allows this loopback WS endpoint.
+Desktop snapshots use authenticated fetch/Blob instead of an unbridged img URL.
+Pending SDK dials are bounded to eight; cancelling/timing out one connection no
+longer destroys the shared node. Outer connectivity still follows OS/VPN routes.
+
+## Explicit server opt-in (not executed on the user's network)
+
+The usual daemon remains loopback-only. An owner may opt into one specific
+existing Tailnet IPv4 interface; wildcard/public listeners are rejected:
+
+```sh
+npm run pi-bot -- daemon --data-dir /absolute/workspace/data \
+  --listen http://127.0.0.1:4318 --tailnet-listen 100.x.x.x:4319 --name 'My workspace'
+npm run pi-bot -- tailnet-pair --data-dir /absolute/workspace/data
+npm run pi-bot -- tailnet-devices --data-dir /absolute/workspace/data
+npm run pi-bot -- tailnet-cancel --data-dir /absolute/workspace/data
+npm run pi-bot -- tailnet-revoke --data-dir /absolute/workspace/data --device DEVICE_ID
+```
+
+Replace placeholders before running. The new listener requires that IP to exist
+on the server; a userspace-only Docker node has no such interface, so needs an
+explicit supported Serve/forward integration before this CLI path can be used
+there. This change does not automatically configure Serve, firewall or routing.
+
+`/pibo/service` returns a minimal service/version/name advertisement.
+`tailnet-pair` opens a 120-second, 96-bit, single-use code with at most five
+attempts; cancel/restart closes it. A pairing grants full access to this Pibo
+workspace (including its existing agent capabilities), not just viewing a peer.
+A paired device receives its own 256-bit bearer; only its hash and creation time
+are stored mode 600. The daemon master token is never returned by pairing.
+At most 32 devices can be paired. Revocation removes its hash and closes tracked
+HTTP/WS sockets. The administrative pairing/revocation endpoint remains available
+only on the original loopback listener with the daemon bearer and no Origin.
+The private ingress rejects browser Origins and incorrect Host, and cannot proxy
+arbitrary destinations or the administrative endpoint. Tailnet membership alone
+never authorizes workspace access. No public ingress, default listener, system
+VPN, DNS, proxy, signing or distribution setting is changed by building this code.
+
+## Verification and limits
+
+Passed locally:
+
+- TypeScript check, GUI ESLint, Vite production bundle.
+- macOS and arm64 iOS native `cargo check`, embedded SDK feature enabled. These
+  are unsigned compilation checks, not archive/TestFlight or device execution.
+- 23 Node tests across client profiles/runtime, file/image transfer and context,
+  desktop ownership, and gateway pairing/auth/expiry/cancel/revoke/binary/WS.
+- 18 native tests with the C ABI offline double: direct SDK HTTP binary and
+  reconnect without SSH, existing SSH HTTP/SSE/WS regression, peer-field
+  filtering, network/peer credential scope, URL/profile validation and desktop
+  ticket/Origin/header/byte forwarding. Two existing SSH tests requiring a
+  separately running fixture are explicitly excluded.
+- Isolated Chrome mock at 390×844: login double-click calls start once; mock
+  approval enters peers; offline peer disabled; independent service check and
+  pairing enter chat; cancel returns NotPrepared and back returns to selection.
+  Simulated hidden/visible events disconnect/reconnect runtime while network
+  remains Running and start count remains one; Tab reaches labeled controls.
+- `21st review src/gui/TailnetConnect.jsx --json`: zero findings.
+
+Reproduce isolated native and UI tests:
+
+```sh
+sh clients/tauri/test/tailscale-offline/run.sh '' \
+  --skip ssh_fixture::tests::embedded_remote_send_stream_reconnect_and_trust \
+  --skip ssh_fixture::tests::encrypted_key_and_keyboard_interactive_authentication
+node --import tsx clients/tauri/test/ui/serve.mjs
+# Open /clients/tauri/test/ui/index.html?phone=1&approve=1&success=1 on port 5189.
+# Omit approve=1 to exercise cancellation. All identities/services are synthetic.
+```
+
+Screenshots: [pairing](evidence/tailnet-pairing-mock.png),
+[cancel/back](evidence/tailnet-cancel-mock.png). They contain only synthetic data.
+
+Not yet verified: real Keychain persistence/relaunch on either platform, native
+ASWebAuthenticationSession approval/cancellation UI, real Tailnet service pairing,
+this new desktop bridge in WKWebView, true device background/lock-screen and VPN
+coexistence. Actual login, saving persistent network credentials, opening a real
+listener/Serve forwarding each need a concrete new confirmation before testing.
+No real login, persistent credential write, listener, TestFlight build/upload or
+system security/network change was performed for this iteration.
