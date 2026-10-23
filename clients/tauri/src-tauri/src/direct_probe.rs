@@ -255,17 +255,7 @@ async fn run(app: tauri::AppHandle, dir: PathBuf, host: String) -> Result<(), St
         }
         files.push(json!({"name":name,"bytes":bytes.len(),"sha256":hash,"image":output["image"],"fileCard":true,"agentCopy":true}));
     }
-    let response = ep
-        .request(
-            "/api/desktop/bind",
-            "POST",
-            &json!({"botId":bot}).to_string(),
-            &c,
-        )
-        .await?;
-    if !response.status().is_success() {
-        return Err("Desktop bind failed".into());
-    }
+    rpc(&ep, &c, "desktop/bind", json!({"botId":bot})).await?;
     let screen = ep
         .request(&format!("/api/desktop/{bot}/screen"), "GET", "", &c)
         .await?
@@ -282,7 +272,7 @@ async fn run(app: tauri::AppHandle, dir: PathBuf, host: String) -> Result<(), St
         json!({"phase":"nativeChecksPassed","status":tailscale::status()?,"pairingReused":reused,"http":true,"sse":true,"files":files,"desktopPngBytes":screen.len(),"botId":bot}),
     );
     if let Some(webview) = app.get_webview_window("main") {
-        let script=format!("location.hash='#/chat/bot/{}';setTimeout(()=>document.querySelector('[aria-label=\"打开会话详情\"]')?.click(),2500);setTimeout(()=>[...document.querySelectorAll('[role=tab]')].find(x=>x.textContent==='电脑')?.click(),4000);setTimeout(()=>document.querySelector('.screen-preview')?.click(),6500);setTimeout(()=>{{const c=document.querySelector('.vnc-stage canvas');window.__TAURI_INTERNALS__.invoke('layout_diagnostics',{{metrics:{{directDesktop:{{canvasWidth:c?.width||0,canvasHeight:c?.height||0,canvasPresent:!!c,viewText:document.querySelector('.computer-fullscreen')?.innerText?.slice(0,500)}}}}}})}},15000);",bot);
+        let script=format!("location.hash='#/chat/bot/{}';setTimeout(()=>document.querySelector('[aria-label=\"打开会话详情\"]')?.click(),2500);setTimeout(()=>{{const t=[...document.querySelectorAll('[role=tab]')].find(x=>x.textContent?.includes('电脑'));t?.focus();t?.dispatchEvent(new KeyboardEvent('keydown',{{bubbles:true,key:'Enter'}}));t?.dispatchEvent(new MouseEvent('mousedown',{{bubbles:true,button:0}}));}},4000);setTimeout(()=>document.querySelector('.screen-preview')?.click(),6500);setTimeout(()=>{{const c=document.querySelector('.vnc-stage canvas');window.__TAURI_INTERNALS__.invoke('layout_diagnostics',{{metrics:{{directDesktop:{{tabs:[...document.querySelectorAll('[role=tab]')].map(x=>({{text:x.textContent,state:x.dataset.state}})),canvasWidth:c?.width||0,canvasHeight:c?.height||0,canvasPresent:!!c,viewText:document.querySelector('.computer-fullscreen')?.innerText?.slice(0,500)}}}}}})}},15000);setTimeout(()=>[...document.querySelectorAll('.computer-fullscreen button')].find(x=>x.textContent.includes('Take over'))?.click(),18000);setTimeout(()=>{{const c=document.querySelector('.vnc-stage canvas');if(!c)return;c.focus();const r=c.getBoundingClientRect(),x=r.left+r.width*0.2,y=r.top+r.height*0.2;for(const type of ['mousemove','mousedown','mouseup'])c.dispatchEvent(new MouseEvent(type,{{bubbles:true,clientX:x,clientY:y,button:0,buttons:type==='mousedown'?1:0}}));c.dispatchEvent(new KeyboardEvent('keydown',{{bubbles:true,key:'p',code:'KeyP',keyCode:80}}));c.dispatchEvent(new KeyboardEvent('keyup',{{bubbles:true,key:'p',code:'KeyP',keyCode:80}}));window.__TAURI_INTERNALS__.invoke('layout_diagnostics',{{metrics:{{directDesktop:{{canvasWidth:c.width,canvasHeight:c.height,inputDispatched:true,viewText:document.querySelector('.computer-fullscreen')?.innerText?.slice(0,500)}}}}}});}},22000);",bot);
         let _ = webview.eval(&script);
     }
     Ok(())

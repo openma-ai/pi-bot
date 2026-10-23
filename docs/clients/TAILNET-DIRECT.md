@@ -195,3 +195,51 @@ The test gateway/Serve and containers remain stopped; the authenticated Docker
 identity volume is retained. Next verification is a single normal simulator
 install/launch of this corrected package, followed by production Keychain API
 checks; no new signing identity is indicated by the current evidence.
+
+## Real SDK direct test (2026-10-23)
+
+The corrected Xcode simulator package actually launched and completed official
+browser authorization. Client Running IP was `100.65.80.34`; the dedicated
+Docker userspace node remained `100.127.171.114` (stable ID
+`nq5VdVq41D11CNTRL`). Only these two test endpoints were exercised. Peer discovery
+returned the test service node; no other peer service was contacted.
+
+Passed through production embedded SDK transport, not a localhost substitute:
+
+- Service discovery, explicit one-use pairing and Keychain credential storage.
+- Multiple independent App process restarts/reinstalls restored the same client
+  IP, without another authorization page; service pairing was reused. Server
+  container restart likewise retained its node ID/IP from its dedicated volume.
+- JSON-RPC HTTP and SSE; synthetic 300,073-byte file and 270-byte 64x48 PNG
+  uploaded, copied by the offline fixture agent, returned as file cards and
+  downloaded with exact byte/SHA256 equality. No paid model was used.
+- Desktop PNG (14,408 bytes) and actual WKWebView noVNC canvas 1280x900 over
+  `desktop_open` native WebSocket bridge. Manual takeover UI reached Controlling.
+- Synthetic pointer dispatch moved the container pointer to approximately
+  (253,176). Keyboard dispatch was attempted but visible text echo was not
+  established; therefore keyboard is NOT marked passed. Control-lease switching
+  during repeated App restarts still needs a deterministic focused test.
+
+The initial driver incorrectly requested `/api/desktop/bind` as an HTTP route;
+that is a GUI adapter name, not the daemon endpoint. It now uses the existing
+`desktop/bind` RPC. Radix theme tab text is duplicated in its rendered structure
+(`电脑电脑`); the isolated driver uses containment and normal focus/mousedown.
+Diagnostic desktop metrics are saved separately from periodic layout metrics.
+
+Evidence (local ignored artifacts):
+`artifacts/tailnet-direct/real-sdk-direct-result.json`,
+`real-sdk-desktop-ui.json`, `real-sdk-desktop.png`. Public status is redacted to
+exclude unrelated peers. Offline native regression: 19 passed, 2 external SSH
+fixture tests filtered, `/tmp/pibo-direct-live-regression.log`. iOS simulator
+static build and normal Xcode ad-hoc packaging passed after driver changes.
+
+Cleanup verified: one test pairing revoked, zero remain; Serve configuration
+`{}`; direct runtime and persistent-node containers stopped, test App stopped.
+Node identities remain in the dedicated Docker volume and independent App
+Keychain. A future test must explicitly pair again; no node logout was performed.
+
+Not verified: physical iPhone, system-VPN coexistence, lock-screen/background
+recovery, actual iOS save/share UI, real vision-provider inference, keyboard echo,
+and direct-versus-DERP route. A Tailscale ping timed out despite successful SDK
+HTTP/WS traffic, so it is not used to infer route or connectivity failure.
+No certificate/key/security/network setting changes or TestFlight upload.

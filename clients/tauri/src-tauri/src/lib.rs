@@ -111,7 +111,12 @@ fn layout_diagnostics(
         .app_data_dir()
         .map_err(|_| "No diagnostics directory")?;
     std::fs::create_dir_all(&dir).map_err(|_| "Cannot create diagnostics directory")?;
-    std::fs::write(dir.join("ios-layout-latest.json"), bytes)
+    let filename = if metrics.get("directDesktop").is_some() {
+        "direct-ui.json"
+    } else {
+        "ios-layout-latest.json"
+    };
+    std::fs::write(dir.join(filename), bytes)
         .map_err(|_| "Cannot write metrics".into())
 }
 
