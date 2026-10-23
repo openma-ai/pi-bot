@@ -7,6 +7,7 @@ import type { PiBotDaemon } from '../core/daemon.ts';
 import type { DaemonConnection } from '../core/connection.ts';
 import { listenTailnetGateway, type TailnetListener } from './tailnet-gateway.ts';
 import { avatarFile } from '../avatar-media.ts';
+import { watchDesktopViewer } from './websocket-liveness.ts';
 export async function listenHttp(daemon: PiBotDaemon, options: {
     port?: number;
     staticDir?: string;
@@ -436,6 +437,7 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
             return;
         }
         ws.handleUpgrade(req, socket, head, client => {
+            watchDesktopViewer(client);
             const remote = new WebSocket(daemon.desktop!.url.replace('http:', 'ws:') + '/ws/' + id, {
                 headers: daemon.desktop!.headers()
             });

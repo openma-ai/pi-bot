@@ -10,6 +10,19 @@ export interface DesktopBinding {
 }
 export class DesktopOwnership {
     readonly bindings = new Map<string, DesktopBinding>();
+    private viewers = new Map<string, string>();
+    claimViewer(botId: string, viewer: string) {
+        this.require(botId);
+        if (this.viewers.has(botId)) throw Error("Desktop already has an active viewer");
+        this.viewers.set(botId, viewer);
+    }
+    hasViewer(botId: string) { return this.viewers.has(botId); }
+    releaseViewer(botId: string, viewer: string) {
+        if (this.viewers.get(botId) !== viewer) return false;
+        this.viewers.delete(botId);
+        this.release(botId);
+        return true;
+    }
     private lease?: {
         botId: string;
         expiresAt: number;

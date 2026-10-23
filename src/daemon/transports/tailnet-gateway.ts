@@ -91,6 +91,7 @@ export function createTailnetGateway(options: TailnetListener & {
         let set = connections.get(id);
         if (!set)
             connections.set(id, set = new Set());
+        if (set.has(socket)) return;
         set.add(socket);
         socket.once('close', () => set!.delete(socket));
     };

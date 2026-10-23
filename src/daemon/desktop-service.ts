@@ -301,6 +301,7 @@ const api = createServer(async (req, res) => {
             const result = await serial(async () => {
                 const b = owners.require(data.botId);
                 if (data.take) {
+                    if (!owners.hasViewer(data.botId)) throw Error("Open the desktop before taking control");
                     owners.takeover(data.botId);
                     await focusOwned(b.windowId);
                     execFileSync('x11vnc', ['-display', ':99', '-connect', join(root, `vnc-${b.screen}.cmd`), '-sync', '-R', 'noviewonly']);
@@ -406,15 +407,25 @@ const ws = new WebSocketServer({
     noServer: true
 });
 api.on('upgrade', (req, socket, head) => {
+    let claimed: { id: string; viewer: string } | undefined;
     try {
         if (req.headers.authorization !== `Bearer ${token}`)
             throw Error();
         const id = new URL(req.url ?? '/', 'http://localhost').pathname.slice('/ws/'.length);
         const b = owners.require(id);
+        const viewer = randomUUID();
+        owners.claimViewer(id, viewer);
+        claimed = { id, viewer };
+        // A new socket must never inherit an interrupted client's write mode.
+        execFileSync('x11vnc', ['-display', ':99', '-connect', join(root, `vnc-${b.screen}.cmd`), '-sync', '-R', 'viewonly']);
         ws.handleUpgrade(req, socket, head, web => {
             const tcp = connect(5901 + b.screen, '127.0.0.1');
             web.on('message', data => {
                 void serial(async () => {
+                    if (vncController === id && owners.control()?.botId !== id) {
+                        execFileSync('x11vnc', ['-display', ':99', '-connect', join(root, `vnc-${b.screen}.cmd`), '-sync', '-R', 'viewonly']);
+                        vncController = undefined;
+                    }
                     if (owners.control()?.botId === id && Number(execFileSync('xdotool', ['getactivewindow'], {
                         encoding: 'utf8'
                     }).trim()) !== b.windowId)
@@ -422,13 +433,22 @@ api.on('upgrade', (req, socket, head) => {
                     tcp.write(Buffer.from(data as any));
                 }).catch(() => web.close());
             });
+            web.on('error', () => web.close());
             tcp.on('data', d => web.readyState === 1 && web.send(d));
-            web.on('close', () => tcp.destroy());
+            web.on('close', () => {
+                tcp.destroy();
+                void serial(async () => {
+                    if (!owners.releaseViewer(id, viewer)) return;
+                    execFileSync('x11vnc', ['-display', ':99', '-connect', join(root, `vnc-${b.screen}.cmd`), '-sync', '-R', 'viewonly']);
+                    if (vncController === id) vncController = undefined;
+                }).catch(() => {});
+            });
             tcp.on('close', () => web.close());
             tcp.on('error', () => web.close());
         });
     }
     catch {
+        if (claimed) owners.releaseViewer(claimed.id, claimed.viewer);
         socket.destroy();
     }
 });

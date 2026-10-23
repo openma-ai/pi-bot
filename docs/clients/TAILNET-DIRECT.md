@@ -243,3 +243,54 @@ recovery, actual iOS save/share UI, real vision-provider inference, keyboard ech
 and direct-versus-DERP route. A Tailscale ping timed out despite successful SDK
 HTTP/WS traffic, so it is not used to infer route or connectivity failure.
 No certificate/key/security/network setting changes or TestFlight upload.
+
+## Keyboard and interrupted-controller follow-up (2026-10-23)
+
+The keyboard uncertainty above is resolved: a broker-prepared synthetic textarea
+received exactly `p` from WKWebView/noVNC keyboard events over the real embedded
+SDK path. The initial xdotool page preparation raced desktop binding/navigation;
+the driver now waits for an explicit `direct-ui-ready` marker after the host has
+prepared the owned browser page. No production login behavior is changed.
+
+Live testing exposed two real controller gaps, now fixed:
+
+- Each bot admits one active VNC viewer. A second viewer is rejected rather than
+  sharing the globally writable x11vnc connection; concurrent viewing of the same
+  bot is consequently unavailable in this minimum implementation. Another bot
+  cannot take over while a human lease is active.
+- Viewer disconnect releases the lease and resets view-only mode. A restarted
+  viewer cannot inherit the prior client's writable mode. Client-facing WebSocket
+  ping/pong detects viewers lost without a TCP close (observed when the embedded
+  userspace App process was terminated). Three missed five-second pings cause
+  termination on the next check, around twenty seconds plus propagation.
+  Broker-side proxy pongs are deliberately insufficient.
+
+Real isolated tests on `pibo-tailnet-direct:lease-heartbeat` passed: duplicate
+viewer denied, foreign bot takeover denied, App termination released its lease
+within the heartbeat window, another controller acquired it, explicit release
+succeeded, a real 60-second unrenewed lease expired, and agent evaluation resumed.
+The input value remained `p` after expiry. First failed/racy observations remain
+in `/tmp/pibo-live-lease-result*.jsonl`; final passing report is
+`artifacts/tailnet-direct/real-sdk-lease.jsonl`; input evidence is
+`real-sdk-keyboard-value.json` and `real-sdk-keyboard.png`.
+
+Reproducible container-only helpers: `direct/ui-fixture.mjs prepare BOT_ID` prepares
+the synthetic input before the marker, `read BOT_ID` reads the observable value
+after releasing control, and `lease BOT_ID` requires an existing viewer. For the
+last mode the host terminates only the isolated simulator App when the helper
+prints READY_TO_RESTART, then waits for DONE. The helper asserts exclusivity,
+disconnect, explicit release, expiry and agent recovery; it never logs tokens.
+
+Final aggregate after these changes: 329/329, no skips,
+`/tmp/pibo-lease-aggregate-final.log`; TypeScript passed. Native simulator static
+compile/Xcode packaging passed for the updated debug fixture. Existing native
+offline regression was 19/19 (two unrelated SSH fixtures filtered). A sandboxed
+aggregate initially failed to launch Python oracle subprocesses; rerunning with
+the same approved local execution context as earlier aggregates passed all 329.
+
+The heartbeat test container retains the original resource/security limits.
+Prior direct containers are preserved stopped as
+`pibo-tailnet-test-direct-before-lease-1` and
+`pibo-tailnet-test-direct-before-heartbeat-1`; no volumes were deleted.
+Physical iPhone, background/lock-screen, VPN coexistence, and actual iOS
+save/share interaction remain outside this simulator result.
