@@ -141,6 +141,14 @@ export type Schedule = TriggerBase & {
     intervalMs?: number;
     misfire: 'skip' | 'coalesce' | 'catchup';
     overlap: 'queue' | 'skip';
+    /** Explicit host opt-in bounded local-evidence research; uses the same scheduler. */
+    dream?: {
+        evidenceRefs: string[];
+        deadline: number;
+        maxRuns: number;
+        runs: number;
+        halted?: 'uncertain' | 'worker_unavailable' | 'invalid_evidence' | 'budget' | 'dispatch_failed';
+    };
     lastSkip?: {
         dueAt: number;
         at: number;

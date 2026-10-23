@@ -6,7 +6,7 @@ import { resolve, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { BotRuntime, type SessionFactory } from '../runtime/runtime.ts';
-import { ProactiveService, type Monitor } from '../runtime/proactive.ts';
+import { ProactiveService, type Monitor, type BackgroundWorker } from '../runtime/proactive.ts';
 import { OpenMatterTrigger } from '../runtime/openmatter-trigger.ts';
 import { livePiFactory } from '../live-pi.ts';
 import { createFileChangeDetector } from '../runtime/proactive-detectors.ts';
@@ -45,6 +45,9 @@ export class PiBotDaemon {
     private detectors: Record<string, ReturnType<typeof createFileChangeDetector>> = {};
     private constructor(readonly dataDir: string, readonly options: {
         factory?: SessionFactory;
+        /** Explicit host-only opt-in; no model worker is loaded by default. */
+        researchWorker?: BackgroundWorker;
+        researchWorkTimeoutMs?: number;
         approvalRequired?: boolean;
         approvalTimeoutMs?: number;
         idleUnloadMs?: number;
@@ -63,6 +66,9 @@ export class PiBotDaemon {
     static async create(options: {
         dataDir?: string;
         factory?: SessionFactory;
+        /** Explicit host-only opt-in; no model worker is loaded by default. */
+        researchWorker?: BackgroundWorker;
+        researchWorkTimeoutMs?: number;
         approvalRequired?: boolean;
         approvalTimeoutMs?: number;
         idleUnloadMs?: number;
@@ -124,7 +130,9 @@ export class PiBotDaemon {
             if (m.detector.startsWith('file:'))
                 d.registerFile(m.detector.slice(5));
         d.proactive = new ProactiveService(d.runtime, {
-            detectors: d.detectors
+            detectors: d.detectors,
+            ...(options.researchWorker ? { workers: { research: options.researchWorker } } : {}),
+            workTimeoutMs: options.researchWorkTimeoutMs
         });
         d.broker = new RequestBroker(d.runtime, d.connections, options.approvalTimeoutMs);
         (d.runtime as any).requestBroker = d.broker;
@@ -351,7 +359,7 @@ export class PiBotDaemon {
             } : {})
         };
     }
-    createRoutine(p: any) {
+    createRoutine(p: any, fileOwner = "local") {
         const bot: any = this.required('bots', p.botId);
         const group: any = p.groupId ? this.required('groups', p.groupId) : undefined;
         if (group && !group.memberIds.includes(bot.id))
@@ -360,7 +368,7 @@ export class PiBotDaemon {
             throw new PiBotError('invalidParams', 'Schedule must be in the future');
         const channel = group?.id ?? bot.channelId;
         const source: Envelope = {
-            id: randomUUID(), from: 'user', to: bot.id, kind: 'user', text: redactChannelText(p.prompt), key: p.key ?? randomUUID(), taskId: randomUUID(), replyTo: null, hop: 0, state: 'processed', createdAt: Date.now(), ...(channel ? {
+            id: randomUUID(), fileOwner, from: 'user', to: bot.id, kind: 'user', text: redactChannelText(p.prompt), key: p.key ?? randomUUID(), taskId: randomUUID(), replyTo: null, hop: 0, state: 'processed', createdAt: Date.now(), ...(channel ? {
                 route: {
                     channelId: channel, conversationId: channel, threadId: 'gui', senderId: 'user'
                 }

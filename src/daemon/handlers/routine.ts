@@ -7,7 +7,7 @@ export async function routineHandler(d: PiBotDaemon, c: DaemonConnection, method
             routines: d.snapshot().routines.filter((x: any) => (!p.botId || x.botId === p.botId) && (!p.kind || x.kind === p.kind))
         };
         case 'routine/create': return {
-            routine: d.createRoutine(p)
+            routine: d.createRoutine(p, c.fileOwner)
         };
         case 'routine/dryRun': return d.routineAction('dry-run', p.routineId);
         case 'routine/pause':

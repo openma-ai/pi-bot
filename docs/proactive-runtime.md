@@ -92,12 +92,12 @@ Pi tools are registered by `createProactiveExtension`.
 - The supplied file detector observes `stat` metadata only, not file contents.
   It is a condition detector, not an arbitrary shell/script execution API.
 
-Use the existing configured CLI provider/model. `PI_BOT_PROACTIVE=1 npm start`
-enables scheduling tools and the host tick. Optional `PI_BOT_WATCH_FILE=/path`
-registers detector name `file`. Without it, monitor creation is denied until
-the host registers a detector. No automatic machine wake or cloud service is
-installed: the local runtime must be running; persisted due work follows its
-misfire policy after restart.
+The daemon starts the existing proactive tick and restores host-selected file
+detectors. SDK hosts pass allowlisted detectors to ProactiveService; the GUI
+routine path registers explicit file paths. No automatic machine wake or cloud
+service is installed: the local runtime must be running; persisted due work
+follows its misfire policy after restart. Previously documented
+PI_BOT_PROACTIVE/PI_BOT_WATCH_FILE flags are not read by the current daemon.
 
 Canceling a trigger invalidates new effects from its old envelopes and descendants;
 already-dispatched tools continue. Task replacement/cancellation also applies.
@@ -117,8 +117,10 @@ per job issues at most one generation and one independent review request, each
 at most 8192 output tokens including reasoning, high reasoning, zero retries.
 The host's default whole-work deadline is 60 seconds and normal job concurrency
 and per-task limits also apply. A host can supply a shared before-request budget.
-No credential file is read by this adapter. CLI model workers require explicit
-`PI_BOT_BACKGROUND_WORK=1` in addition to proactive enablement.
+No credential file is read by this adapter. A host must explicitly register a
+research worker (for the daemon SDK: `PiBotDaemon.create({researchWorker})`).
+No CLI worker is automatically loaded; the previously documented
+PI_BOT_BACKGROUND_WORK flag is not read by the current daemon.
 
 This release's research is **local evidence synthesis**, not web browsing or an
 autonomous external research daemon. External tools/network permissions are not
@@ -128,6 +130,40 @@ and `memory_apply` requires independent approval plus evidence/version checks.
 `background_result` marks result consumption independently of execution.
 `background_cancel` invalidates late results/application. Denied or interrupted
 work remains inspectable; it does not silently disappear or endlessly retry.
+
+## Bounded dream SDK entry
+
+`ProactiveService.createDream(source, {key, at, intervalMs?, deadline, maxRuns,
+evidenceRefs})` explicitly opts an existing host task into local-evidence
+research. It requires a registered research worker. The daemon SDK accepts
+`researchWorker` and optional `researchWorkTimeoutMs`; omitting them keeps real
+research disabled. No model configuration/credential is loaded for this option.
+
+Dream uses the existing schedules, fires, jobs and proposals. A due slot creates
+a processed host schedule receipt and starts a durable research job in the same
+transaction, without activating main Pi for that trigger. Only reviewed findings
+return through the existing research inbox. The main agent decides what to
+publish; shared [notification SDK](notification-sdk.md) selection is host-only.
+
+Each dream has 1..8 reserved runs, a finite deadline, coalesced missed slots and
+one in-flight proposal. Whole-work timeout is at most the host limit (60 seconds
+by default) and the remaining dream deadline. With createModelBackgroundWorker,
+each run has at most two bounded tool-free provider requests. Host custom workers
+are trusted allowlisted implementations; no general sandbox for arbitrary code
+is claimed. Existing permission/approval and job budgets still apply.
+
+Cancellation or replacement invalidates old sources; cancelling a trigger cancels
+its proposals. Source/controller/deadline are checked after generation, before
+review and before publication. A rejected or late result cannot become a user
+message. Closed services do not dispatch further work. A failed admission pauses
+that dream with a durable reason without starving independent monitors.
+
+Restart preserves due definitions; in-flight work becomes uncertain and is not
+replayed. A dream with uncertain work is paused for host inspection, as is one
+whose worker is absent after restart. This is not continuation of an old model
+request. No infinite daily loop, automatic evidence selection, external connector
+search or full dots Dreamer behavior is claimed. See the before/after
+[capability audit](monitor-dream-status.md).
 
 ## External GUI read-only interface
 

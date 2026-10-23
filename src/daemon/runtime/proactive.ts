@@ -54,6 +54,8 @@ export class ProactiveService {
         return (this.options.now ?? Date.now)();
     }
     private source(id: string) {
+        if (this.stopped)
+            throw new PiBotError('shuttingDown', 'Proactive service closed');
         const e = this.runtime.store.get<Envelope>('inbox', id);
         if (!e)
             throw new PiBotError('notFound', 'Unknown original source');
@@ -93,7 +95,7 @@ export class ProactiveService {
             throw new PiBotError('invalidParams', 'Invalid schedule time');
         const existing = this.listSchedules(source.to).find(s => s.key === input.key);
         if (existing) {
-            if (existing.sourceId !== source.id || existing.prompt !== input.prompt || existing.intervalMs !== input.intervalMs || existing.timezone !== input.timezone || existing.firstFire !== input.at || existing.misfire !== (input.misfire ?? 'coalesce') || existing.overlap !== (input.overlap ?? 'skip'))
+            if (existing.dream || existing.sourceId !== source.id || existing.prompt !== input.prompt || existing.intervalMs !== input.intervalMs || existing.timezone !== input.timezone || existing.firstFire !== input.at || existing.misfire !== (input.misfire ?? 'coalesce') || existing.overlap !== (input.overlap ?? 'skip'))
                 throw new PiBotError('conflict', 'Idempotency key conflict');
             return existing;
         }
@@ -102,6 +104,40 @@ export class ProactiveService {
         };
         this.runtime.store.put('schedules', s);
         return s;
+    }
+    /** Host-only opt-in. Reuses schedule/fire/job/proposal records; never installs a worker. */
+    createDream(source: Envelope, input: {
+        key: string;
+        at: number;
+        intervalMs?: number;
+        deadline: number;
+        maxRuns: number;
+        evidenceRefs: string[];
+    }): Schedule {
+        this.validate(source, input.key, 'Bounded local evidence research');
+        if (!this.options.workers?.research)
+            throw new PiBotError('forbidden', 'Research worker not host-allowlisted');
+        if (!Number.isSafeInteger(input.deadline) || input.deadline <= this.now() || input.at >= input.deadline ||
+            !Number.isSafeInteger(input.maxRuns) || input.maxRuns < 1 || input.maxRuns > 8)
+            throw new PiBotError('invalidParams', 'Invalid dream bounds');
+        this.evidence(source.to, input.evidenceRefs);
+        const existing = this.listSchedules(source.to).find(s => s.key === input.key);
+        if (existing) {
+            if (!existing.dream || existing.sourceId !== source.id || existing.firstFire !== input.at ||
+                existing.intervalMs !== input.intervalMs || existing.dream.deadline !== input.deadline ||
+                existing.dream.maxRuns !== input.maxRuns || JSON.stringify(existing.dream.evidenceRefs) !== JSON.stringify(input.evidenceRefs))
+                throw new PiBotError('conflict', 'Idempotency key conflict');
+            return existing;
+        }
+        return this.runtime.store.transaction(() => {
+            const s = this.createSchedule(source, {
+                key: input.key, at: input.at, intervalMs: input.intervalMs, timezone: 'UTC',
+                prompt: 'Bounded local evidence research', misfire: 'coalesce', overlap: 'skip'
+            });
+            const dream = { ...s, dream: { evidenceRefs: [...input.evidenceRefs], deadline: input.deadline, maxRuns: input.maxRuns, runs: 0 } };
+            this.runtime.store.put('schedules', dream);
+            return dream;
+        });
     }
     listSchedules(botId: string) {
         return this.runtime.store.list<Schedule>('schedules').filter(s => s.botId === botId);
@@ -235,6 +271,9 @@ export class ProactiveService {
                 this.runtime.store.put('inbox', {
                     ...e, state: e.state === 'queued' ? 'failed' : e.state, triggerCancelled: true
                 });
+            for (const p of this.runtime.store.list<Proposal>('proposals'))
+                if (p.sourceId === fire.inboxId && !['applied', 'cancelled'].includes(p.state))
+                    this.cancelBackgroundWork(p.botId, p.id);
         }
     }
     async dryRunMonitor(botId: string, id: string) {
@@ -311,7 +350,7 @@ export class ProactiveService {
         key: string;
         evidenceRefs: string[];
         memoryKey?: string;
-    }): Proposal {
+    }, bounds: { deadline?: number } = {}): Proposal {
         this.validate(source, input.key, 'Background work');
         const worker = this.options.workers?.[input.kind];
         if (!worker)
@@ -338,7 +377,14 @@ export class ProactiveService {
             job = this.runtime.startJob(source, `background_${input.kind}`, {
                 proposalId: p.id
             }, `proposal:${p.id}`, async () => {
-                const timer = setTimeout(() => controller.abort(), this.options.workTimeoutMs ?? 60000);
+                const remaining = bounds.deadline === undefined ? Infinity : bounds.deadline - this.now();
+                const timer = setTimeout(() => controller.abort(), Math.max(1, Math.min(this.options.workTimeoutMs ?? 60000, remaining)));
+                const currentSource = () => {
+                    controller.signal.throwIfAborted();
+                    this.source(source.id);
+                    if (bounds.deadline !== undefined && bounds.deadline <= this.now())
+                        throw new PiBotError('invalidRequest', 'Background work deadline reached');
+                };
                 let abort!: () => void;
                 const deadline = new Promise<never>((_resolve, reject) => {
                     abort = () => reject(Error('Background work deadline'));
@@ -349,7 +395,9 @@ export class ProactiveService {
                         abort();
                 });
                 try {
+                    currentSource();
                     const candidate = await Promise.race([worker.generate(structuredClone(evidence), controller.signal), deadline]);
+                    currentSource();
                     if (!candidate.text?.trim() || candidate.text.length > 16000 || !Array.isArray(candidate.evidenceRefs) || !candidate.evidenceRefs.length || !candidate.evidenceRefs.every(id => input.evidenceRefs.includes(id))) {
                         this.runtime.store.put('proposals', {
                             ...this.getProposal(source.to, p.id), state: 'rejected', review: {
@@ -360,9 +408,10 @@ export class ProactiveService {
                             proposalId: p.id, state: 'rejected'
                         };
                     }
+                    if (digest(this.evidence(source.to, input.evidenceRefs)) !== p.evidenceHash)
+                        throw new PiBotError('conflict', 'Evidence changed during generation');
                     const review = await Promise.race([worker.review(structuredClone(candidate), structuredClone(evidence), controller.signal), deadline]);
-                    controller.signal.throwIfAborted();
-                    this.source(source.id);
+                    currentSource();
                     if (digest(this.evidence(source.to, input.evidenceRefs)) !== p.evidenceHash)
                         throw new PiBotError('conflict', 'Evidence changed during review');
                     const approved = review.approved === true && typeof review.reason === 'string' && review.reason.length <= 4000;
@@ -522,16 +571,83 @@ export class ProactiveService {
             ...m, enabled: false, state: 'expired'
         });
     }
+    private tickDream(s: Schedule): boolean {
+        return this.runtime.store.transaction(() => {
+            const dream = s.dream!;
+            if (dream.deadline <= this.now()) {
+                this.runtime.store.put('schedules', { ...s, state: 'completed' });
+                this.invalidateFires(s.id);
+                return false;
+            }
+            const sourceIds = new Set(this.listFires(s.botId).filter(f => f.triggerId === s.id).map(f => f.inboxId));
+            const proposals = this.runtime.store.list<Proposal>('proposals').filter(p => sourceIds.has(p.sourceId));
+            if (proposals.some(p => this.getProposal(s.botId, p.id).state === 'uncertain') || !this.options.workers?.research) {
+                this.runtime.store.put('schedules', {
+                    ...s, state: 'paused', dream: { ...dream, halted: this.options.workers?.research ? 'uncertain' : 'worker_unavailable' }
+                });
+                return false;
+            }
+            if (proposals.some(p => p.state === 'running'))
+                return false;
+            if (dream.runs >= dream.maxRuns) {
+                this.runtime.store.put('schedules', { ...s, state: 'completed' });
+                return false;
+            }
+            const now = this.now();
+            const dueAt = s.intervalMs ? s.nextFire + Math.floor((now - s.nextFire) / s.intervalMs) * s.intervalMs : s.nextFire;
+            const eventKey = `schedule:${s.id}:${s.revision}:${createHash('sha256').update(String(dueAt)).digest('hex')}`;
+            if (this.runtime.store.get<Fire>('fires', eventKey))
+                return false;
+            const source = this.source(s.sourceId);
+            // A processed host receipt supplies durable provenance without asking the main
+            // Pi session to run the research trigger or activating the inbox scheduler.
+            const execution: Envelope = {
+                id: randomUUID(), from: `schedule:${s.id}`, to: s.botId, kind: 'schedule',
+                key: eventKey, taskId: source.taskId, replyTo: source.id, route: source.route,
+                hop: source.hop, text: JSON.stringify({ triggerId: s.id, dueAt, dream: true }),
+                state: 'processed', createdAt: now, admittedAt: now, consumedAt: now, resolvedAt: now
+            };
+            this.runtime.store.put('inbox', execution);
+            this.runtime.store.put('fires', {
+                id: eventKey, eventKey, botId: s.botId, triggerId: s.id, revision: s.revision,
+                inboxId: execution.id, dueAt, firedAt: now
+            } satisfies Fire);
+            this.startBackgroundWork(execution, {
+                kind: 'research', key: `dream:${eventKey}`, evidenceRefs: dream.evidenceRefs
+            }, { deadline: dream.deadline });
+            const runs = dream.runs + 1;
+            this.runtime.store.put('schedules', {
+                ...s, state: !s.intervalMs || runs >= dream.maxRuns ? 'completed' : 'active',
+                nextFire: s.intervalMs ? dueAt + s.intervalMs : dueAt, dream: { ...dream, runs }
+            });
+            return true;
+        });
+    }
     private async runTick() {
         let allowance = this.options.maxFiresPerTick ?? 32;
         for (const original of this.runtime.store.list<Schedule>('schedules')) {
-            if (original.state !== 'active' || original.nextFire > this.now() || allowance <= 0)
+            if (original.state !== 'active' || Math.min(original.nextFire, original.dream?.deadline ?? Infinity) > this.now() || allowance <= 0)
                 continue;
             try {
                 this.source(original.sourceId);
             }
             catch {
                 this.cancelSchedule(original.botId, original.id);
+                continue;
+            }
+            if (original.dream) {
+                try {
+                    if (this.tickDream(original)) allowance--;
+                }
+                catch (error) {
+                    // The failed dispatch transaction has rolled back. Retain a visible
+                    // pause instead of retrying work or starving independent monitors.
+                    const current = this.runtime.store.get<Schedule>('schedules', original.id)!;
+                    const reason = error instanceof PiBotError ? error.reason : undefined;
+                    const halted = reason === 'budgetExhausted' || reason === 'capacity' ? 'budget'
+                        : reason === 'forbidden' || reason === 'taskCancelled' ? 'invalid_evidence' : 'dispatch_failed';
+                    this.runtime.store.put('schedules', { ...current, state: 'paused', dream: { ...current.dream!, halted } });
+                }
                 continue;
             }
             this.runtime.store.transaction(() => {
