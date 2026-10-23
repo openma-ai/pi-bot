@@ -143,3 +143,35 @@ Proposed next confirmation, with no silent expansion:
 
 References: https://developer.apple.com/documentation/xcode/writing-custom-build-scripts
 and https://developer.apple.com/documentation/xcode/environment-variable-reference .
+
+## Preferred current option: manual local pipeline
+
+Use the existing Mac and Apple Developer account; no additional cloud CI fee,
+self-hosted runner, background service or new credential storage is introduced.
+Xcode Cloud and GitHub drafts remain disabled. The existing Mac Keychain may
+still require approval for each signing use; local automation cannot remove that
+requirement without a separate security change, which this implementation does
+not make.
+
+```sh
+# Safe plan only; does not build, sign, login or upload.
+bash clients/tauri/scripts/local-ios-release.sh --build 1023.7.2 --upload --dry-run
+# After the current release has finished, choose a confirmed new unused build:
+bash clients/tauri/scripts/local-ios-release.sh --build NEW.BUILD.NUMBER --upload
+```
+
+Without `--upload`, the pipeline stops at the exported IPA. `--rebuild-sdk` is
+optional and explicitly rebuilds the pinned real userspace archive; otherwise
+it requires the already built project-local archive. No Tailnet node is started.
+The pipeline checks active Pibo xcodebuild processes and a local atomic lock,
+then runs TypeScript/tests/GUI lint, device Release, archive audit, export and
+optional upload. Existing build output is never overwritten. Failed or uncertain
+uploads are not retried automatically. The granular `ios-testflight.sh` stages
+remain available for deliberate continuation after inspecting a saved result.
+
+The wrapper refuses offline SDK stubs, uses the existing Xcode account and
+Distribution profile, and does not import identities or adjust Keychain access.
+An expired account login or system password prompt is handled by the user.
+Apple processing/compliance/internal group readiness is a distinct later check;
+a zero upload exit is not labeled installable. The running 1023.7.1 archive is
+preserved and was not restarted to test this wrapper.
