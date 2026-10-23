@@ -76,3 +76,23 @@ the hosted workflow, temporary keychain import, API authentication and upload
 have NOT been exercised. Requires a suitable macOS runner with Xcode 26+ and
 installed signing material. The current Mac's successful device build is not
 proof of a hosted runner release.
+
+## Alternative: Xcode Cloud
+
+Xcode Cloud can avoid exporting the Mac's private signing key to GitHub Actions:
+Apple manages cloud signing rather than importing this local p12 into a GitHub
+runner. It still needs explicit repository connection and Apple cloud-signing /
+workflow authorization. No such access was granted or configured in this task.
+The source-based Rust/Node/Go build needs adaptation to Xcode Cloud's custom build
+scripts; the existing GitHub YAML is not an Xcode Cloud workflow.
+
+Apple's current public get-started page lists 25 compute hours/month included
+with Developer Program membership, and 100 hours at US$49.99/month (larger plans
+available). This account's actual subscription and remaining hours were not
+checked. Account Holder/Admin/App Manager can configure workflows; other roles
+have additional requirements. No extra service account is inherently needed,
+but the selected GitHub repository connection needs its owner's authorization.
+GitHub Actions runner charges / account minute allowance were not checked.
+
+Sources: https://developer.apple.com/xcode-cloud/get-started/ and
+https://developer.apple.com/help/account/certificates/cloud-managed-certificates/ .
