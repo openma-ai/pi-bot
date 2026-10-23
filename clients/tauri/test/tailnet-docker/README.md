@@ -112,3 +112,70 @@ To suspend reversibly, pause these exact containers, then unpause them. A later
 explicit teardown may use both compose files with `down`; this loses the
 in-memory Tailnet identity and desktop tmpfs, so export synthetic evidence first.
 Never run global prune. Keep the unrelated `pi-bot-desktop` container untouched.
+
+## Persistent direct-test follow-up (2026-10-23)
+
+The user approved project-only persistent node storage. `persistent.compose.yaml`
+adds `tailnet-persistent` without replacing/deleting old containers. Its external
+named volume `pibo-tailnet-test-state` is mounted only into this project's
+Tailscale container. The private state directory is mode 700 and state file 600.
+Do not use `down -v`, reset/remove the identity, disable key expiry or change ACLs.
+The volume is retained even after the test stops. Restart the node and compare
+public Self.ID/IP after approval before starting the dependent runtime; a file
+surviving on a volume alone does not prove authenticated identity reuse.
+
+Actual resources created: `pibo-tailnet-test-tailnet-persistent-1` and the named
+volume above. The node is currently stopped after its bounded login timed out:
+`GET https://controlplane.tailscale.com/key?v=148: EOF`. Host curl also failed TLS
+to the same official endpoint. No authorization URL or Tailnet IP was obtained,
+no Serve/Funnel was enabled, and no new node was approved. Prior in-memory test
+containers and unrelated containers were preserved. Restart/login/identity reuse
+remain unverified until official control connectivity recovers.
+
+The direct fixture (`direct/`) uses the audited desktop image, broker loopback
+8091, daemon loopback 4318 and explicit Serve-loopback gateway 4319. It requires
+an explicit current approved node IP. Its SessionFactory only copies synthetic
+uploaded files to generated artifacts (including safe image MIME), without a
+model/provider call or attachment execution. Broker readiness/auth remains
+inside the container; credentials are never printed. Runtime data is disposable
+tmpfs; only the Tailnet node identity volume persists. No host mounts/ports are
+published. Use a tracked-source-only staging build context; do not build from a
+working context containing private files. `direct/Dockerfile` assumes the audited
+`pibo-tailnet-desktop:local` base is already available; no new packages are fetched.
+The built local image is `pibo-tailnet-direct:7d4c25f` (inspect its current ID).
+Compose and strict TypeScript/shell syntax checks passed; the new runtime has
+not been started because the approved node has no current IP.
+
+An isolated `dev.pibot.direct-simulator` App was unsigned-built against the real
+SDK static archive, installed and launched on the already available iPhone 17 /
+iOS 26.4 Simulator. The actual new connection homepage rendered; the app was then
+terminated, retained for continuation. It did not start a client node/login or
+write network credentials. Original `dev.pibot.ios` was not replaced. Local
+ignored evidence: `artifacts/tailnet-direct/initial-app-ready.png`; build logs
+`/tmp/pibo-direct-simulator-build.log`, `/tmp/pibo-direct-xcode-build.log`.
+The first generated Xcode attempts selected the device archive or development
+dylib; the final isolated build uses a static-only alias and verifies defined
+`start_app`, `tailscale_dial`, `tailscale_status_json` symbols with no dependency
+on the build-tree dylib. The generated diagnostic project is saved with the
+ignored evidence, not used for official distribution.
+
+Pending real checks: browser approval on both nodes, paired native SDK HTTP/SSE,
+file/image bytes, WKWebView desktop pixels/input, container and client restart
+identity reuse, and cleanup of the future test Serve/pairing. No TestFlight or
+system networking/signing/security changes were performed in this follow-up.
+
+Read-only EOF comparison: host and a credential-free diagnostic container both
+resolved `controlplane.tailscale.com` to `198.18.0.243`. Host `login.tailscale.com`
+resolved to `198.18.0.252`; both official HTTPS endpoints failed TLS before an
+HTTP response (host SSL_ERROR_SYSCALL, container unexpected EOF/reset). Host route
+to 198.18.0.243 used utun9 via 198.18.0.1. No HTTP(S)/ALL_PROXY environment was
+inherited by host diagnostics or the test-node container, and system HTTP/HTTPS/
+SOCKS/PAC enable flags were zero. Docker's existing daemon proxy is
+http.docker.internal:3128 and its TCP port is reachable from the test bridge.
+No proxy request/override, DNS change or TLS verification bypass was performed.
+This demonstrates a shared outer-network failure before Pibo service traffic;
+it does not identify the tunnel application's cause or prove an SDK fix.
+A possible next bounded experiment needs confirmation: only recreate the new
+test-node container with HTTPS_PROXY=http://http.docker.internal:3128, preserving
+the same named state volume, then retry the official public-key HTTPS probe with
+normal certificate verification. This may also fail and is not yet executed.

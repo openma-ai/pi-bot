@@ -1,0 +1,47 @@
+# Explicit isolated test only. Does not replace the old in-memory containers.
+name: pibo-tailnet-test
+services:
+  tailnet-persistent:
+    image: ghcr.io/tailscale/tailscale:v1.104.1
+    pull_policy: never
+    entrypoint: [/bin/sh, -c]
+    command:
+      - 'umask 077; mkdir -p /var/lib/tailscale/private; chmod 700 /var/lib/tailscale/private; exec /usr/local/bin/tailscaled --tun=userspace-networking --state=/var/lib/tailscale/private/tailscaled.state --socket=/tmp/tailscale.sock --no-logs-no-support'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes: [state:/var/lib/tailscale]
+    tmpfs: ["/tmp:size=32m,mode=1777", "/var/run:size=8m,mode=755"]
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 128
+    restart: 'no'
+    networks: [test]
+    logging: {driver: json-file, options: {max-size: 2m, max-file: '1'}}
+  direct:
+    image: pibo-tailnet-direct:7d4c25f
+    pull_policy: never
+    network_mode: service:tailnet-persistent
+    environment:
+      PIBO_TEST_TAILNET_IP: '${PIBO_TEST_TAILNET_IP:?Read the approved current test-node IP first}'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /data:size=256m,uid=1000,gid=1000,mode=700
+      - /app/work:size=128m,uid=1000,gid=1000,mode=700
+    shm_size: 128m
+    cpus: 1
+    mem_limit: 1536m
+    pids_limit: 768
+    restart: 'no'
+    logging: {driver: json-file, options: {max-size: 4m, max-file: '1'}}
+volumes:
+  state:
+    external: true
+    name: pibo-tailnet-test-state
+networks:
+  test:
+    external: true
+    name: pibo-tailnet-test-net
