@@ -161,3 +161,37 @@ loopback socket, advertised Host rejection, local-owner pairing, authenticated
 health, remote-admin denial and device revocation. These use only synthetic
 127.0.0.1 services. TypeScript check and the full `npm test` aggregate passed: 327/327 tests, no
 skips, approximately 13 seconds (`/tmp/pibo-tailnet-forward-aggregate.log`).
+
+## Simulator entitlement packaging diagnosis (2026-10-23)
+
+The isolated `dev.pibot.direct-simulator` test initially disabled Xcode signing.
+The app launched but Keychain returned -34018 (missing entitlement). A subsequent
+manual ad-hoc signature incorrectly put team-prefixed application-identifier and
+keychain-access-groups into the real signature. AMFI rejected that package as
+ad-hoc signed with restricted entitlements. This was test packaging error; it
+does not establish that an Apple Development certificate is required.
+
+A separate offline Xcode simulator build succeeded with
+`CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Automatic`, empty
+`DEVELOPMENT_TEAM` and `PROVISIONING_PROFILE_SPECIFIER`, the independent bundle
+identifier, and the existing prebuilt static library. No provisioning updates
+were allowed. Xcode generated an empty signed `.xcent` and a separate
+`-Simulated.xcent` containing the application identifier, linked into
+`__TEXT,__entitlements` (plus DER companion). Strict signature verification passed;
+the signature is ad-hoc and TeamIdentifier is unset. No certificate/private key
+was used. The original project's entitlement file is empty and needs no new
+Keychain Sharing entitlement for this single-app test.
+
+This follows the simulator-specific construction tested in the
+[official Swift build system](https://github.com/swiftlang/swift-build/blob/main/Tests/SWBBuildSystemTests/EntitlementsBuildOperationTests.swift)
+(`simulatorEntitlementsSections`). Do not manually sign device-style restricted
+entitlements into the simulator signature, or disable platform verification.
+
+Evidence: `/tmp/pibo-direct-sim-default.log`; generated app
+`/tmp/pibo-direct-sim-default/Build/Products/debug-iphonesimulator/PiboDirectTest.app`.
+The corrected package was **not installed or launched** in this diagnostic round.
+Keychain access, SDK login and restart persistence remain unverified with it.
+The test gateway/Serve and containers remain stopped; the authenticated Docker
+identity volume is retained. Next verification is a single normal simulator
+install/launch of this corrected package, followed by production Keychain API
+checks; no new signing identity is indicated by the current evidence.
