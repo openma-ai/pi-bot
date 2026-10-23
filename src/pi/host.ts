@@ -42,6 +42,8 @@ export type Permission = (request: {
     tool: string;
     args: unknown;
     taskId: string;
+    /** Exact originating envelope, preserved across background execution. */
+    sourceMessageId?: string;
 }) => Promise<boolean> | boolean;
 /** Durable record store, as seen by the plugin. */
 export interface HostStore {
@@ -198,6 +200,7 @@ export interface ApprovalPort {
         taskId: string;
         tool: string;
         args: unknown;
+        sourceMessageId?: string;
         reason?: string;
     }): Promise<boolean>;
 }

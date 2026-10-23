@@ -149,3 +149,64 @@ test('pending secure form releases lane; validation/retry/cancel and failed use 
         assert.ok(!JSON.stringify([captures, credentials]).includes(dummy));
     } finally { credentials.close(); await h.close(); }
 });
+
+test('replacement approval binds new source while old approval cancels; chatter and duplicate response do not repeat effects', async () => {
+    let effects = 0;
+    const seen: string[] = [];
+    const h = await fixture(async (_bot, host) => ({ async run(e) {
+        seen.push(e.text);
+        if (e.text === 'chatter') return;
+        host.startJob(e, 'fixture-effect', {}, e.id, async () => { effects++; return 'done'; }, { quiet: true });
+    }, async close() {} }));
+    try {
+        const bot = h.runtime.createBot('replacement', '', 'alpha');
+        const input = { to: bot.id, taskId: 'work', route: { channelId: 'alpha', threadId: 'work', senderId: 'alice' } };
+        const old = h.runtime.accept({ ...input, text: 'old', key: 'old' });
+        await until(() => h.broker.list().length === 1);
+        const current = h.runtime.accept({ ...input, text: 'replacement', key: 'replace', taskControl: 'replace' });
+        await until(() => h.broker.list().length === 2);
+        h.runtime.accept({ to: bot.id, text: 'chatter', key: 'chatter', route: { channelId: 'alpha', threadId: 'lounge', senderId: 'bob' } });
+        await until(() => seen.includes('chatter'));
+        h.broker.sweep();
+        const requests = h.broker.list();
+        const stale = requests.find(r => r.params.sourceMessageId === old.id)!;
+        const fresh = requests.find(r => r.params.sourceMessageId === current.id)!;
+        assert.equal(stale.status, 'cancelled');
+        assert.equal(fresh.status, 'pending');
+        assert.throws(() => h.broker.resolve(stale.id, { decision: 'approve' }, 'fixture'), /no longer pending/);
+        h.broker.resolve(fresh.id, { decision: 'approve' }, 'fixture');
+        h.broker.resolve(fresh.id, { decision: 'approve' }, 'fixture');
+        await h.runtime.idle();
+        assert.equal(effects, 1);
+        assert.equal(h.runtime.errors.length, 0);
+    } finally { await h.close(); }
+});
+
+test('approval sweep follows exact trigger source and preserves independent same-task routes', async () => {
+    const h = await fixture(async () => ({ async run() {}, async close() {} }));
+    try {
+        const bot = h.runtime.createBot('scoped', '', 'alpha');
+        const a = h.runtime.accept({ to: bot.id, taskId: 'shared', text: 'first', key: 'first', route: { channelId: 'alpha', threadId: 'a', senderId: 'alice' } });
+        const b = h.runtime.accept({ to: bot.id, taskId: 'shared', text: 'second', key: 'second', route: { channelId: 'alpha', threadId: 'b', senderId: 'alice' } });
+        await h.runtime.idle();
+        const approval = { botId: bot.id, taskId: 'shared', tool: 'fixture', args: {} };
+        await assert.rejects(h.broker.approval(approval), /sourceMessageId/);
+        await assert.rejects(h.broker.approval({ ...approval, sourceMessageId: 'missing' }), /source/);
+        await assert.rejects(h.broker.approval({ ...approval, taskId: 'foreign', sourceMessageId: a.id }), /source/);
+        const first = h.broker.approval({ ...approval, sourceMessageId: a.id });
+        const second = h.broker.approval({ ...approval, sourceMessageId: b.id });
+        const requests = h.broker.list();
+        h.runtime.store.put('inbox', { ...h.runtime.store.get<Envelope>('inbox', b.id)!, triggerCancelled: true });
+        h.broker.sweep();
+        assert.equal(h.broker.list().find(r => r.params.sourceMessageId === a.id)!.status, 'pending');
+        assert.equal(h.broker.list().find(r => r.params.sourceMessageId === b.id)!.status, 'cancelled');
+        assert.equal(await second, false);
+        h.broker.resolve(requests.find(r => r.params.sourceMessageId === a.id)!.id, { decision: 'approve' }, 'fixture');
+        assert.equal(await first, true);
+        const orphan = h.broker.create('approval', a, { taskId: a.taskId }, null, 'missing-source');
+        h.runtime.store.put('requests', { ...orphan, params: { ...orphan.params, sourceMessageId: 'gone' } });
+        assert.throws(() => h.broker.resolve(orphan.id, { decision: 'approve' }, 'fixture'), /source/);
+        h.broker.sweep();
+        assert.equal(h.broker.list().find(r => r.id === orphan.id)!.status, 'cancelled');
+    } finally { await h.close(); }
+});

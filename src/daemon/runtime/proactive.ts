@@ -516,6 +516,12 @@ export class ProactiveService {
             this.ticking = this.runTick().finally(() => this.ticking = undefined);
         return this.ticking;
     }
+    private expireMonitor(m: Monitor) {
+        this.fire(m, 'monitor', m.deadline, 'deadline', 'Monitor deadline reached; finish or report unresolved commitment');
+        this.runtime.store.put('monitors', {
+            ...m, enabled: false, state: 'expired'
+        });
+    }
     private async runTick() {
         let allowance = this.options.maxFiresPerTick ?? 32;
         for (const original of this.runtime.store.list<Schedule>('schedules')) {
@@ -562,7 +568,7 @@ export class ProactiveService {
             });
         }
         for (const m of this.runtime.store.list<Monitor>('monitors')) {
-            if (!m.enabled || m.state !== 'active' || m.nextCheck > this.now() || allowance <= 0)
+            if (!m.enabled || m.state !== 'active' || Math.min(m.nextCheck, m.deadline) > this.now() || allowance <= 0)
                 continue;
             try {
                 this.source(m.sourceId);
@@ -573,10 +579,7 @@ export class ProactiveService {
             }
             if (m.deadline <= this.now()) {
                 this.runtime.store.transaction(() => {
-                    this.fire(m, 'monitor', m.deadline, 'deadline', 'Monitor deadline reached; finish or report unresolved commitment');
-                    this.runtime.store.put('monitors', {
-                        ...m, enabled: false, state: 'expired'
-                    });
+                    this.expireMonitor(m);
                 });
                 allowance--;
                 continue;
@@ -592,6 +595,20 @@ export class ProactiveService {
                 const current = this.runtime.store.get<Monitor>('monitors', m.id)!;
                 if (!current.enabled || current.state !== 'active' || current.revision !== m.revision || current.generation !== generation)
                     return;
+                // Input can replace/cancel the source while a detector is awaiting I/O.
+                // Discard its observation without starving other monitors in this tick.
+                try {
+                    this.source(current.sourceId);
+                }
+                catch {
+                    this.cancelMonitor(current.botId, current.id);
+                    return;
+                }
+                if (current.deadline <= this.now()) {
+                    this.expireMonitor(current);
+                    allowance--;
+                    return;
+                }
                 if (result.decision === 'wake') {
                     this.fire(m, 'monitor', this.now(), result.dedupKey!, result.payload!);
                     allowance--;

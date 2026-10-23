@@ -1,5 +1,6 @@
 import { uuid7 } from '../core/ids.ts';
 import { PiBotError } from '../core/errors.ts';
+import type { Envelope } from '../runtime/store.ts';
 import type { PendingRequest } from '../../sdk/protocol/models.ts';
 import type { BotRuntime } from '../runtime/runtime.ts';
 import type { DaemonConnection } from '../core/connection.ts';
@@ -68,10 +69,26 @@ export class RequestBroker {
         taskId: string;
         tool: string;
         args: unknown;
+        sourceMessageId?: string;
     }) {
-        const source = this.runtime.store.list<any>('inbox').find(e => e.to === input.botId && e.taskId === input.taskId);
-        if (!source)
-            throw new PiBotError('taskCancelled', 'Task is no longer active');
+        // Legacy callers may omit identity only when a single current source exists.
+        // Never guess the oldest/newest envelope of a reused task or another route.
+        let source: Envelope | undefined;
+        if (input.sourceMessageId) {
+            source = this.runtime.store.get<Envelope>('inbox', input.sourceMessageId);
+        }
+        else {
+            const sources = this.runtime.store.list<Envelope>('inbox').filter(e => {
+                if (e.to !== input.botId || e.taskId !== input.taskId) return false;
+                try { this.runtime.assertTaskCurrent(e); return true; }
+                catch { return false; }
+            });
+            if (sources.length > 1)
+                throw new PiBotError('invalidParams', 'Approval requires sourceMessageId for ambiguous task');
+            source = sources[0];
+        }
+        if (!source || source.to !== input.botId || source.taskId !== input.taskId)
+            throw new PiBotError('taskCancelled', 'Approval source is missing or does not match task');
         this.runtime.assertTaskCurrent(source);
         const r = this.create('approval', source, input, Date.now() + this.timeout);
         return new Promise<boolean>(resolve => {
@@ -99,9 +116,7 @@ export class RequestBroker {
             throw new PiBotError('invalidParams', 'Expected question answer');
         if (r.kind === 'credential')
             throw new PiBotError('invalidRequest', 'Credential submissions must use the direct form');
-        const source = this.runtime.store.get<any>('inbox', r.params.messageId ?? r.params.sourceMessageId ?? this.runtime.store.list<any>('inbox').find(e => e.to === r.botId && e.taskId === r.params.taskId)?.id);
-        if (source)
-            this.runtime.assertTaskCurrent(source);
+        this.assertSourceCurrent(r);
         return this.runtime.store.transaction(() => {
             if (r.kind === 'question')
                 this.runtime.answer(String(r.params.questionId), response.text, 'request:' + r.id);
@@ -119,6 +134,13 @@ export class RequestBroker {
         this.waiting.delete(r.id);
         return next;
     }
+    private assertSourceCurrent(r: PendingRequest) {
+        const id = r.params.sourceMessageId ?? r.params.messageId;
+        const source = typeof id === 'string' ? this.runtime.store.get<Envelope>('inbox', id) : undefined;
+        if (!source || source.to !== r.botId || (r.params.taskId !== undefined && source.taskId !== r.params.taskId))
+            throw new PiBotError('taskCancelled', 'Request source is missing or does not match task');
+        this.runtime.assertTaskCurrent(source);
+    }
     sweep() {
         for (const r of this.list())
             if (r.status === 'pending') {
@@ -126,14 +148,12 @@ export class RequestBroker {
                     this.finish(r, 'expired', undefined, 'timeout');
                     continue;
                 }
-                const source = this.runtime.store.list<any>('inbox').find(e => e.to === r.botId && e.taskId === r.params.taskId);
-                if (source)
-                    try {
-                        this.runtime.assertTaskCurrent(source);
-                    }
-                    catch {
-                        this.finish(r, 'cancelled', undefined, 'host');
-                    }
+                try {
+                    this.assertSourceCurrent(r);
+                }
+                catch {
+                    this.finish(r, 'cancelled', undefined, 'host');
+                }
             }
     }
     close() {

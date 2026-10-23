@@ -334,7 +334,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                     try {
                         runtime.assertTaskCurrent(origin.source);
                         if ((runtime.options.permission || runtime.approvals) && !await authorize(runtime, {
-                            botId: bot.id, taskId: origin.source.taskId, tool: event.toolName, args: event.input
+                            botId: bot.id, taskId: origin.source.taskId, sourceMessageId: origin.source.id, tool: event.toolName, args: event.input
                         }))
                             return {
                                 block: true, reason: 'Permission denied'
@@ -494,7 +494,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
             });
             if (options.desktop)
                 createDesktopExtension(options.desktop, bot.id, sourceId => runtime.assertTaskCurrent(own(sourceId, true)), async (tool, args, sourceId) => await authorize(runtime, {
-                    botId: bot.id, taskId: own(sourceId, true).taskId, tool, args
+                    botId: bot.id, taskId: own(sourceId, true).taskId, sourceMessageId: own(sourceId, true).id, tool, args
                 }), async (tool, args, callId, execute) => {
                     // A codemode cell already has its own yieldable execution boundary.
                     if (executionSource.getStore())
@@ -530,7 +530,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                         }, p.key, () => runCodingWorker({
                             ...options, extensions: [...(options.extensions ?? []), ...(options.desktop ? [createDesktopExtension(options.desktop, bot.id, () => runtime.assertTaskCurrent(source))] : [])], dir: workerDir, assertCurrent: () => runtime.assertTaskCurrent(source),
                             permission: async (tool, args) => await authorize(runtime, {
-                                botId: bot.id, taskId: source.taskId, tool, args
+                                botId: bot.id, taskId: source.taskId, sourceMessageId: source.id, tool, args
                             })
                         }, p.task, original));
                         return result({

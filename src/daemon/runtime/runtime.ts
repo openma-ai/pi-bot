@@ -650,7 +650,7 @@ export class BotRuntime implements BotHost {
         const p = Promise.resolve().then(async () => {
             try {
                 if ((this.options.permission || this.approvals) && !await authorize(this, {
-                    botId: e.to, tool, args, taskId: e.taskId
+                    botId: e.to, tool, args, taskId: e.taskId, sourceMessageId: e.id
                 }))
                     throw new PiBotError('forbidden', 'Permission denied');
                 this.assertTaskCurrent(e);

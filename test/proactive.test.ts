@@ -500,3 +500,141 @@ test('paused schedules survive restart and do not fire until resumed', async () 
         await h.close();
     }
 });
+for (const taskControl of ['cancel', 'replace'] as const) {
+    for (const decision of ['wake', 'silent'] as const) {
+        test(`${taskControl} during ${decision} detection discards stale state and still checks independent monitors`, async () => {
+            const h = await fixture();
+            let release!: () => void;
+            const gate = new Promise<void>(r => release = r);
+            let entered!: () => void;
+            const started = new Promise<void>(r => entered = r);
+            const service = new ProactiveService(h.runtime, {
+                now: h.now, detectors: {
+                    held: async ({ dryRun }) => {
+                        if (dryRun)
+                            return { decision: 'silent' };
+                        entered();
+                        await gate;
+                        return { decision, dedupKey: 'stale', payload: 'obsolete finding', cursor: 'stale-cursor', baseline: 'stale-baseline' };
+                    },
+                    independent: async ({ dryRun }) => dryRun ? { decision: 'silent' } : {
+                        decision: 'wake', dedupKey: 'current', payload: 'useful finding'
+                    }
+                }
+            });
+            try {
+                const other = h.runtime.accept({
+                    to: h.source.to, key: 'independent-source', text: 'independent task', route: h.source.route
+                });
+                await h.runtime.idle();
+                const held = service.createMonitor(h.source, {
+                    key: 'held', detector: 'held', prompt: 'watch original', intervalMs: 1000, deadline: 5000
+                });
+                const independent = service.createMonitor(other, {
+                    key: 'independent', detector: 'independent', prompt: 'watch other', intervalMs: 1000, deadline: 5000
+                });
+                for (const m of [held, independent]) {
+                    await service.dryRunMonitor(h.source.to, m.id);
+                    service.enableMonitor(h.source.to, m.id);
+                }
+                const ticking = service.tick();
+                await started;
+                h.runtime.accept({
+                    to: h.source.to, taskId: h.source.taskId, key: taskControl, text: taskControl,
+                    taskControl, route: h.source.route
+                });
+                release();
+                await ticking;
+                await h.runtime.idle();
+                const stale = service.listMonitors(h.source.to).find(m => m.id === held.id)!;
+                assert.equal(stale.state, 'cancelled');
+                assert.equal(stale.cursor, undefined);
+                assert.equal(stale.baseline, undefined);
+                assert.deepEqual(service.listFires(h.source.to).map(f => f.triggerId), [independent.id]);
+                assert.equal(h.runtime.store.list('outbox').length, 0);
+            }
+            finally {
+                release();
+                await service.close();
+                await h.close();
+            }
+        });
+    }
+}
+test('detector crossing deadline produces one closure instead of a late wake, including after restart', async () => {
+    const h = await fixture();
+    let release!: () => void;
+    const gate = new Promise<void>(r => release = r);
+    let entered!: () => void;
+    const started = new Promise<void>(r => entered = r);
+    let service = new ProactiveService(h.runtime, {
+        now: h.now, detectors: {
+            held: async ({ dryRun }) => {
+                if (dryRun)
+                    return { decision: 'silent' };
+                entered();
+                await gate;
+                return { decision: 'wake', dedupKey: 'late', payload: 'late observation', cursor: 'late-cursor' };
+            }
+        }
+    });
+    try {
+        const m = service.createMonitor(h.source, {
+            key: 'deadline', detector: 'held', prompt: 'watch', intervalMs: 10000, deadline: 2000
+        });
+        await service.dryRunMonitor(h.source.to, m.id);
+        service.enableMonitor(h.source.to, m.id);
+        const ticking = service.tick();
+        await started;
+        h.time(2000);
+        release();
+        await ticking;
+        await h.runtime.idle();
+        assert.equal(service.listMonitors(h.source.to)[0].state, 'expired');
+        assert.equal(service.listMonitors(h.source.to)[0].cursor, undefined);
+        assert.equal(service.listFires(h.source.to).length, 1);
+        assert.equal(service.listFires(h.source.to)[0].dueAt, 2000);
+        assert.match(h.seen.find(e => e.kind === 'monitor')!.text, /Monitor deadline reached/);
+        await service.tick();
+        await service.close();
+        service = new ProactiveService(await h.restart(), { now: h.now });
+        await service.tick();
+        await h.runtime.idle();
+        assert.equal(service.listFires(h.source.to).length, 1);
+        assert.equal(h.seen.filter(e => e.kind === 'monitor').length, 1);
+        assert.equal(h.runtime.store.list('outbox').length, 0);
+    }
+    finally {
+        release();
+        await service.close();
+        await h.close();
+    }
+});
+test('monitor deadline is checked before a later next observation time', async () => {
+    const h = await fixture();
+    let calls = 0;
+    const service = new ProactiveService(h.runtime, {
+        now: h.now, detectors: {
+            silent: async () => { calls++; return { decision: 'silent' }; }
+        }
+    });
+    try {
+        const m = service.createMonitor(h.source, {
+            key: 'short-deadline', detector: 'silent', prompt: 'watch', intervalMs: 10000, deadline: 2000
+        });
+        await service.dryRunMonitor(h.source.to, m.id);
+        service.enableMonitor(h.source.to, m.id);
+        await service.tick();
+        assert.equal(calls, 2);
+        h.time(2000);
+        await service.tick();
+        await h.runtime.idle();
+        assert.equal(calls, 2);
+        assert.equal(service.listMonitors(h.source.to)[0].state, 'expired');
+        assert.equal(service.listFires(h.source.to).length, 1);
+    }
+    finally {
+        await service.close();
+        await h.close();
+    }
+});
