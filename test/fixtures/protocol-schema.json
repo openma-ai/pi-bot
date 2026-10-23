@@ -4968,6 +4968,521 @@
           }
         ]
       }
+    },
+    "notification/list": {
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "notifications"
+        ],
+        "properties": {
+          "notifications": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "ownerId",
+                "botId",
+                "threadId",
+                "sourceMessageId",
+                "taskId",
+                "kind",
+                "reference",
+                "summary",
+                "priority",
+                "createdAt",
+                "expiresAt",
+                "status",
+                "delivery"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "ownerId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "botId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "threadId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "sourceMessageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "taskId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "kind": {
+                  "enum": [
+                    "action_required",
+                    "completion",
+                    "important_change"
+                  ]
+                },
+                "reference": {
+                  "type": "object",
+                  "required": [
+                    "table",
+                    "id"
+                  ],
+                  "properties": {
+                    "table": {
+                      "enum": [
+                        "requests",
+                        "outbox",
+                        "inbox"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "priority": {
+                  "enum": [
+                    "normal",
+                    "action"
+                  ]
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "expiresAt": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "status": {
+                  "enum": [
+                    "active",
+                    "read",
+                    "superseded",
+                    "resolved",
+                    "expired"
+                  ]
+                },
+                "readAt": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "delivery": {
+                  "type": "object",
+                  "required": [
+                    "state",
+                    "attempts",
+                    "nextAttemptAt"
+                  ],
+                  "properties": {
+                    "state": {
+                      "enum": [
+                        "queued",
+                        "deferred",
+                        "sending",
+                        "accepted",
+                        "retry",
+                        "uncertain",
+                        "failed",
+                        "suppressed"
+                      ]
+                    },
+                    "attempts": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "nextAttemptAt": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "adapterId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "attemptId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "acceptedAt": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "notification/read": {
+      "params": {
+        "type": "object",
+        "required": [
+          "notificationId"
+        ],
+        "properties": {
+          "notificationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "notification"
+        ],
+        "properties": {
+          "notification": {
+            "type": "object",
+            "required": [
+              "id",
+              "ownerId",
+              "botId",
+              "threadId",
+              "sourceMessageId",
+              "taskId",
+              "kind",
+              "reference",
+              "summary",
+              "priority",
+              "createdAt",
+              "expiresAt",
+              "status",
+              "delivery"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "ownerId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "botId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "threadId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "sourceMessageId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "taskId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "kind": {
+                "enum": [
+                  "action_required",
+                  "completion",
+                  "important_change"
+                ]
+              },
+              "reference": {
+                "type": "object",
+                "required": [
+                  "table",
+                  "id"
+                ],
+                "properties": {
+                  "table": {
+                    "enum": [
+                      "requests",
+                      "outbox",
+                      "inbox"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "additionalProperties": false
+              },
+              "summary": {
+                "type": "string"
+              },
+              "priority": {
+                "enum": [
+                  "normal",
+                  "action"
+                ]
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expiresAt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "status": {
+                "enum": [
+                  "active",
+                  "read",
+                  "superseded",
+                  "resolved",
+                  "expired"
+                ]
+              },
+              "readAt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "delivery": {
+                "type": "object",
+                "required": [
+                  "state",
+                  "attempts",
+                  "nextAttemptAt"
+                ],
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "queued",
+                      "deferred",
+                      "sending",
+                      "accepted",
+                      "retry",
+                      "uncertain",
+                      "failed",
+                      "suppressed"
+                    ]
+                  },
+                  "attempts": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "nextAttemptAt": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "adapterId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "attemptId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "acceptedAt": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "notification/preferences": {
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "preferences"
+        ],
+        "properties": {
+          "preferences": {
+            "type": "object",
+            "required": [
+              "id",
+              "enabled",
+              "timezone"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "timezone": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "quiet": {
+                "type": "object",
+                "required": [
+                  "startMinute",
+                  "endMinute"
+                ],
+                "properties": {
+                  "startMinute": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1439
+                  },
+                  "endMinute": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1439
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "notification/configure": {
+      "params": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "timezone"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "quiet": {
+            "type": "object",
+            "required": [
+              "startMinute",
+              "endMinute"
+            ],
+            "properties": {
+              "startMinute": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1439
+              },
+              "endMinute": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1439
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "preferences"
+        ],
+        "properties": {
+          "preferences": {
+            "type": "object",
+            "required": [
+              "id",
+              "enabled",
+              "timezone"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "timezone": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "quiet": {
+                "type": "object",
+                "required": [
+                  "startMinute",
+                  "endMinute"
+                ],
+                "properties": {
+                  "startMinute": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1439
+                  },
+                  "endMinute": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1439
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "notifications": {

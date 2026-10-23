@@ -14,7 +14,7 @@ export async function turnHandler(d: PiBotDaemon, c: DaemonConnection, method: s
             if (!input)
                 throw new PiBotError('notFound', 'Thread has no task');
             const e = r.accept({
-                to: thread.botId, text: method === 'turn/interrupt' ? 'Cancel current task' : p.text, key: p.key, taskId: input.taskId, taskControl: method === 'turn/interrupt' ? 'cancel' : 'replace', route: input.route
+                to: thread.botId, text: method === 'turn/interrupt' ? 'Cancel current task' : p.text, key: p.key, taskId: input.taskId, taskControl: method === 'turn/interrupt' ? 'cancel' : 'replace', route: input.route, fileOwner: c.fileOwner
             });
             return method === 'turn/interrupt' ? {
                 inputId: e.id

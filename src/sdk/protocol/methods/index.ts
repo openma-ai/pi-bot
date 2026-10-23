@@ -11,6 +11,7 @@ import { jobMethods } from './job.ts';
 import { requestMethods } from './request.ts';
 import { taskMethods } from './task.ts';
 import { desktopMethods } from './desktop.ts';
+import { notificationMethods } from './notification.ts';
 export const methodSchemas = {
-    ...fileMethods, ...initializeMethods, ...daemonMethods, ...eventsMethods, ...botMethods, ...groupMethods, ...threadMethods, ...turnMethods, ...routineMethods, ...jobMethods, ...requestMethods, ...taskMethods, ...desktopMethods
+    ...fileMethods, ...initializeMethods, ...daemonMethods, ...eventsMethods, ...botMethods, ...groupMethods, ...threadMethods, ...turnMethods, ...routineMethods, ...jobMethods, ...requestMethods, ...taskMethods, ...desktopMethods, ...notificationMethods
 } as const;

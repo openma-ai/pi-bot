@@ -6,6 +6,11 @@ JSON-RPC 2.0 over in-process, HTTP + SSE, or stdio JSONL. Initialize, acknowledg
 
 | Method | Schema |
 |---|---|
+| `file/begin` | [params / result](../dist/protocol/schema.json) |
+| `file/append` | [params / result](../dist/protocol/schema.json) |
+| `file/finish` | [params / result](../dist/protocol/schema.json) |
+| `file/read` | [params / result](../dist/protocol/schema.json) |
+| `file/cancel` | [params / result](../dist/protocol/schema.json) |
 | `initialize` | [params / result](../dist/protocol/schema.json) |
 | `daemon/status` | [params / result](../dist/protocol/schema.json) |
 | `daemon/snapshot` | [params / result](../dist/protocol/schema.json) |
@@ -45,5 +50,9 @@ JSON-RPC 2.0 over in-process, HTTP + SSE, or stdio JSONL. Initialize, acknowledg
 | `task/reconcile` | [params / result](../dist/protocol/schema.json) |
 | `desktop/bind` | [params / result](../dist/protocol/schema.json) |
 | `desktop/control` | [params / result](../dist/protocol/schema.json) |
+| `notification/list` | [params / result](../dist/protocol/schema.json) |
+| `notification/read` | [params / result](../dist/protocol/schema.json) |
+| `notification/preferences` | [params / result](../dist/protocol/schema.json) |
+| `notification/configure` | [params / result](../dist/protocol/schema.json) |
 
 Notifications: `daemon/triggerChanged`, `daemon/configurationChanged`, `daemon/budgetUpdated`, `daemon/migrated`, `group/messageUpdated`, `daemon/statusChanged`, `events/watermark`, `bot/created`, `bot/updated`, `group/created`, `group/updated`, `turn/queued`, `turn/started`, `turn/completed`, `item/started`, `item/updated`, `item/completed`, `request/created`, `request/resolved`, `routine/updated`, `routine/fired`, `job/updated`, `task/reviewRequired`, `task/reconciled`, `proposal/updated`, `memory/updated`, `item/agentMessage/delta`, `item/toolCall/delta`, `item/internal/delta`, `thread/started`, `thread/loaded`, `thread/unloaded`, `thread/archived`.
