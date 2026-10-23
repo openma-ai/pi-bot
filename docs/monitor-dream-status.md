@@ -97,3 +97,11 @@ worker接线：host选择近期证据/目标范围，稳定周期key避免重跑
 `git diff --check`通过。日志为本地忽略文件 `work/single-reply-final.log`。
 本轮新增10项生命周期回归、5项API/真实Pi-faux回归，并改写3项producer SDK回归；
 删除的17项测试仅属于已移除的平行notification SDK，未删除原有业务测试。
+
+
+## Owner 生命周期修订
+
+"主agent"指接收该任务的所属bot，不是默认primary。monitor发起bot及dream所属bot的
+inbox路由保持不变，没有primary独占发言策略。新增owner不可用持久暂停、原归属显式恢复/
+取消和routine RPC认证归属校验；临时无持久身份的子agent不支持绑定。
+详见[归属说明](proactive-ownership.md)。

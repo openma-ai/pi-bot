@@ -4,17 +4,17 @@ export async function routineHandler(d: PiBotDaemon, c: DaemonConnection, method
     const r = d.runtime, s = r.store;
     switch (method) {
         case 'routine/list': return {
-            routines: d.snapshot().routines.filter((x: any) => (!p.botId || x.botId === p.botId) && (!p.kind || x.kind === p.kind))
+            routines: d.snapshot().routines.filter((x: any) => d.routineVisibleTo(x, c.fileOwner) && (!p.botId || x.botId === p.botId) && (!p.kind || x.kind === p.kind))
         };
         case 'routine/create': return {
             routine: d.createRoutine(p, c.fileOwner)
         };
-        case 'routine/dryRun': return d.routineAction('dry-run', p.routineId);
+        case 'routine/dryRun': return d.routineAction('dry-run', p.routineId, c.fileOwner);
         case 'routine/pause':
         case 'routine/resume':
         case 'routine/enable':
         case 'routine/cancel': return {
-            routine: await d.routineAction(method.split('/')[1], p.routineId)
+            routine: await d.routineAction(method.split('/')[1], p.routineId, c.fileOwner)
         };
     }
 }

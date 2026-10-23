@@ -142,7 +142,7 @@ research disabled. No model configuration/credential is loaded for this option.
 Dream uses the existing schedules, fires, jobs and proposals. A due slot creates
 a processed host schedule receipt and starts a durable research job in the same
 transaction, without activating main Pi for that trigger. Only reviewed findings
-return through the existing research inbox. The main agent decides what to
+return through the existing research inbox. The owning bot agent decides what to
 publish through the existing send_message/outbox path; there is no separate
 notification API or second user message. See [proactive replies](proactive-replies.md).
 
@@ -295,3 +295,13 @@ checkpoints requires the separate Harness adapter described above. Current host
 channel intents already persist immediately even when model processing is queued.
 
 Source: [official coding-agent 1.2 changelog](https://github.com/earendil-works/pi/blob/7d75a0e3eb273dff753d49c066ea29fbe7b3b6f6/packages/coding-agent/CHANGELOG.md).
+
+
+## Trigger owner availability
+
+Monitor and dream findings return to their original bot, never an automatic
+primary fallback. Active owner/source/route/conversation failures persist a
+suspension; recovery requires the original owner's explicit resume, and keeps
+existing deadlines/budgets. See [ownership and RPC controls](proactive-ownership.md).
+Temporary unregistered child/session bindings are unsupported. An idle unloaded
+session may reopen under the same bot; no per-bot resident loop is added.

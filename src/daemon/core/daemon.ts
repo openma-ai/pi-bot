@@ -380,13 +380,35 @@ export class PiBotDaemon {
             return routineView(p.kind === 'schedule' ? 'schedules' : 'monitors', routine);
         });
     }
-    async routineAction(action: string, id: string) {
+    /** Client identity is transport-bound; bot ownership and client ownership are distinct. */
+    routineVisibleTo(routine: { botId: string; sourceId?: string; ownerFileOwner?: string }, fileOwner: string): boolean {
+        if (!routine.sourceId) return false;
+        const initial = this.runtime.store.get<Envelope>('inbox', routine.sourceId);
+        if (initial && initial.to !== routine.botId) return false;
+        // A host-bound identity survives source removal so its owner can still cancel.
+        // Resume separately revalidates the canonical source in ProactiveService.
+        if (routine.ownerFileOwner !== undefined) return routine.ownerFileOwner === fileOwner;
+        if (!initial) return false;
+        let source: Envelope = initial;
+        const seen = new Set<string>();
+        while (!source.fileOwner && source.replyTo && !seen.has(source.id)) {
+            seen.add(source.id);
+            const parent: Envelope | undefined = this.runtime.store.get<Envelope>('inbox', source.replyTo);
+            if (!parent || parent.to !== source.to || parent.taskId !== source.taskId ||
+                this.runtime.fileScope(parent) !== this.runtime.fileScope(source)) return false;
+            source = parent;
+        }
+        return ['user', 'answer'].includes(source.kind) && (source.fileOwner ?? 'local') === fileOwner;
+    }
+    async routineAction(action: string, id: string, fileOwner?: string) {
         const match = id.match(/^(schedule|monitor):(.+)$/);
         if (!match)
             throw new PiBotError('invalidParams', 'Invalid routine ID');
         const [_, kind, key] = match;
         const table = kind === 'schedule' ? 'schedules' : 'monitors';
         const routine: any = this.required(table, key);
+        if (fileOwner !== undefined && !this.routineVisibleTo(routine, fileOwner))
+            throw new PiBotError('forbidden', 'Routine belongs to another authenticated owner');
         const p: any = this.proactive;
         const names: Record<string, string> = {
             pause: 'pause', resume: 'resume', cancel: 'cancel', enable: 'enable', 'dry-run': 'dryRun'

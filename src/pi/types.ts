@@ -132,6 +132,12 @@ export type TriggerBase = {
     prompt: string;
     revision: number;
     createdAt: number;
+    /** Authenticated client attribution is separate from the responsible botId. */
+    ownerFileOwner?: string;
+    suspension?: {
+        reason: 'owner_archived' | 'owner_missing' | 'source_missing' | 'owner_mismatch' | 'owner_route_changed';
+        at: number;
+    };
 };
 export type Schedule = TriggerBase & {
     state: 'active' | 'paused' | 'completed' | 'cancelled';

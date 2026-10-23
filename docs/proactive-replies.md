@@ -5,7 +5,7 @@ notification. There is one message fact and one public reply path.
 
 ```
 monitor condition → monitor inbox ─┐
-                                 ├→ main agent selects / remains silent
+                                 ├→ owning bot agent selects / remains silent
 bounded dream → research inbox ──┘                 ↓
                                         existing send_message
                                                    ↓
@@ -35,8 +35,8 @@ unrelated existing facilities and remain unchanged.
 - Monitors use existing persistent definitions/cursor/fire deduplication; dreams
   use the existing bounded schedule/job/proposal lifecycle. No new scheduler.
 - Discoveries enter the original bot/task inbox. A reviewed research candidate
-  is data for the main agent, not a user reply or automatic delivery instruction.
-- The main agent decides whether/how to speak and uses the existing send_message
+  is data for the owning bot agent, not a user reply or automatic delivery instruction.
+- The owning bot agent decides whether/how to speak and uses the existing send_message
   tool. Internal final model text does not become a channel message on its own.
   Host tests use runtime.sendMessage as the corresponding host adapter operation.
 - No agent reply means no outbox row and no user-directed delivery. Pending
@@ -58,7 +58,7 @@ unrelated existing facilities and remain unchanged.
 
 If APNs is later authorized, it can remind the user of an existing canonical
 outbox/message ID. It must not create a second reply body, infer completion from
-a job receipt, let a producer bypass the main agent, or re-execute a business
+a job receipt, let a producer bypass the owning bot agent, or re-execute a business
 operation on retry. Any minimal transport receipt is keyed by that message and
 destination. Native presentation can choose a private preview, but the original
 message remains the only conversation fact. Cancellation/read/privacy policy
@@ -84,3 +84,7 @@ Final validation: full `npm test` 369/369 passed, zero failures/skips;
 `npm run check` and `git diff --check` passed. Local ignored log:
 `work/single-reply-final.log`. The prior experimental notification-only tests
 were removed with their implementation; original business/lifecycle tests remain.
+
+Ownership clarification: the receiving/owning bot agent is not automatically a
+global primary. No primary-only speech restriction is added. Monitor/dream owner
+suspension and explicit recovery are documented in [ownership](proactive-ownership.md).

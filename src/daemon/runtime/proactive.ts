@@ -3,7 +3,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import type { BotRuntime } from './runtime.ts';
 import type { JsonValue } from '@openma/matter';
 import { monitorResource, scheduleResource, type CommitResult, type Decision } from '../../pi/state-protection.ts';
-import type { Envelope } from './store.ts';
+import type { Envelope, Bot } from './store.ts';
+import type { Thread } from '../../sdk/protocol/models.ts';
 import type { TriggerBase as Base, Schedule, Monitor, Fire, Detection, Candidate, Proposal, MemoryRecord } from '../../pi/types.ts';
 export type { Schedule, Monitor, Fire, Detection, Proposal, MemoryRecord } from '../../pi/types.ts';
 export type Detector = (input: {
@@ -53,14 +54,62 @@ export class ProactiveService {
     private now() {
         return (this.options.now ?? Date.now)();
     }
-    private source(id: string) {
+    private ownerProblem(id: string, expectedBotId?: string): NonNullable<Base['suspension']>['reason'] | undefined {
+        const e = this.runtime.store.get<Envelope>('inbox', id);
+        if (!e) return 'source_missing';
+        if (expectedBotId && e.to !== expectedBotId) return 'owner_mismatch';
+        const bot = this.runtime.store.get<Bot>('bots', e.to);
+        if (!bot) return 'owner_missing';
+        if (bot.channelId !== e.route?.channelId && !(e.route?.channelId && bot.groupIds?.includes(e.route.channelId))) return 'owner_route_changed';
+        const scope = this.runtime.store.scopeForEnvelope(e);
+        if (this.runtime.store.list<Thread>('threads').some(t => t.botId === e.to && t.scopeKey === scope && t.status === 'archived')) return 'owner_archived';
+    }
+    private suspendSources(id: string, reason: NonNullable<Base['suspension']>['reason'], expectedBotId?: string) {
+        const fireTriggers = new Set(this.runtime.store.list<Fire>('fires').filter(f => f.inboxId === id).map(f => f.triggerId));
+        this.runtime.store.transaction(() => {
+            for (const kind of ['schedule', 'monitor'] as const) {
+                const table = kind === 'schedule' ? 'schedules' : 'monitors';
+                for (const t of this.runtime.store.list<Schedule | Monitor>(table)) {
+                    if ((t.sourceId !== id && !fireTriggers.has(t.id)) || (expectedBotId && t.botId !== expectedBotId) || t.state === 'cancelled' || t.state === 'expired') continue;
+                    // Completed one-shot schedules are terminal, not dormant work to resume.
+                    // A max-runs dream may still have its last dispatched proposal in flight.
+                    if (t.state === 'completed' && !(kind === 'schedule' && 'dream' in t && t.dream &&
+                        fireTriggers.has(t.id) && this.runtime.store.list<Proposal>('proposals').some(p => p.sourceId === id && p.state === 'running'))) continue;
+                    if (t.suspension) continue;
+                    this.runtime.store.put(table, {
+                        ...t, ...(kind === 'schedule' ? { state: 'paused' } : { enabled: false }),
+                        revision: t.revision + 1, suspension: { reason, at: this.now() }
+                    });
+                    this.controllers.get(t.id)?.abort();
+                    this.invalidateFires(t.id);
+                }
+            }
+        });
+    }
+    private source(id: string, expectedBotId?: string) {
         if (this.stopped)
             throw new PiBotError('shuttingDown', 'Proactive service closed');
         const e = this.runtime.store.get<Envelope>('inbox', id);
-        if (!e)
-            throw new PiBotError('notFound', 'Unknown original source');
-        this.runtime.assertTaskCurrent(e);
-        return e;
+        // Cancellation retains its existing terminal semantics, rather than becoming a pause.
+        if (e) this.runtime.assertTaskCurrent(e);
+        const reason = this.ownerProblem(id, expectedBotId);
+        if (reason) {
+            this.suspendSources(id, reason, expectedBotId);
+            throw new PiBotError('invalidRequest', 'Trigger owner unavailable; original ownership retained', { ownerReason: reason });
+        }
+        return e!;
+    }
+    private sourceOwner(source: Envelope) {
+        const seen = new Set<string>();
+        let e = this.runtime.store.get<Envelope>('inbox', source.id);
+        while (e && !seen.has(e.id)) {
+            seen.add(e.id);
+            if (e.fileOwner) return e.fileOwner;
+            const parent: Envelope | undefined = e.replyTo ? this.runtime.store.get<Envelope>('inbox', e.replyTo) : undefined;
+            if (!parent || parent.taskId !== source.taskId || this.runtime.store.scopeForEnvelope(parent) !== this.runtime.store.scopeForEnvelope(source)) break;
+            e = parent;
+        }
+        return 'local';
     }
     private owned<T extends Base>(table: string, botId: string, id: string): T {
         const item = this.runtime.store.get<T>(table, id);
@@ -69,7 +118,10 @@ export class ProactiveService {
         return item;
     }
     private validate(source: Envelope, key: string, prompt: string) {
-        this.source(source.id);
+        const canonical = this.runtime.store.get<Envelope>('inbox', source.id);
+        if (!canonical || canonical.to !== source.to || canonical.taskId !== source.taskId || JSON.stringify(canonical.route) !== JSON.stringify(source.route))
+            throw new PiBotError('forbidden', 'A stable owned bot source is required; temporary agent bindings are unsupported');
+        this.source(source.id, source.to);
         if (!key || key.length > 256 || !prompt.trim() || prompt.length > 16000)
             throw new PiBotError('invalidParams', 'Invalid trigger definition');
     }
@@ -100,7 +152,7 @@ export class ProactiveService {
             return existing;
         }
         const s: Schedule = {
-            id: randomUUID(), botId: source.to, sourceId: source.id, key: input.key, prompt: input.prompt, revision: 1, createdAt: this.now(), state: 'active', nextFire: input.at, firstFire: input.at, timezone: input.timezone, intervalMs: input.intervalMs, misfire: input.misfire ?? 'coalesce', overlap: input.overlap ?? 'skip'
+            id: randomUUID(), botId: source.to, sourceId: source.id, ownerFileOwner: this.sourceOwner(source), key: input.key, prompt: input.prompt, revision: 1, createdAt: this.now(), state: 'active', nextFire: input.at, firstFire: input.at, timezone: input.timezone, intervalMs: input.intervalMs, misfire: input.misfire ?? 'coalesce', overlap: input.overlap ?? 'skip'
         };
         this.runtime.store.put('schedules', s);
         return s;
@@ -169,13 +221,23 @@ export class ProactiveService {
     }
     resumeSchedule(botId: string, id: string) {
         const s = this.owned<Schedule>('schedules', botId, id);
-        this.source(s.sourceId);
+        this.source(s.sourceId, botId);
+        if (s.dream) {
+            if (s.dream.deadline <= this.now() || s.dream.runs >= s.dream.maxRuns)
+                throw new PiBotError('invalidRequest', 'Dream expired or budget exhausted');
+            if (!this.options.workers?.research)
+                throw new PiBotError('forbidden', 'Research worker not host-allowlisted');
+            const sources = new Set(this.listFires(botId).filter(f => f.triggerId === id).map(f => f.inboxId));
+            if (this.runtime.store.list<Proposal>('proposals').some(p => sources.has(p.sourceId) && this.getProposal(botId, p.id).state === 'uncertain'))
+                throw new PiBotError('reviewRequired', 'Uncertain dream requires host review before resume');
+        }
         if (s.state === 'active')
             return;
         if (s.state !== 'paused')
             throw new PiBotError('invalidRequest', 'Schedule completed or cancelled');
+        const { suspension, ...active } = s;
         this.runtime.store.put('schedules', {
-            ...s, state: 'active', revision: s.revision + 1
+            ...active, state: 'active', revision: s.revision + 1
         });
     }
     pauseMonitor(botId: string, id: string) {
@@ -209,7 +271,7 @@ export class ProactiveService {
             return old;
         }
         const m: Monitor = {
-            ...input, id: randomUUID(), botId: source.to, sourceId: source.id, revision: 1, createdAt: this.now(), enabled: false, state: 'active', nextCheck: this.now()
+            ...input, id: randomUUID(), botId: source.to, sourceId: source.id, ownerFileOwner: this.sourceOwner(source), revision: 1, createdAt: this.now(), enabled: false, state: 'active', nextCheck: this.now()
         };
         this.runtime.store.put('monitors', m);
         return m;
@@ -218,16 +280,20 @@ export class ProactiveService {
         return this.runtime.store.list<Monitor>('monitors').filter(m => m.botId === botId);
     }
     enableMonitor(botId: string, id: string, decision?: Decision): CommitResult<Monitor> {
-        this.source(this.owned<Monitor>('monitors', botId, id).sourceId);
+        this.source(this.owned<Monitor>('monitors', botId, id).sourceId, botId);
         return this.commitTrigger<Monitor>('monitor', botId, id, 'monitor.enable', decision, m => {
             if (!m.dryRunVerified)
                 throw new PiBotError('invalidRequest', 'Successful dry-run required before enable');
             if (m.state !== 'active' || m.deadline <= this.now())
                 throw new PiBotError('invalidRequest', 'Monitor expired or cancelled');
+            const { suspension, ...active } = m;
             return m.enabled ? m : {
-                ...m, enabled: true, revision: m.revision + 1
+                ...active, enabled: true, revision: m.revision + 1
             };
         });
+    }
+    resumeMonitor(botId: string, id: string) {
+        return this.enableMonitor(botId, id);
     }
     cancelMonitor(botId: string, id: string, decision?: Decision): CommitResult<Monitor> {
         const commit = this.runtime.store.transaction(() => {
@@ -278,6 +344,7 @@ export class ProactiveService {
     }
     async dryRunMonitor(botId: string, id: string) {
         const m = this.owned<Monitor>('monitors', botId, id);
+        this.source(m.sourceId, botId);
         const result = await this.detect(m, true);
         const current = this.owned<Monitor>('monitors', botId, id);
         if (current.revision === m.revision && current.state === 'active')
@@ -381,7 +448,7 @@ export class ProactiveService {
                 const timer = setTimeout(() => controller.abort(), Math.max(1, Math.min(this.options.workTimeoutMs ?? 60000, remaining)));
                 const currentSource = () => {
                     controller.signal.throwIfAborted();
-                    this.source(source.id);
+                    this.source(source.id, source.to);
                     if (bounds.deadline !== undefined && bounds.deadline <= this.now())
                         throw new PiBotError('invalidRequest', 'Background work deadline reached');
                 };
@@ -548,7 +615,7 @@ export class ProactiveService {
         const id = eventKey;
         if (this.runtime.store.get<Fire>('fires', id))
             return;
-        const source = this.source(trigger.sourceId);
+        const source = this.source(trigger.sourceId, trigger.botId);
         const e = this.runtime.accept({
             from: `${kind}:${trigger.id}`, to: trigger.botId, kind, key: eventKey, text: JSON.stringify({
                 triggerId: trigger.id, revision: trigger.revision, dueAt, prompt: trigger.prompt, observation: payload
@@ -598,7 +665,7 @@ export class ProactiveService {
             const eventKey = `schedule:${s.id}:${s.revision}:${createHash('sha256').update(String(dueAt)).digest('hex')}`;
             if (this.runtime.store.get<Fire>('fires', eventKey))
                 return false;
-            const source = this.source(s.sourceId);
+            const source = this.source(s.sourceId, s.botId);
             // A processed host receipt supplies durable provenance without asking the main
             // Pi session to run the research trigger or activating the inbox scheduler.
             const execution: Envelope = {
@@ -626,15 +693,17 @@ export class ProactiveService {
     private async runTick() {
         let allowance = this.options.maxFiresPerTick ?? 32;
         for (const original of this.runtime.store.list<Schedule>('schedules')) {
-            if (original.state !== 'active' || Math.min(original.nextFire, original.dream?.deadline ?? Infinity) > this.now() || allowance <= 0)
+            if (original.state !== 'active')
                 continue;
             try {
-                this.source(original.sourceId);
+                this.source(original.sourceId, original.botId);
             }
-            catch {
+            catch (error) {
+                if (error instanceof PiBotError && error.details?.ownerReason) continue;
                 this.cancelSchedule(original.botId, original.id);
                 continue;
             }
+            if (Math.min(original.nextFire, original.dream?.deadline ?? Infinity) > this.now() || allowance <= 0) continue;
             if (original.dream) {
                 try {
                     if (this.tickDream(original)) allowance--;
@@ -684,15 +753,17 @@ export class ProactiveService {
             });
         }
         for (const m of this.runtime.store.list<Monitor>('monitors')) {
-            if (!m.enabled || m.state !== 'active' || Math.min(m.nextCheck, m.deadline) > this.now() || allowance <= 0)
+            if (!m.enabled || m.state !== 'active')
                 continue;
             try {
-                this.source(m.sourceId);
+                this.source(m.sourceId, m.botId);
             }
-            catch {
+            catch (error) {
+                if (error instanceof PiBotError && error.details?.ownerReason) continue;
                 this.cancelMonitor(m.botId, m.id);
                 continue;
             }
+            if (Math.min(m.nextCheck, m.deadline) > this.now() || allowance <= 0) continue;
             if (m.deadline <= this.now()) {
                 this.runtime.store.transaction(() => {
                     this.expireMonitor(m);
@@ -714,9 +785,10 @@ export class ProactiveService {
                 // Input can replace/cancel the source while a detector is awaiting I/O.
                 // Discard its observation without starving other monitors in this tick.
                 try {
-                    this.source(current.sourceId);
+                    this.source(current.sourceId, current.botId);
                 }
-                catch {
+                catch (error) {
+                    if (error instanceof PiBotError && error.details?.ownerReason) return;
                     this.cancelMonitor(current.botId, current.id);
                     return;
                 }
