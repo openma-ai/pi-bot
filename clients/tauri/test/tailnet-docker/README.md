@@ -179,3 +179,26 @@ A possible next bounded experiment needs confirmation: only recreate the new
 test-node container with HTTPS_PROXY=http://http.docker.internal:3128, preserving
 the same named state volume, then retry the official public-key HTTPS probe with
 normal certificate verification. This may also fail and is not yet executed.
+
+Approved proxy experiment, 2026-10-23: the stopped non-proxy persistent container
+was preserved as `pibo-tailnet-test-tailnet-persistent-no-proxy`. A replacement
+`pibo-tailnet-test-tailnet-persistent-1` uses the same state volume and restrictions,
+with only HTTPS_PROXY=http://http.docker.internal:3128 added. The optional
+`proxy.compose.yaml` records that exact override; it is not a default setting.
+BusyBox wget did not demonstrate proxy use (it still printed the destination IP),
+so it was not treated as proof. The installed official Go CLI command
+`timeout 20 tailscale debug ts2021 --force-port=443 --verbose` explicitly confirmed
+that proxy for the official `/key?v=148` request, then failed with EOF. A separate
+CONNECT-only probe received `HTTP/1.0 200 OK`, `Connection: close`, length zero;
+no verified HTTPS response was obtained. Normal certificate verification stayed
+enabled. A scratch helper was not run because read-only-rootfs/noexec restrictions
+blocked copying/execution; those restrictions were retained, and the existing
+Go CLI supplied the decisive result instead.
+
+No new login was attempted after the failed verified-client probe; no auth URL,
+registration, pairing or Serve port resulted. The proxy test container was then
+stopped, retaining both old containers and the identity volume. The next action
+needs restored official HTTPS connectivity or an explicitly approved different
+known-working proxy. Do not blindly repeat login, alter system/simulator network
+settings, or turn off TLS verification. Persistence/restart and real Tailnet
+application data tests remain pending.

@@ -1,0 +1,6 @@
+# Optional override, only after explicit approval for this isolated node.
+# Does not alter Docker daemon, host, simulator, DNS or VPN configuration.
+services:
+  tailnet-persistent:
+    environment:
+      HTTPS_PROXY: http://http.docker.internal:3128
