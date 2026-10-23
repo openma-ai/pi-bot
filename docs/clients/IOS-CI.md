@@ -96,3 +96,50 @@ GitHub Actions runner charges / account minute allowance were not checked.
 
 Sources: https://developer.apple.com/xcode-cloud/get-started/ and
 https://developer.apple.com/help/account/certificates/cloud-managed-certificates/ .
+
+### Prepared Xcode Cloud hooks (not enabled)
+
+Apple's documented directory is `ci_scripts` beside the selected Xcode project.
+The local hooks are therefore under `clients/tauri/src-tauri/gen/apple/ci_scripts`.
+`ci_post_clone.sh` installs only ephemeral build tools and dependencies, runs the
+existing checks, builds the pinned userspace SDK and device static library, then
+patches that Cloud checkout for automatic signing. `ci_pre_xcodebuild.sh` permits
+only Archive of `pi-bot-desktop_iOS`; simulator/test actions fail closed until
+separate outputs are implemented. No API key or local private-key export is
+needed for Apple's native TestFlight post-action.
+
+These hooks are draft-only: shell syntax, no-op dry runs, read-only transform and
+parsed Xcode configuration checks passed locally. No toolchain installation,
+actual Cloud build, cloud certificate request, repository connection, remote
+workflow creation or upload was performed. Automatic signing and the
+TestFlight post-action must be validated by a first explicitly authorized Cloud
+run before claiming this path works.
+
+Proposed next confirmation, with no silent expansion:
+
+1. Connect Apple Xcode Cloud only to GitHub repository `openma-ai/pi-bot`.
+   The GitHub owner/admin must review Apple's actual GitHub App permission page;
+   authorize only this repository, never all organization repositories. If the
+   page requires broader access, stop and explain it before proceeding.
+2. Use canonical project `clients/tauri/src-tauri/gen/apple/pi-bot-desktop.xcodeproj`,
+   scheme `pi-bot-desktop_iOS`, Team `962863MJ5J`, app `dev.pibot.ios` /
+   App Store Connect app `6823234702`. Selected source is the default protected
+   branch; actual remote branch protection has not been audited/configured.
+3. Manual starts only. Disable initial commit/PR/tag/schedule automatic start
+   conditions. Archive iOS only; no external tester invitations or App Store
+   submission. The TestFlight post-action targets the existing Pibo Personal
+   Test internal group, without changing its audience.
+4. Set the initial Cloud build counter to **3000**, above the existing local
+   1023.x candidate, and keep Apple's counter monotonic. Hook guards reject
+   counters below 1024 or above 9999; allocate a new marketing version before
+   rollover. The first run must confirm Apple's emitted build number before
+   distribution. Choose one pipeline/counter owner; don't independently release
+   conflicting numbers from the GitHub draft.
+5. Explicitly permit Apple to manage the app's cloud signing certificates and
+   provisioning profiles for that workflow, without exporting existing Mac
+   keys, revoking existing identities or changing Mac Keychain permissions.
+   The Apple account's actual eligible role and account agreements must be
+   checked during setup; any new agreement/paid subscription needs user action.
+
+References: https://developer.apple.com/documentation/xcode/writing-custom-build-scripts
+and https://developer.apple.com/documentation/xcode/environment-variable-reference .
