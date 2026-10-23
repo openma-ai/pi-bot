@@ -202,3 +202,60 @@ needs restored official HTTPS connectivity or an explicitly approved different
 known-working proxy. Do not blindly repeat login, alter system/simulator network
 settings, or turn off TLS verification. Persistence/restart and real Tailnet
 application data tests remain pending.
+
+## Real persistent server approval and simulator entitlement blocker
+
+After the user changed the TAG exit, host direct and TAG-proxied official `/key`
+requests returned HTTP 200 with successful certificate verification. The approved
+Docker proxy also fetched the public key using the official Go client. Its
+`--force-port=443` diagnostic later rejected proxy port 3128 itself; this was a
+diagnostic-only constraint, not a failed key fetch. Normal node login was then
+initiated exactly once after the approval reviewer accepted the user's full
+confirmation history, and the user approved its official browser page.
+
+The original login process exited 0 with Success. Fresh state at
+2026-10-23 05:18:50 UTC: Running, public stable node ID `nq5VdVq41D11CNTRL`, IPv4
+`100.127.171.114`, hostname `pibo-docker-direct-test`. Restarting the same container
+with `pibo-tailnet-test-state` required no new login and retained both ID and IPs.
+State directory/file permissions remained 700/600. This is real authenticated
+server identity reuse, not merely checking that a file survived.
+
+The isolated `pibo-tailnet-test-direct-1` started with its offline SessionFactory;
+its service advertisement returned HTTP 200. The earlier local Node fetch probe
+returned 403 because that fetch did not preserve the required virtual Host; the
+explicit node:http request did. TCP Serve was enabled only on 4319, forwarding
+to 127.0.0.1:4319 in the shared namespace. No host port or Funnel was opened.
+
+Client testing exposed a separate packaging issue: the linker-signed simulator
+App starts but Keychain returns `errSecMissingEntitlement (-34018)`. Its original
+entitlements file is empty. A local ad-hoc signature with only the independent
+bundle's application identifier/Keychain group was attempted without using any
+certificate/private key. macOS AMFI rejected execution with code -424:
+"The file is adhoc signed but contains restricted entitlements". No further
+sign/start workaround was attempted. A read-only identity query found no valid
+Apple Development identity. A proper development signing setup requires a
+separate decision; no certificate, profile, ACL, trust or private key was created
+or altered. The original Pibo App/signing project was unchanged. No client node
+registered and no pairing token was saved; there is no second authorization URL.
+
+`direct_probe.rs` is a debug-only, explicitly enabled driver additionally gated
+to the isolated `dev.pibot.direct-simulator` bundle. It uses the product SDK,
+Keychain, pairing and runtime transport paths; pending later phases verify
+synthetic files/images, SSE and desktop. It never runs in Release. Its only
+external target is the explicitly supplied approved test-node IPv4 on 4319.
+The private pair-code input is consumed without logging; reports exclude service
+bearers and node keys. It is prepared/compiled, not evidence that its later
+checks passed. During preparation, a real mobile restart regression was found:
+saved-profile loading still admitted only SSH. It now retains valid tailnet
+profiles while continuing to reject local runtime on mobile. A focused regression
+covers this, and all 19 native tests not requiring the external SSH fixture pass;
+two existing fixture-dependent tests remain excluded. Simulator cargo check also
+passes. Safe Keychain errors now include OSStatus instead of a misleading generic
+unlock hint.
+
+Cleanup completed: only this test's TCP 4319 Serve was disabled (status `{}`),
+new runtime/gateway stopped, then node container stopped with its logged-in
+identity volume retained. No pairing had been opened/created, so none required
+revocation. Existing containers/keys and simulator App data were preserved.
+Real client login, client Keychain restart reuse, native Tailnet HTTP/SSE/files,
+WKWebView desktop/input and physical-device/VPN coexistence remain pending.

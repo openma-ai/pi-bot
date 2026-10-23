@@ -1,4 +1,6 @@
 mod desktop_transport;
+#[cfg(all(debug_assertions, target_os = "ios", feature = "embedded-tailscale"))]
+mod direct_probe;
 mod file_export;
 #[cfg(all(debug_assertions, target_os = "ios"))]
 mod ios_probe;
@@ -22,6 +24,14 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
 use transport::{Endpoint, Profile};
+
+fn valid_saved_profiles(profiles: &[Profile], remote_only: bool) -> bool {
+    (remote_only || !profiles.is_empty())
+        && profiles.len() <= 32
+        && profiles
+            .iter()
+            .all(|p| p.validate().is_ok() && (!remote_only || p.mode != "local"))
+}
 
 struct State {
     profiles: Vec<Profile>,
@@ -670,13 +680,7 @@ pub fn run() {
             let profiles = std::fs::read(&file)
                 .ok()
                 .and_then(|b| serde_json::from_slice::<Vec<Profile>>(&b).ok())
-                .filter(|p| {
-                    (cfg!(any(target_os = "ios", target_os = "android")) || !p.is_empty())
-                        && p.len() <= 32
-                        && p.iter().all(|p| {
-                            p.validate().is_ok() && (!cfg!(any(target_os = "ios", target_os = "android")) || p.mode == "ssh")
-                        })
-                })
+                .filter(|p|valid_saved_profiles(p,cfg!(any(target_os="ios",target_os="android"))))
                 .unwrap_or_else(|| {
                     if cfg!(any(target_os = "ios", target_os = "android")) {
                         Vec::new()
@@ -700,6 +704,8 @@ pub fn run() {
                 streams: HashMap::new(),
                 forms: HashMap::new(),
             }));
+            #[cfg(all(debug_assertions,target_os="ios",feature="embedded-tailscale"))]
+            direct_probe::launch(app.handle().clone());
             #[cfg(debug_assertions)]
             if std::env::var("PIBOT_LAYOUT_DIAGNOSTICS").as_deref() == Ok("1") {
                 let handle = app.handle().clone();
@@ -775,4 +781,21 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod saved_profile_tests {
+    #[test]
+    fn mobile_restart_retains_direct_tailnet_profiles_without_allowing_local_runtime() {
+        let tailnet:super::Profile=serde_json::from_value(serde_json::json!({"id":"saved","name":"private","mode":"tailnet","host":"100.127.171.114","serverPort":4319,"dataDir":"","embeddedTailscale":true})).unwrap();
+        assert!(super::valid_saved_profiles(&[tailnet.clone()], true));
+        let mut invalid = tailnet;
+        invalid.host = Some("127.0.0.1".into());
+        assert!(!super::valid_saved_profiles(&[invalid], true));
+        let local = super::Profile::local("local", "Local", "/tmp/synthetic");
+        assert!(!super::valid_saved_profiles(&[local.clone()], true));
+        assert!(super::valid_saved_profiles(&[local], false));
+        assert!(super::valid_saved_profiles(&[], true));
+        assert!(!super::valid_saved_profiles(&[], false));
+    }
 }

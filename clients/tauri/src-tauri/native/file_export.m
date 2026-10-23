@@ -80,3 +80,5 @@ int pibo_protect_node_directory(const char *value) {
 #endif
  return 0;
 }
+
+bool pibo_is_direct_test_bundle(void) {return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"dev.pibot.direct-simulator"];}

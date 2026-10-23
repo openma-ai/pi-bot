@@ -17,7 +17,10 @@ mod apple {
         match passwords::generic_password(options(account)) {
             Ok(v) => Ok(Some(v)),
             Err(e) if e.code() == -25300 => Ok(None),
-            Err(_) => Err("解锁设备后再读取 Pibo 网络身份".into()),
+            Err(e) => Err(format!(
+                "无法读取 Pibo 网络身份（OSStatus {}）；请检查设备解锁和应用权限",
+                e.code()
+            )),
         }
     }
     pub fn save(account: &str, value: &[u8]) -> Result<(), String> {
@@ -30,7 +33,7 @@ mod apple {
             .map_err(|_| "无法配置设备保护")?,
         );
         passwords::set_generic_password_options(value, o)
-            .map_err(|_| "无法安全保存 Pibo 网络身份".into())
+            .map_err(|e| format!("无法安全保存 Pibo 网络身份（OSStatus {}）", e.code()))
     }
     pub fn remove(account: &str) -> Result<(), String> {
         match passwords::delete_generic_password_options(options(account)) {
