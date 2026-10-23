@@ -659,8 +659,52 @@ button:disabled {
   background: #111;
   border-radius: 12px;
 }
+/* Radix reserves 32px above and max(32px, 6vh) below its dialog content. */
 .computer-fullscreen {
-  width: 95vw;
+  width: min(95vw, 100%);
+  max-height: calc(var(--phone-height, 100dvh) - max(32px, env(safe-area-inset-top)) - max(32px, 6vh, env(safe-area-inset-bottom)));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
+}
+.rt-DialogOverlay:has(.computer-fullscreen) {
+  height: var(--phone-height, 100dvh);
+  bottom: auto;
+}
+.computer-fullscreen > :not(.vnc-stage) {
+  flex-shrink: 0;
+}
+.computer-fullscreen .vnc-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 70dvh;
+}
+.desktop-controls {
+  flex-shrink: 0;
+  min-width: 0;
+}
+.desktop-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  line-height: 1.25;
+}
+.desktop-actions {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.desktop-actions .rt-Button {
+  box-sizing: border-box;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--space-3);
+}
+@media (max-width: 360px) {
+  .desktop-controls { gap: var(--space-1); }
+  .desktop-status { width: 100%; min-height: 24px; }
+  .desktop-actions { width: 100%; justify-content: flex-end; }
 }
 .sr-only {
   position: absolute;

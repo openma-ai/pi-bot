@@ -154,14 +154,16 @@ export function DesktopPanel({
             </Text>
           )}
           <div className="vnc-stage" ref={canvas} />
-          <Flex justify="center" gap="3" mt="3">
-            <Text size="2">{control ? "Controlling" : "Watching"}</Text>
-            <Button variant="soft" disabled={controlling} onClick={toggle}>
-              {control ? "Return control" : "Take over"}
-            </Button>
-            <Dialog.Close>
-              <Button variant="ghost">关闭</Button>
-            </Dialog.Close>
+          <Flex className="desktop-controls" align="center" justify="between" gap="3" mt="3" wrap="wrap">
+            <Text className="desktop-status" size="2" role="status">{control ? "Controlling" : "Watching"}</Text>
+            <Flex className="desktop-actions" align="center" gap="2">
+              <Button size="2" variant="soft" disabled={controlling} onClick={toggle}>
+                {control ? "Return control" : "Take over"}
+              </Button>
+              <Dialog.Close>
+                <Button size="2" className="desktop-close" variant="ghost">关闭</Button>
+              </Dialog.Close>
+            </Flex>
           </Flex>
         </Dialog.Content>
       </Dialog.Root>

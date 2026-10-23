@@ -1,0 +1,2 @@
+import {createServer} from 'vite';import tailwindcss from '@tailwindcss/vite';
+const root=process.cwd();const server=await createServer({configFile:false,root,plugins:[tailwindcss()],resolve:{alias:{'@novnc/novnc':root+'/clients/tauri/test/ui/desktop-rfb-mock.js'}},server:{host:'127.0.0.1',port:5191,strictPort:true}});await server.listen();console.log('Offline desktop layout fixture on loopback 5191');process.on('SIGTERM',async()=>{await server.close();process.exit(0)});
