@@ -67,6 +67,7 @@ targets:
         RUST_LOG: info
     settings:
       base:
+        OTHER_LDFLAGS: $(inherited) -framework AuthenticationServices -framework SystemConfiguration -lresolv
         ENABLE_BITCODE: false
         ENABLE_DEBUG_DYLIB: false
         ARCHS: [arm64]
