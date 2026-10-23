@@ -2,7 +2,6 @@
 export { BotRuntime } from './runtime/runtime.ts';
 export { Store } from './runtime/store.ts';
 export { ProactiveService, type Detector, type BackgroundWorker } from './runtime/proactive.ts';
-export { NotificationService } from './runtime/notifications.ts';
 export { createFileChangeDetector } from './runtime/proactive-detectors.ts';
 export { createModelBackgroundWorker } from './runtime/proactive-model-worker.ts';
 export { OpenMatterTrigger } from './runtime/openmatter-trigger.ts';

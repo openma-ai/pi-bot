@@ -143,7 +143,8 @@ Dream uses the existing schedules, fires, jobs and proposals. A due slot creates
 a processed host schedule receipt and starts a durable research job in the same
 transaction, without activating main Pi for that trigger. Only reviewed findings
 return through the existing research inbox. The main agent decides what to
-publish; shared [notification SDK](notification-sdk.md) selection is host-only.
+publish through the existing send_message/outbox path; there is no separate
+notification API or second user message. See [proactive replies](proactive-replies.md).
 
 Each dream has 1..8 reserved runs, a finite deadline, coalesced missed slots and
 one in-flight proposal. Whole-work timeout is at most the host limit (60 seconds

@@ -13,9 +13,8 @@ import { jobHandler } from './job.ts';
 import { requestHandler } from './request.ts';
 import { taskHandler } from './task.ts';
 import { desktopHandler } from './desktop.ts';
-import { notificationHandler } from './notification.ts';
 const handlers: Record<string, (d: PiBotDaemon, c: DaemonConnection, method: string, params: any) => Promise<any>> = {
-    file: fileHandler, daemon: daemonHandler, events: eventsHandler, bot: botHandler, group: groupHandler, thread: threadHandler, turn: turnHandler, routine: routineHandler, job: jobHandler, request: requestHandler, task: taskHandler, desktop: desktopHandler, notification: notificationHandler
+    file: fileHandler, daemon: daemonHandler, events: eventsHandler, bot: botHandler, group: groupHandler, thread: threadHandler, turn: turnHandler, routine: routineHandler, job: jobHandler, request: requestHandler, task: taskHandler, desktop: desktopHandler
 };
 export function handleMethod(d: PiBotDaemon, c: DaemonConnection, method: string, params: any) {
     const handler = handlers[method.split('/')[0]];

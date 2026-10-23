@@ -1,4 +1,3 @@
-import type { NotificationEntry } from '../../sdk/notification-types.ts';
 import { migrate } from '../migrations.ts';
 import { EventLog } from '../events/event-log.ts';
 import { derive } from '../events/derive.ts';
@@ -27,7 +26,7 @@ export class Store {
         });
         this.db = new DatabaseSync(path);
         this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
-        for (const t of ['bots', 'inbox', 'jobs', 'questions', 'outbox', 'schedules', 'monitors', 'fires', 'proposals', 'memories', 'groups', 'group_messages', 'notification_entries', 'notification_preferences'])
+        for (const t of ['bots', 'inbox', 'jobs', 'questions', 'outbox', 'schedules', 'monitors', 'fires', 'proposals', 'memories', 'groups', 'group_messages'])
             this.db.exec(`CREATE TABLE IF NOT EXISTS ${t}(id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
         this.db.exec('CREATE TABLE IF NOT EXISTS channel_messages(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,data TEXT NOT NULL,updated_seq INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS channel_message_events(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL,data TEXT NOT NULL); CREATE INDEX IF NOT EXISTS channel_message_channel ON channel_messages(json_extract(data,\'$.channelId\')); CREATE INDEX IF NOT EXISTS channel_event_channel ON channel_message_events(json_extract(data,\'$.channelId\'));');
         this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS inbox_dedupe ON inbox(json_extract(data,'$.from'),json_extract(data,'$.key')); CREATE UNIQUE INDEX IF NOT EXISTS job_dedupe ON jobs(json_extract(data,'$.botId'),json_extract(data,'$.key')); CREATE UNIQUE INDEX IF NOT EXISTS question_dedupe ON questions(json_extract(data,'$.botId'),json_extract(data,'$.key')); CREATE UNIQUE INDEX IF NOT EXISTS outbox_dedupe ON outbox(json_extract(data,'$.botId'),json_extract(data,'$.key'));");
@@ -159,7 +158,7 @@ export class Store {
         return r ? JSON.parse(r.data) : undefined;
     }
     private table(t: string) {
-        if (!['bots', 'inbox', 'jobs', 'questions', 'outbox', 'schedules', 'monitors', 'fires', 'proposals', 'memories', 'groups', 'group_messages', 'threads', 'turns', 'requests', 'items', 'notification_entries', 'notification_preferences'].includes(t))
+        if (!['bots', 'inbox', 'jobs', 'questions', 'outbox', 'schedules', 'monitors', 'fires', 'proposals', 'memories', 'groups', 'group_messages', 'threads', 'turns', 'requests', 'items'].includes(t))
             throw new PiBotError('invalidParams', 'Invalid table');
         return t;
     }
@@ -174,12 +173,6 @@ export class Store {
     }
     recover() {
         this.transaction(() => {
-            // A process may have sent before losing its acknowledgement. Never blindly replay.
-            for (const n of this.list<NotificationEntry>('notification_entries'))
-                if (n.delivery.state === 'sending')
-                    this.put('notification_entries', {
-                        ...n, delivery: { ...n.delivery, state: 'uncertain', reason: 'process_interrupted' }
-                    });
             for (const e of this.list<Envelope>('inbox'))
                 if (e.state === 'processing')
                     this.put('inbox', {

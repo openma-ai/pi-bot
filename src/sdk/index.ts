@@ -4,4 +4,3 @@ export * from './client.ts';
 export * from './runtime-client.ts';
 export * from './pi-settings-client.ts';
 export * from './protocol/client-runtime.ts';
-export type * from './notification-types.ts';

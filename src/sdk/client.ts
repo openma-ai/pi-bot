@@ -48,7 +48,6 @@ export class PiBotClient {
     declare readonly request: Namespace<'request'>;
     declare readonly task: Namespace<'task'>;
     declare readonly desktop: Namespace<'desktop'>;
-    declare readonly notification: Namespace<'notification'>;
     readonly events: {
         subscribe: (p: {
             after: number;

@@ -16,7 +16,6 @@ import { DaemonConnection } from './connection.ts';
 import { PiBotError } from './errors.ts';
 import { CredentialBroker } from '../runtime/credentials.ts';
 import { RequestBroker } from '../requests/request-broker.ts';
-import { NotificationService } from '../runtime/notifications.ts';
 import { zeroUsage } from '../events/turn-tracker.ts';
 import { jobView, routineView } from '../events/derive.ts';
 import { projectChannelMessage, redactChannelText } from '../runtime/channel-messages.ts';
@@ -37,7 +36,6 @@ export class PiBotDaemon {
     proactive!: ProactiveService;
     trigger!: OpenMatterTrigger;
     broker!: RequestBroker;
-    notifications!: NotificationService;
     live?: Awaited<ReturnType<typeof livePiFactory>>;
     desktop?: DesktopClient;
     private timer?: ReturnType<typeof setInterval>;
@@ -136,8 +134,6 @@ export class PiBotDaemon {
         });
         d.broker = new RequestBroker(d.runtime, d.connections, options.approvalTimeoutMs);
         (d.runtime as any).requestBroker = d.broker;
-        // Delivery is opt-in through a host adapter; RPC reads never enable sending.
-        d.notifications = new NotificationService(d.runtime);
         for (const request of d.broker.list())
             if (request.kind === 'credential' && request.status === 'pending')
                 d.credentials.restoreForm({

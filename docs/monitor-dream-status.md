@@ -44,7 +44,7 @@
 开放式发现 → 既有 background job ─┘                 ↓
                                            原 outbox / pending request
                                                    ↓
-                                      共用 notification policy + adapter
+                                      既有 channel delivery（单一回复出口）
 ```
 
 由此收敛的实现方案是：只需在现有schedule/tick触发下增加一个**有预算、可关闭、无外发权**的
@@ -52,14 +52,13 @@ worker接线：host选择近期证据/目标范围，稳定周期key避免重跑
 现有proposal审核和inbox。先用本地evidence fixtures跑闭环；外部app读取权限和付费模型
 另行授权。不能把现在的无工具归纳器改名就宣称具备完整开放式研究。
 
-当前SDK切片只补共用出口：从canonical pending request/reviewRequired以及host显式核验
-的最终结果派生持久通知意图，处理去重、read、静默、任务失效、有限重试；无默认外发。
-不在notification service里发现新目标、轮询外部条件或启动研究，避免形成平行调度器。
+用户澄清后，结果出口保持既有send_message/outbox；不增加独立notification API或第二层
+正文/偏好策略。去重、旧任务失效和唤醒仍使用原trigger/inbox/task机制。
 
 ## 本轮新增（与上述基线区分）
 
-- 通知SDK已独立提交 `61a0e46`：默认无adapter、无自动外发；host核验结果后显式选择
-  触达，read与adapter acceptance分开。没有新增调度器。
+- `61a0e46`曾加入独立通知SDK；用户指出agent回答本身就是通知后，该平行API、
+  存储与策略被移除。当前只保留原inbox→主agent→send_message→outbox出口。
 - 新增host `createDream` 和daemon SDK显式 `researchWorker` 注册入口。复用schedule
   tick、fire、durable job、proposal和research inbox；固定证据refs、有限轮次/deadline、
   单in-flight、取消失效、生成后/复核前重检；不唤醒主Pi去执行research trigger。
@@ -80,7 +79,21 @@ worker接线：host选择近期证据/目标范围，稳定周期key避免重跑
 - `npm run check`、`git diff --check`通过。
 - 新增通知SDK/服务fixtures共17例，dream core 14例、producer SDK路径3例。
   后者实际经过daemon opt-in worker、typed客户端的monitor创建/启用、原inbox、host筛选
-  和notification API；另证实host拒绝权限时worker一次也不调用。
+  和当时的notification API；后续单一出口回归取代这些实验性API测试。另证实host拒绝权限时worker一次也不调用。
 - dream core覆盖重复tick/单in-flight、前台新输入不等待research、maxRuns、剩余deadline
   abort、取消/替换/关闭、迟到review、重启uncertain隔离、证据失效/预算耗尽不饿死monitor。
 - 本轮未运行付费模型、外部监测或原生通知，没有APNs/token/权限/部署变更。
+
+
+## 出口收敛修订
+
+按用户最新要求移除独立notification SDK。producer不直接发送，主agent静默时outbox为空；
+主agent选择说时只经原send_message。去重和取消以现有fire/inbox/task/outbox事实为准。
+未来APNs只提醒已有message ID，不另造用户正文。此前371项是改动前切片的历史证据，
+本次移除了专用于已删API的测试并补单一回复出口回归；最终结果见本轮交付。
+
+
+出口收敛后验证：完整 `npm test` 369/369通过、0失败/跳过；`npm run check`、
+`git diff --check`通过。日志为本地忽略文件 `work/single-reply-final.log`。
+本轮新增10项生命周期回归、5项API/真实Pi-faux回归，并改写3项producer SDK回归；
+删除的17项测试仅属于已移除的平行notification SDK，未删除原有业务测试。

@@ -7,7 +7,7 @@ import { PiBotDaemon } from '../src/daemon/core/daemon.ts';
 import { PiBotClient } from '../src/sdk/client.ts';
 import type { Envelope } from '../src/pi/types.ts';
 
-test('host opts daemon into bounded local dream; existing inbox/main selection feeds typed notification SDK', async () => {
+test('host opts daemon into bounded local dream; only main-agent selection appends an existing outbox reply', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dream-sdk-'));
     let evidenceId = '', generates = 0, reviews = 0;
     const seen: Envelope[] = [];
@@ -26,16 +26,16 @@ test('host opts daemon into bounded local dream; existing inbox/main selection f
         assert.equal(generates, 1); assert.equal(reviews, 1);
         assert.equal(seen.filter(e => e.kind === 'schedule').length, 0, 'research dispatch does not consume main-model turns');
         const finding = seen.find(e => e.kind === 'research'); assert.ok(finding);
-        assert.deepEqual((await client.notification.list({})).notifications, [], 'a discovery cannot directly notify');
-        d.runtime.store.transaction(() => {
-            const out = d.runtime.sendMessage(finding, 'main agent selected this finding', 'selected');
-            d.notifications.publishResult(out.id, 'important_change');
-        });
-        const entries = (await client.notification.list({})).notifications;
-        assert.equal(entries.length, 1); assert.equal(entries[0].ownerId, 'alice');
-        assert.equal(entries[0].sourceMessageId, finding.id);
-        assert.equal(entries[0].delivery.attempts, 0);
-        assert.equal((await client.notification.preferences({})).preferences.enabled, false);
+        assert.equal(d.runtime.store.list('outbox').length, 0, 'a discovery cannot directly reply');
+        const out = d.runtime.sendMessage(finding, 'main agent selected this finding', 'selected');
+        assert.equal(out.replyTo, finding.id);
+        assert.equal(out.taskId, source.taskId);
+        assert.deepEqual(out.route, source.route);
+        assert.equal(d.runtime.store.get<Envelope>('inbox', source.id)!.fileOwner, 'alice');
+        assert.equal(d.runtime.sendMessage(finding, 'main agent selected this finding', 'selected').id, out.id);
+        assert.equal(d.runtime.store.list('outbox').length, 1);
+        const snapshot = await client.daemon.snapshot({});
+        assert.ok(snapshot.items.some(i => i.type === 'agentMessage' && i.text === 'main agent selected this finding'));
         await d.proactive.tick(); await d.runtime.idle(); assert.equal(generates, 1);
     } finally { client.close(); await d.close(); await rm(dir, { recursive: true, force: true }); }
 });
@@ -79,16 +79,13 @@ test('existing monitor SDK preserves authenticated owner through condition chang
         await writeFile(path, 'aa'); now += 1000; await d.proactive.tick(); await d.runtime.idle();
         const finding = seen.find(e => e.kind === 'monitor'); assert.ok(finding);
         assert.equal(d.runtime.store.get<Envelope>('inbox', finding.replyTo!)!.fileOwner, 'alice');
-        assert.deepEqual((await client.notification.list({})).notifications, []);
-        d.runtime.store.transaction(() => {
-            const out = d.runtime.sendMessage(finding, 'selected monitor finding', 'selected');
-            d.notifications.publishResult(out.id, 'important_change');
-        });
-        const entries = (await client.notification.list({})).notifications;
-        assert.equal(entries.length, 1); assert.equal(entries[0].ownerId, 'alice');
-        assert.deepEqual(d.notifications.list('local'), []);
+        assert.equal(d.runtime.store.list('outbox').length, 0);
+        const out = d.runtime.sendMessage(finding, 'selected monitor finding', 'selected');
+        assert.equal(out.replyTo, finding.id);
+        assert.deepEqual(out.route, finding.route);
+        assert.equal(d.runtime.sendMessage(finding, 'selected monitor finding', 'selected').id, out.id);
+        assert.ok((await client.daemon.snapshot({})).items.some(i => i.type === 'agentMessage' && i.text === 'selected monitor finding'));
         await client.routine.cancel({ routineId: routine.id });
-        assert.equal((await client.notification.list({})).notifications[0].status, 'superseded');
-        assert.equal(entries[0].delivery.attempts, 0);
+        assert.throws(() => d.runtime.sendMessage(finding, 'obsolete finding', 'late'), /cancelled/);
     } finally { client.close(); await d.close(); await rm(dir, { recursive: true, force: true }); }
 });
