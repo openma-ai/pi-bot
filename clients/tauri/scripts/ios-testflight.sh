@@ -29,7 +29,7 @@ case "$stage" in
    mkdir "$output/upload-started" 2>/dev/null || { echo 'Upload already started; inspect Apple status before any retry'; exit 2; }
    options="$output/UploadOptions.plist"
   else options="$output/ExportOptions.plist"; fi
-  xcodebuild -exportArchive -archivePath "$output/Pibo.xcarchive" -exportPath "$output/$stage" -exportOptionsPlist "$options" "${auth[@]}"
+  xcodebuild -exportArchive -archivePath "$output/Pibo.xcarchive" -exportPath "$output/$stage" -exportOptionsPlist "$options" ${auth[@]+"${auth[@]}"}
   ;;
  *) echo 'Use build, archive, export or upload'; exit 2;;
 esac
