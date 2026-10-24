@@ -94,17 +94,24 @@ async fn forward(
     }
     headers.push(format!("Host: {}", ep.remote_host));
     headers.push(format!("Authorization: Bearer {}", ep.token));
-    if ep.remote_host.starts_with("127.0.0.1:") {
-        headers.push(format!("Origin: http://{}", ep.remote_host));
+    if let Some(origin) = &ep.desktop_origin {
+        headers.push(format!("Origin: {}", origin));
     }
-    let mut remote =
-        TcpStream::connect(("127.0.0.1", ep.base.port().ok_or("Missing tunnel port")?))
-            .await
-            .map_err(|_| "Desktop tunnel unavailable")?;
-    remote
-        .write_all(format!("GET {path} HTTP/1.1\r\n{}\r\n\r\n", headers.join("\r\n")).as_bytes())
-        .await
-        .map_err(|_| "Handshake failed")?;
+    // reqwest performs verified TLS for HTTPS origins; 101 upgrades preserve raw RFB frames.
+    let url = ep.base.join(path).map_err(|_| "Invalid desktop path")?;
+    let mut request = ep.client.get(url).timeout(std::time::Duration::from_secs(15));
+    for header in headers {
+        let (k,v)=header.split_once(':').ok_or("Invalid upgrade header")?;
+        request=request.header(k,v.trim());
+    }
+    let response=request.send().await.map_err(|_| "Desktop TLS/handshake failed")?;
+    let status=response.status();
+    let mut head=format!("HTTP/1.1 {}\r\n",status);
+    for (k,v) in response.headers() { if let Ok(v)=v.to_str() {head.push_str(&format!("{}: {}\r\n",k.as_str(),v));} }
+    head.push_str("\r\n");
+    local.write_all(head.as_bytes()).await.map_err(|_| "Browser disconnected")?;
+    if status != reqwest::StatusCode::SWITCHING_PROTOCOLS {return Err("Desktop upgrade rejected".into());}
+    let mut remote=response.upgrade().await.map_err(|_| "Desktop upgrade unavailable")?;
     remote
         .write_all(&bytes[end..])
         .await
@@ -121,9 +128,9 @@ mod tests {
     #[test]
     fn desktop_ticket_origin_and_native_bearer_are_enforced() {
         tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async{
- let upstream=TcpListener::bind("127.0.0.1:0").await.unwrap();let port=upstream.local_addr().unwrap().port();let ep=Arc::new(Endpoint{base:reqwest::Url::parse(&format!("http://127.0.0.1:{port}/")).unwrap(),remote_host:format!("127.0.0.1:{port}"),token:"c".repeat(64),client:crate::transport::client().unwrap(),#[cfg(not(any(target_os="ios",target_os="android")))]_tunnel:None,_embedded:None});
+ let upstream=TcpListener::bind("127.0.0.1:0").await.unwrap();let port=upstream.local_addr().unwrap().port();let ep=Arc::new(Endpoint{desktop_origin:Some(format!("http://127.0.0.1:{port}")),base:reqwest::Url::parse(&format!("http://127.0.0.1:{port}/")).unwrap(),remote_host:format!("127.0.0.1:{port}"),token:"c".repeat(64),client:crate::transport::client().unwrap(),#[cfg(not(any(target_os="ios",target_os="android")))]_tunnel:None,_embedded:None});
  let(url,task)=super::open(ep,"/api/desktop/synthetic/ws".into()).await.unwrap();let url=reqwest::Url::parse(&url).unwrap();
- let server=tokio::spawn(async move{let(mut s,_)=upstream.accept().await.unwrap();let mut b=vec![0;8192];let n=s.read(&mut b).await.unwrap();let text=String::from_utf8_lossy(&b[..n]);assert!(text.starts_with("GET /api/desktop/synthetic/ws HTTP/1.1"));assert!(text.contains(&format!("Authorization: Bearer {}","c".repeat(64))));assert!(text.contains(&format!("Origin: http://127.0.0.1:{port}")));assert!(!text.to_ascii_lowercase().contains("cookie:"));s.write_all(b"HTTP/1.1 101 Switching Protocols\r\n\r\n\x82\x02\x00\xff").await.unwrap();});
+ let server=tokio::spawn(async move{let(mut s,_)=upstream.accept().await.unwrap();let mut b=vec![0;8192];let n=s.read(&mut b).await.unwrap();let text=String::from_utf8_lossy(&b[..n]);assert!(text.starts_with("GET /api/desktop/synthetic/ws HTTP/1.1"));assert!(text.to_ascii_lowercase().contains(&format!("authorization: bearer {}","c".repeat(64))));assert!(text.to_ascii_lowercase().contains(&format!("origin: http://127.0.0.1:{port}")));assert!(!text.to_ascii_lowercase().contains("cookie:"));s.write_all(b"HTTP/1.1 101 Switching Protocols\r\n\r\n\x82\x02\x00\xff").await.unwrap();});
  let mut denied=TcpStream::connect(("127.0.0.1",url.port().unwrap())).await.unwrap();denied.write_all(format!("GET {} HTTP/1.1\r\nOrigin: http://evil.invalid\r\nUpgrade: websocket\r\n\r\n",url.path()).as_bytes()).await.unwrap();let mut byte=[0];assert_eq!(denied.read(&mut byte).await.unwrap(),0);
  let mut browser=TcpStream::connect(("127.0.0.1",url.port().unwrap())).await.unwrap();browser.write_all(format!("GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: tauri://localhost\r\nCookie: secret=not-forwarded\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n",url.path()).as_bytes()).await.unwrap();let mut result=Vec::new();browser.read_to_end(&mut result).await.unwrap();assert!(result.ends_with(&[0x82,2,0,255]));server.await.unwrap();task.abort();
  });

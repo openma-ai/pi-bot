@@ -1,3 +1,4 @@
+import { ServicePassword } from './service-password.ts';
 /** Explicit private-network ingress. The ordinary runtime remains loopback-only. */
 import { createServer, request as httpRequest, type IncomingMessage } from 'node:http';
 import { connect } from 'node:net';
@@ -14,6 +15,7 @@ export interface TailnetListener {
     host: string;
     port: number;
     listenMode?: 'interface' | 'serve-loopback';
+    serviceOrigin?: string;
 }
 /** No automatic bind fallback: a missing Tailnet interface must fail closed. */
 export function tailnetBindAddress(options: TailnetListener) {
@@ -21,6 +23,10 @@ export function tailnetBindAddress(options: TailnetListener) {
         throw Error('Tailnet ingress requires an explicit 100.64.0.0/10 address and port');
     if (options.listenMode !== undefined && !['interface', 'serve-loopback'].includes(options.listenMode))
         throw Error('Unknown Tailnet listener mode');
+    if(options.serviceOrigin){
+        const u=new URL(options.serviceOrigin);
+        if(options.listenMode!=='serve-loopback'||u.protocol!=='https:'||u.username||u.password||u.pathname!=='/'||u.search||u.hash)throw Error('HTTPS service origin requires explicit loopback proxy mode');
+    }
     return options.listenMode === 'serve-loopback' ? '127.0.0.1' : options.host;
 }
 export function createTailnetGateway(options: TailnetListener & {
@@ -35,10 +41,14 @@ export function createTailnetGateway(options: TailnetListener & {
     const target = new URL(options.runtime.url);
     if (target.protocol !== 'http:' || target.hostname !== '127.0.0.1' || !target.port || target.username || target.password || target.pathname !== '/' || target.search || target.hash)
         throw Error('Gateway target must be loopback');
+    const password = new ServicePassword(options.dataDir);
+    const sessionMs = 30 * 24 * 60 * 60 * 1000;
     const store = join(options.dataDir, 'tailnet-devices.json');
     let devices: Record<string, {
         hash: string;
         createdAt: string;
+        expiresAt?: number;
+        passwordGeneration?:string;
     }> = {};
     try {
         devices = JSON.parse(readFileSync(store, 'utf8'));
@@ -69,10 +79,10 @@ export function createTailnetGateway(options: TailnetListener & {
         if (!/^Bearer [a-f0-9]{64}$/.test(auth))
             return undefined;
         const hash = digest(auth.slice(7));
-        return Object.entries(devices).find(([, d]) => same(d.hash, hash))?.[0];
+        return Object.entries(devices).find(([, d]) => same(d.hash, hash) && (d.expiresAt ? d.expiresAt > Date.now() && d.passwordGeneration === password.generation : !password.configured))?.[0];
     };
     const allowed = (path: string) => path === '/rpc' || path === '/events' || path.startsWith('/api/') || path.startsWith('/pi/') || path.startsWith('/credential/');
-    const valid = (req: IncomingMessage) => !!req.url && req.url.startsWith('/') && !req.url.startsWith('//') && !req.url.includes('\\') && req.headers.host === `${options.host}:${options.port}` && !req.headers.origin;
+    const valid = (req: IncomingMessage) => !!req.url && req.url.startsWith('/') && !req.url.startsWith('//') && !req.url.includes('\\') && [`${options.host}:${options.port}`, ...(options.serviceOrigin?[new URL(options.serviceOrigin).host]:[])].includes(req.headers.host || '') && !req.headers.origin;
     const headers = (req: IncomingMessage) => {
         const h: IncomingMessage["headers"] = {
             ...req.headers, host: target.host, authorization: 'Bearer ' + options.runtime.token, origin: 'http://' + target.host
@@ -109,10 +119,24 @@ export function createTailnetGateway(options: TailnetListener & {
         const path = new URL(req.url || '/', 'http://gateway').pathname;
         if (path === '/pibo/service' && req.method === 'GET')
             return json({
-                service: 'pibo', protocolVersion: '2026-10-13', name: options.name || 'Pibo workspace', pairing: !!pairing && pairing.expires > Date.now()
+                service: 'pibo', protocolVersion: '2026-10-13', name: options.name || 'Pibo workspace', auth: 'password', passwordConfigured: password.configured, pairing: !password.configured && !!pairing && pairing.expires > Date.now()
             });
+        if (path === '/pibo/login' && req.method === 'POST') {
+            let body='';
+            try {for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>2048){json({error:'Too large'},413);req.destroy();return;}}}catch{return;}
+            let value;try{value=JSON.parse(body);}catch{return json({error:'Invalid request'},400);}
+            const result=await password.verify(value?.password);
+            if(result!=='ok')return json({error:result==='limited'?'Try later':'Service login failed'},result==='limited'?429:401);
+            // Expired and legacy pairing records never regain authority after password setup.
+            for(const [id,d] of Object.entries(devices))if(!d.expiresAt||d.expiresAt<=Date.now()){for(const c of connections.get(id)||[])c.destroy();connections.delete(id);delete devices[id];}
+            if(Object.keys(devices).length>=32)return json({error:'Session limit; revoke an old session locally'},409);
+            const token=randomBytes(32).toString('hex'),id=randomBytes(16).toString('hex');
+            devices[id]={hash:digest(token),createdAt:new Date().toISOString(),expiresAt:Date.now()+sessionMs,passwordGeneration:password.generation};
+            try{persist();}catch{delete devices[id];return json({error:'Cannot save session'},500);}
+            return json({token,deviceId:id,expiresAt:devices[id]!.expiresAt});
+        }
         if (path === '/pibo/pair' && req.method === 'POST') {
-            if (!pairing || pairing.expires <= Date.now() || pairing.attempts >= 5)
+            if (password.configured || !pairing || pairing.expires <= Date.now() || pairing.attempts >= 5)
                 return json({
                     error: 'Pairing is closed or expired'
                 }, 403);
@@ -176,8 +200,12 @@ export function createTailnetGateway(options: TailnetListener & {
         const id = identity(req);
         if (!id)
             return json({
-                error: 'Pairing required'
+                error: 'Service login required'
             }, 401);
+        if(path==='/pibo/logout'&&req.method==='POST'){
+            res.setHeader('connection','close');connections.get(id)?.delete(req.socket);
+            try{revoke(id);return json({ok:true});}catch{return json({error:'Cannot revoke session'},500);}
+        }
         if (path === '/pibo/ready' && req.method === 'GET') {
             const probe = httpRequest(new URL('/readyz', target), {
                 headers: {
@@ -243,25 +271,7 @@ export function createTailnetGateway(options: TailnetListener & {
         socket.on('error', () => remote.destroy());
         socket.on('close', () => remote.destroy());
     });
-    server.maxConnections = 128;
-    server.requestTimeout = 30000;
-    server.headersTimeout = 10000;
-    return {
-        server, beginPairing() {
-            const code = randomBytes(12).toString('hex');
-            pairing = {
-                hash: digest(code), expires: Date.now() + 120000, attempts: 0
-            };
-            return {
-                code, expiresAt: new Date(pairing.expires).toISOString()
-            };
-        }, cancelPairing() {
-            pairing = undefined;
-        }, listDevices() {
-            return Object.entries(devices).map(([id, d]) => ({
-                id, createdAt: d.createdAt
-            }));
-        }, revoke(id: string) {
+    const revoke = (id: string) => {
             if (!devices[id])
                 return false;
             const old = devices[id];
@@ -277,6 +287,35 @@ export function createTailnetGateway(options: TailnetListener & {
                 c.destroy();
             connections.delete(id);
             return true;
+    };
+    const expiry = setInterval(()=>{for(const [id,d] of Object.entries(devices))if(d.expiresAt && d.expiresAt<=Date.now()){for(const c of connections.get(id)||[])c.destroy();try{revoke(id);}catch{/* Expired records stay denied even if disk is full. */}}},1000);
+    expiry.unref();server.once('close',()=>clearInterval(expiry));
+    server.maxConnections = 128;
+    server.requestTimeout = 30000;
+    server.headersTimeout = 10000;
+    return {
+        server, beginPairing() {
+            if(password.configured)throw Error('Password authentication enabled; use service login');
+            const code = randomBytes(12).toString('hex');
+            pairing = {
+                hash: digest(code), expires: Date.now() + 120000, attempts: 0
+            };
+            return {
+                code, expiresAt: new Date(pairing.expires).toISOString()
+            };
+        }, cancelPairing() {
+            pairing = undefined;
+        }, listDevices() {
+            return Object.entries(devices).map(([id, d]) => ({
+                id, createdAt: d.createdAt, expiresAt:d.expiresAt
+            }));
+        }, revoke,
+        async setPassword(value: unknown) {
+            await password.set(value);
+            pairing=undefined;
+            for(const set of connections.values())for(const socket of set)socket.destroy();
+            connections.clear();devices={};persist();
+            return {configured:true};
         }, async close() {
             pairing = undefined;
             for (const set of connections.values())

@@ -1,20 +1,17 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
-import { createServer } from 'node:net';
-import { request as httpRequest } from 'node:http';
-import { spawn, type ChildProcess } from 'node:child_process';
 import { Value } from 'typebox/value';
 import { RuntimeProfileSchema, type RuntimeProfile as AnyRuntimeProfile, type RuntimeStatus } from '../../sdk/protocol/client-runtime.ts';
 import { ensureServer, type ServerEndpoint } from './server-start.ts';
-type RuntimeProfile=Exclude<AnyRuntimeProfile,{mode:"tailnet"}>;
+type RuntimeProfile=Exclude<AnyRuntimeProfile,{mode:"tailnet"|"direct"}>;
 export function validateProfile(value: unknown): RuntimeProfile {
     if (!Value.Check(RuntimeProfileSchema, value))
         throw Error('请检查连接配置：主机、目录和端口');
-    if ((value as AnyRuntimeProfile).mode === "tailnet") throw Error("应用内 Tailscale 仅支持原生 Apple 客户端");
+    if (["tailnet","direct"].includes((value as AnyRuntimeProfile).mode)) throw Error("此连接需要原生 Pibo 客户端");
     const profile = value as RuntimeProfile;
     if (profile.mode === 'ssh' && profile.embeddedTailscale)
-        throw Error('应用内 Tailscale 仅支持原生 Apple 客户端');
+        throw Error('此连接需要原生 Pibo 客户端');
     if (profile.mode === 'ssh' && !profile.projectDir.startsWith('/') && !profile.projectDir.startsWith('~/'))
         throw Error('SSH 项目目录请填写绝对路径或 ~/ 开头的路径');
     return profile.mode === 'local' ? {
@@ -23,139 +20,7 @@ export function validateProfile(value: unknown): RuntimeProfile {
         ...profile, node: profile.node ?? 'node'
     };
 }
-const quote = (s: string) => "'" + s.replaceAll("'", "'\"'\"'") + "'";
-const sshOptions = (p: Extract<RuntimeProfile, {
-    mode: 'ssh';
-}>) => ['-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ForwardAgent=no', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=2', ...(p.sshPort ? ['-p', String(p.sshPort)] : []), ...(p.configFile ? ['-F', p.configFile] : [])];
-export function sshStartArgs(value: unknown) {
-    const p = validateProfile(value);
-    if (p.mode !== 'ssh')
-        throw Error('SSH profile required');
-    const directory = p.projectDir.startsWith('~/') ? '"$HOME"/' + quote(p.projectDir.slice(2)) : quote(p.projectDir);
-    const args = ['--import', 'tsx', 'src/daemon/main.ts', 'ensure', '--data-dir', p.dataDir, '--listen', 'http://127.0.0.1:' + p.serverPort].map(quote).join(' ');
-    const runner = p.node === 'node' ? 'if [ -x "$HOME/.local/share/pi-bot/node/bin/node" ]; then "$HOME/.local/share/pi-bot/node/bin/node" ' + args + '; else node ' + args + '; fi' : quote(p.node!) + ' ' + args;
-    const command = 'cd ' + directory + ' && ' + runner;
-    return [...sshOptions(p), p.host, command];
-}
-function connectionError(error: unknown, mode: string) {
-    const text = String(error);
-    if (/host key verification|REMOTE HOST IDENTIFICATION|known_hosts/i.test(text))
-        return Error('SSH 主机尚未信任或指纹已变化。请先在本机终端验证并连接该主机。');
-    if (/permission denied|publickey/i.test(text))
-        return Error('SSH 认证失败。请检查本机 SSH 配置或已解锁的密钥。');
-    if (/ENOENT|command not found|cannot find package/i.test(text))
-        return Error(mode === 'ssh' ? 'SSH 服务器缺少 Node.js 或 Pi Bot。请检查项目目录和 Node 路径。' : '本机 server 无法启动，请检查 Pi Bot 安装。');
-    return Error(mode === 'ssh' ? 'SSH server 未连接，请检查主机、端口和远程 Pi Bot 安装。' : '本机 server 未连接，请检查端口和安装。');
-}
-async function capture(args: string[]) {
-    return new Promise<string>((done, reject) => {
-        const child = spawn('ssh', args, {
-            stdio: ['ignore', 'pipe', 'pipe']
-        });
-        let stdout = '', stderr = '', overflow = false;
-        const timer = setTimeout(() => {
-            child.kill('SIGKILL');
-            reject(Error('SSH timeout'));
-        }, 30000);
-        child.stdout.on('data', b => {
-            stdout += b;
-            if (stdout.length > 65536) {
-                overflow = true;
-                child.kill('SIGKILL');
-            }
-        });
-        child.stderr.on('data', b => {
-            stderr = (stderr + b).slice(-8192);
-        });
-        child.on('error', e => {
-            clearTimeout(timer);
-            reject(e);
-        });
-        child.on('exit', code => {
-            clearTimeout(timer);
-            code === 0 && !overflow ? done(stdout) : reject(Error(stderr));
-        });
-    });
-}
-async function freePort() {
-    const s = createServer();
-    await new Promise<void>((done, reject) => {
-        s.once('error', reject);
-        s.listen(0, '127.0.0.1', done);
-    });
-    const port = (s.address() as {
-        port: number;
-    }).port;
-    await new Promise<void>(done => s.close(() => done()));
-    return port;
-}
-async function openSsh(p: Extract<RuntimeProfile, {
-    mode: 'ssh';
-}>): Promise<ServerEndpoint> {
-    const output = await capture(sshStartArgs(p));
-    const line = output.split('\n').find(l => l.startsWith('PI_BOT_SERVER='));
-    if (!line)
-        throw Error('SSH server discovery unavailable');
-    const endpoint = JSON.parse(line.slice(14));
-    const remote = new URL(endpoint.url);
-    if (remote.protocol !== 'http:' || remote.hostname !== '127.0.0.1' || !/^[a-f0-9]{64}$/.test(endpoint.token))
-        throw Error('Invalid SSH server discovery');
-    const port = await freePort();
-    const child = spawn('ssh', [...sshOptions(p), '-N', '-o', 'ExitOnForwardFailure=yes', '-L', `127.0.0.1:${port}:127.0.0.1:${remote.port}`, p.host], {
-        stdio: ['ignore', 'ignore', 'pipe']
-    });
-    let failure = '', exited = false;
-    child.stderr!.on('data', b => {
-        failure = (failure + b).slice(-8192);
-    });
-    child.on('error', e => {
-        failure = String(e);
-        exited = true;
-    });
-    child.on('exit', () => {
-        exited = true;
-    });
-    const url = 'http://127.0.0.1:' + port, until = Date.now() + 12000;
-    while (!exited && Date.now() < until) {
-        try {
-            // Node fetch rewrites Host to the forwarded local port. The remote daemon
-            // deliberately validates its own loopback host/port, so use http.request.
-            const ready = await new Promise<boolean>(done => {
-                const req = httpRequest(url + '/readyz', {
-                    headers: {
-                        host: remote.host
-                    }
-                }, res => {
-                    res.resume();
-                    done(res.statusCode === 200);
-                });
-                req.setTimeout(1000, () => {
-                    req.destroy();
-                    done(false);
-                });
-                req.on('error', () => done(false));
-                req.end();
-            });
-            if (ready)
-                return {
-                    url, host: remote.host, token: endpoint.token, close: () => stop(child)
-                };
-        }
-        catch {
-        }
-        await new Promise(r => setTimeout(r, 100));
-    }
-    stop(child);
-    throw Error(failure || 'SSH tunnel timeout');
-}
-function stop(child: ChildProcess) {
-    child.kill('SIGTERM');
-    const timer = setTimeout(() => {
-        if (child.exitCode === null)
-            child.kill('SIGKILL');
-    }, 2000);
-    timer.unref();
-}
+function connectionError(_error: unknown, _mode: string) { return Error('本机服务连接失败；请检查独立运行的 Pibo 服务'); }
 type NamedProfile = RuntimeProfile & {
     id: string;
     name: string;
@@ -270,6 +135,7 @@ export class RuntimeManager {
         return this.status();
     }
     async connect(value: unknown) {
+        if((value as any)?.mode==='ssh')throw Error('SSH 连接已停用；请新建 Tailscale 或 HTTPS 服务连接，旧配置不会自动迁移');
         if (this.closed || this.connecting)
             throw Error('已有连接操作正在进行');
         const p = this.prepare(value), scope = createHash('sha256').update(connectionKey(p)).digest('hex').slice(0, 24);
@@ -277,7 +143,7 @@ export class RuntimeManager {
         try {
             const endpoint = await (this.options.open ? this.options.open(p) : p.mode === 'local' ? ensureServer({
                 dataDir: p.dataDir, agentDir: p.agentDir, projectDir: this.options.projectDir ?? process.cwd(), port: 0
-            }) : openSsh(p));
+            }) : Promise.reject(Error('SSH 连接已停用')));
             if (this.closed) {
                 endpoint.close();
                 throw Error('Client closed');

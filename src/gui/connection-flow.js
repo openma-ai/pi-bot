@@ -6,11 +6,7 @@ export function connectionIssue(error, profile, nodeState) {
         };
     if (/凭据|密码|认证|Keychain|privateKey/.test(raw))
         return {
-            title: '检查登录信息', detail: '重新输入远程电脑的 SSH 登录信息，或检查保存的凭据是否仍然有效。', kind: 'credentials'
-        };
-    if (/公钥|host key|指纹/i.test(raw))
-        return {
-            title: '确认远程电脑的身份', detail: '请通过可信渠道核对完整 SSH 主机公钥。Pibo 不会自动接受未知或变化的主机。', kind: 'identity'
+            title: '检查登录信息', detail: '请检查服务访问密码，或重新登录以恢复已过期或撤销的会话。', kind: 'credentials'
         };
     if (profile?.embeddedTailscale && /Tailnet|ACL|tailnet|网络/.test(raw))
         return {
@@ -25,5 +21,5 @@ export function connectionIssue(error, profile, nodeState) {
     };
 }
 export function usableProfiles(profiles = []) {
-    return profiles.filter(p => p.mode === 'tailnet' || p.dataDir && !p.dataDir.startsWith('/path/to/') && p.dataDir !== '/path/to/existing/pi-bot/data');
+    return profiles.filter(p => p.mode === 'tailnet' || p.mode === 'direct' || p.mode === 'local' && p.dataDir && !p.dataDir.startsWith('/path/to/') && p.dataDir !== '/path/to/existing/pi-bot/data');
 }

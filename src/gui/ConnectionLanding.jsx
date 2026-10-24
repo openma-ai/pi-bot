@@ -30,9 +30,9 @@ export function ConnectionLanding({ runtime, onSettings }) {
     const choices = [...(!phone ? [{
                 id: 'local', name: '这台 Mac', description: '使用本机已启动的 Pibo 工作空间', icon: Laptop
             }] : []), {
-            id: 'remote', name: 'SSH（高级）', description: phone ? '连接你已有的远程工作空间' : '沿用这台 Mac 的 SSH 配置与密钥', icon: Cloud
+            id: 'remote', name: '服务地址直连', description: '输入 HTTPS 地址，登录后连接 Pibo 与桌面', icon: Cloud
         }, ...(runtime.status.embeddedTailscaleAvailable ? [{
-                id: 'tailnet', name: '通过 Tailscale', description: '登录网络、选择电脑，配对后直接使用 Pibo', icon: Network
+                id: 'tailnet', name: '通过 Tailscale', description: '登录网络、选择电脑，登录后直接使用 Pibo', icon: Network
             }] : [])];
     async function connect(profile) {
         const version = ++attempt.current;
@@ -56,24 +56,10 @@ export function ConnectionLanding({ runtime, onSettings }) {
             setStep('error');
         }
     }
-    async function save(profile, credentials, saveCredentials) {
-        await runtime.configure(profile);
-        if ((phone || profile.embeddedTailscale) && credentials && (credentials.method === 'interactive' || credentials.password || credentials.privateKey)) {
-            await window.__PIBOT_NATIVE__.call('ssh_credentials_set', {
-                profileId: profile.id, credentials, save: phone && saveCredentials
-            });
-        }
-        await connect(profile);
-    }
+    async function save(profile) { await runtime.configure(profile); await connect(profile); }
     function create() {
         if (kind === 'tailnet') { setCandidate({id:crypto.randomUUID(),mode:'tailnet'});setStep('configure');return; }
-        setCandidate({
-            id: crypto.randomUUID(), name: kind === 'local' ? '本机工作空间' : '远程工作空间', mode: kind === 'local' ? 'local' : 'ssh', dataDir: '', ...(kind === 'local' ? {} : {
-                host: '', projectDir: '~/pi-bot', serverPort: 0, ...(kind === 'tailnet' ? {
-                    embeddedTailscale: true
-                } : {})
-            })
-        });
+        setCandidate({id:crypto.randomUUID(),name:kind==='local'?'本机工作空间':'Pibo 服务',mode:kind==='local'?'local':'direct',dataDir:''});
         setStep('configure');
     }
     const issue = connectionIssue(failure, candidate, runtime.status.tailscaleNodeState);
@@ -82,7 +68,7 @@ export function ConnectionLanding({ runtime, onSettings }) {
  <Heading ref={heading} tabIndex={-1} className="landing-heading" size="6">{step === 'choose' ? '从你的工作空间开始' : step === 'configure' ? '连接信息' : step === 'connecting' ? '正在连接工作空间…' : issue.title}</Heading>
  {step === 'choose' && <><Text as="p" color="gray" size="2">任务和文件保留在运行 Pibo 服务的电脑上。先连接，再开始会话。</Text>{runtime.status.profiles === null ? <div role="status" className="landing-loading">正在读取连接…{runtime.error && <><Text role="alert">{runtime.error}</Text><Button onClick={() => void runtime.refresh().catch(() => {
             })}>重新读取</Button></>}</div> : <>
- {profiles.length > 0 && <div className="landing-returning"><Text as="p" size="2" weight="medium">继续使用</Text>{[...profiles].sort((a, b) => Number(b.id === last) - Number(a.id === last)).map(p => <Card key={p.id} className="landing-saved"><Flex justify="between" align="center" gap="3"><div><Text as="p" weight="medium">{p.name}</Text><Text size="1" color="gray">{p.mode === 'local' ? '这台 Mac' : p.embeddedTailscale ? '私有网络 · Tailscale' : '远程电脑'}</Text></div><Flex gap="2"><Button variant="ghost" onClick={() => {
+ {(runtime.status.profiles||[]).some(p=>p.mode==='ssh')&&<Text as="p" color="amber">旧 SSH 连接已停用并保留。请新建 Tailscale 或 HTTPS 连接并使用服务访问密码登录；地址和凭据不会自动迁移。</Text>}{profiles.length > 0 && <div className="landing-returning"><Text as="p" size="2" weight="medium">继续使用</Text>{[...profiles].sort((a, b) => Number(b.id === last) - Number(a.id === last)).map(p => <Card key={p.id} className="landing-saved"><Flex justify="between" align="center" gap="3"><div><Text as="p" weight="medium">{p.name}</Text><Text size="1" color="gray">{p.mode === 'local' ? '这台 Mac' : p.embeddedTailscale ? '私有网络 · Tailscale' : '远程电脑'}</Text></div><Flex gap="2"><Button variant="ghost" onClick={() => {
                 setCandidate(p);
                 setKind(p.mode==='tailnet'?'tailnet':p.mode==='local'?'local':'remote');setStep('configure');
             }}>修改</Button><Button onClick={() => void connect(p)}>继续连接</Button></Flex></Flex></Card>)}</div>}

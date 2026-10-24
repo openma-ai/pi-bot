@@ -13,6 +13,7 @@ const identity = {
     }))
 };
 export const RuntimeProfileSchema = Type.Union([
+    Type.Object({...identity, mode:Type.Literal("direct"),url:Type.String({maxLength:2048}),dataDir:Type.Optional(Type.String({maxLength:0}))},{additionalProperties:false}),
     Type.Object({
         ...identity, mode: Type.Literal('tailnet'), host: Type.String({
             pattern: '^100\\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.(?:[0-9]{1,3})\\.(?:[0-9]{1,3})$'
@@ -45,7 +46,7 @@ export const RuntimeStatusSchema = Type.Object({
         minItems: 0, maxItems: 32
     }),
     active: Type.Union([Type.Object({
-            id: Type.String(), profileId: Type.String(), mode: Type.Union([Type.Literal('local'), Type.Literal('ssh'), Type.Literal('tailnet')]), baseUrl: Type.String(), profile: Type.Optional(RuntimeProfileSchema), scope: Type.String(), label: Type.String()
+            id: Type.String(), profileId: Type.String(), mode: Type.Union([Type.Literal('local'), Type.Literal('ssh'), Type.Literal('tailnet'),Type.Literal('direct')]), baseUrl: Type.String(), profile: Type.Optional(RuntimeProfileSchema), scope: Type.String(), label: Type.String()
         }), Type.Null()]),
     tailscaleNodeState: Type.Optional(Type.Union([Type.Literal("unavailable"), Type.Literal("notPrepared"), Type.Literal("prepared"), Type.Literal("dialed"), Type.Literal("stopped")])),
     embeddedTailscaleAvailable: Type.Optional(Type.Boolean()),

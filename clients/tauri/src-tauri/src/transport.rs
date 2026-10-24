@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
-use std::{path::PathBuf, process::Stdio};
+use std::path::PathBuf;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
-use tokio::process::{Child, Command};
+use tokio::process::Child;
 
 fn is_false(value: &bool) -> bool {
     !*value
@@ -19,6 +19,8 @@ pub struct Profile {
     #[serde(default)]
     pub name: String,
     pub mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub embedded_tailscale: bool,
     #[serde(default)]
@@ -46,6 +48,7 @@ impl Profile {
             id: id.into(),
             name: name.into(),
             mode: "local".into(),
+            url: None,
             embedded_tailscale: false,
             data_dir: path.into(),
             host: None,
@@ -59,39 +62,21 @@ impl Profile {
         }
     }
     pub fn validate(&self) -> Result<(), String> {
-        if !["local", "ssh", "tailnet"].contains(&self.mode.as_str())
-            || (self.mode != "tailnet" && self.data_dir.is_empty())
+        if self.mode == "ssh" { return Err("SSH 连接已停用；请新建 Tailscale 或 HTTPS 服务连接并使用服务访问密码登录，旧配置不会自动迁移".into()); }
+        if !["local", "direct", "tailnet"].contains(&self.mode.as_str())
+            || (self.mode == "local" && self.data_dir.is_empty())
             || self.data_dir.len() > 2048
             || self.data_dir.chars().any(|c| c.is_control())
         {
             return Err("请检查 runtime 目录".into());
         }
-        if self.embedded_tailscale
-            && (self.mode == "local" || (self.mode == "ssh" && self.host_key.is_none()))
-        {
-            return Err("内嵌 Tailscale 需要 SSH 模式和已核验主机公钥".into());
-        }
+        if self.embedded_tailscale && self.mode != "tailnet" { return Err("内嵌 Tailscale 仅用于设备选择连接".into()); }
         if self.name.len() > 300 || self.name.chars().any(|c| c.is_control()) {
             return Err("Invalid runtime name".into());
         }
+        if self.mode == "direct" { crate::direct_transport::address(self)?; }
         if self.mode == "tailnet" {
             crate::tailnet_transport::destination(self)?;
-        }
-        if self.mode == "ssh" {
-            let h = self.host.as_deref().unwrap_or("");
-            if h.is_empty()
-                || h.len() > 255
-                || h.starts_with('-')
-                || !h
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || "_.-:@".contains(c))
-            {
-                return Err("Invalid SSH host".into());
-            }
-            let p = self.project_dir.as_deref().unwrap_or("");
-            if !(p.starts_with('/') || p.starts_with("~/")) || p.chars().any(|c| c.is_control()) {
-                return Err("SSH project directory must be absolute or ~/…".into());
-            }
         }
         if self.id.len() > 64
             || !self
@@ -125,11 +110,14 @@ pub struct Endpoint {
     pub base: Url,
     pub remote_host: String,
     pub(crate) token: String,
+    pub(crate) desktop_origin: Option<String>,
     pub(crate) client: Client,
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     pub(crate) _tunnel: Option<Child>,
-    pub(crate) _embedded: Option<crate::mobile_ssh::Tunnel>,
+    pub(crate) _embedded: Option<Tunnel>,
 }
+pub struct Tunnel { pub(crate) task: tokio::task::JoinHandle<()> }
+impl Drop for Tunnel { fn drop(&mut self) {self.task.abort();} }
 impl Endpoint {
     pub async fn request(
         &self,
@@ -201,47 +189,17 @@ pub(crate) fn discovery(text: &str, token: &str) -> Result<(Url, String), String
     let host = format!("127.0.0.1:{}", u.port().unwrap());
     Ok((u, host))
 }
+#[cfg(feature="client-fixtures")]
 fn quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\"'\"'"))
 }
+#[cfg(feature="client-fixtures")]
 pub(crate) fn remote_path(path: &str) -> String {
     if let Some(tail) = path.strip_prefix("~/") {
         format!("\"$HOME\"/{}", quote(tail))
     } else {
         quote(path)
     }
-}
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn ssh_args(p: &Profile) -> Vec<String> {
-    let mut args = vec![
-        "-T",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "StrictHostKeyChecking=yes",
-        "-o",
-        "ForwardAgent=no",
-        "-o",
-        "ConnectTimeout=10",
-        "-o",
-        "ServerAliveInterval=15",
-        "-o",
-        "ServerAliveCountMax=2",
-    ]
-    .into_iter()
-    .map(String::from)
-    .collect::<Vec<_>>();
-    if let Some(port) = p.ssh_port {
-        args.extend(["-p".into(), port.to_string()]);
-    }
-    if let Some(file) = &p.config_file {
-        args.extend(["-F".into(), file.clone()]);
-    }
-    args
-}
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn ssh_error() -> String {
-    "SSH 连接失败：请检查已配置的密钥、可信主机指纹、路径和独立 runtime；客户端不会接受未知 host key 或启动远端服务".into()
 }
 pub(crate) async fn ready(endpoint: &Endpoint) -> Result<(), String> {
     let response = tokio::time::timeout(
@@ -260,21 +218,9 @@ pub(crate) async fn ready(endpoint: &Endpoint) -> Result<(), String> {
     }
     Ok(())
 }
-#[cfg(any(target_os = "ios", target_os = "android"))]
-pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
-    if p.mode != "ssh" {
-        return Err("移动客户端仅支持远程 runtime".into());
-    }
-    let password = crate::ssh_credentials::load(p)?;
-    crate::mobile_ssh::connect(p, &password).await
-}
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
 pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
     p.validate()?;
-    if p.embedded_tailscale {
-        let credentials = crate::ssh_credentials::credentials(p)?;
-        return crate::mobile_ssh::connect_authenticated(p, &credentials, None).await;
-    }
+    #[cfg(not(any(target_os="ios",target_os="android")))]
     if p.mode == "local" {
         let path = PathBuf::from(&p.data_dir);
         if !path.is_absolute() {
@@ -288,6 +234,7 @@ pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
         let (base, remote_host) = discovery(&data, token.trim())?;
         let endpoint = Endpoint {
             base,
+            desktop_origin: Some(format!("http://{remote_host}")),
             remote_host,
             token: token.trim().into(),
             client: client()?,
@@ -297,69 +244,7 @@ pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
         ready(&endpoint).await?;
         return Ok(endpoint);
     }
-    let mut args = ssh_args(p);
-    args.push(p.host.clone().unwrap());
-    args.push(format!(
-        "cd {} && cat {}/daemon.json && printf '\\n' && cat {}/daemon.token",
-        remote_path(p.project_dir.as_deref().unwrap()),
-        remote_path(&p.data_dir),
-        remote_path(&p.data_dir)
-    ));
-    let mut command = Command::new("ssh");
-    command
-        .args(args)
-        .kill_on_drop(true)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null());
-    let output = tokio::time::timeout(Duration::from_secs(15), command.output())
-        .await
-        .map_err(|_| ssh_error())?
-        .map_err(|_| ssh_error())?;
-    if !output.status.success() || output.stdout.len() > 65536 {
-        return Err(ssh_error());
-    }
-    let text = String::from_utf8(output.stdout).map_err(|_| ssh_error())?;
-    let (data, token) = text.trim().rsplit_once('\n').ok_or_else(ssh_error)?;
-    let (remote, remote_host) = discovery(data.trim(), token.trim())?;
-    let listener =
-        std::net::TcpListener::bind("127.0.0.1:0").map_err(|_| "Cannot reserve local SSH port")?;
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-    let mut args = ssh_args(p);
-    args.extend([
-        "-N".into(),
-        "-o".into(),
-        "ExitOnForwardFailure=yes".into(),
-        "-L".into(),
-        format!("127.0.0.1:{port}:127.0.0.1:{}", remote.port().unwrap()),
-        p.host.clone().unwrap(),
-    ]);
-    let child = Command::new("ssh")
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|_| ssh_error())?;
-    let endpoint = Endpoint {
-        base: Url::parse(&format!("http://127.0.0.1:{port}/")).unwrap(),
-        remote_host,
-        token: token.trim().into(),
-        client: client()?,
-        _tunnel: Some(child),
-        _embedded: None,
-    };
-    for _ in 0..40 {
-        if tokio::time::timeout(Duration::from_millis(200), ready(&endpoint))
-            .await
-            .is_ok_and(|r| r.is_ok())
-        {
-            return Ok(endpoint);
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    Err(ssh_error())
+    Err("请使用 Tailscale 或 HTTPS 服务连接；移动客户端不支持本机数据目录".into())
 }
 
 #[cfg(test)]
@@ -375,7 +260,7 @@ mod tests {
         p.project_dir = Some("~/pi-bot".into());
         assert!(p.validate().is_err());
         p.host_key = Some("ssh-ed25519 checked-separately".into());
-        assert!(p.validate().is_ok());
+        assert!(p.validate().is_err());
         let old: Profile =
             serde_json::from_str(r#"{"mode":"local","dataDir":"/tmp/fixture"}"#).unwrap();
         assert!(!old.embedded_tailscale);
@@ -408,21 +293,6 @@ mod tests {
             &token
         )
         .is_err());
-    }
-    #[test]
-    fn ssh_keeps_strict_trust_and_quotes_paths() {
-        let mut p = Profile::local("remote", "remote", "work/runtime");
-        p.mode = "ssh".into();
-        p.host = Some("user@host".into());
-        p.project_dir = Some("~/pi-bot".into());
-        assert!(p.validate().is_ok());
-        let args = ssh_args(&p);
-        assert!(args.contains(&"StrictHostKeyChecking=yes".into()));
-        assert!(args.contains(&"ForwardAgent=no".into()));
-        p.host = Some("-oProxyCommand=evil".into());
-        assert!(p.validate().is_err());
-        assert_eq!(quote("a'$(bad)"), "'a'\"'\"'$(bad)'");
-        assert!(!serde_json::to_string(&p).unwrap().contains("token"));
     }
     #[test]
     fn missing_runtime_never_launches_node() {
@@ -458,6 +328,7 @@ mod tests {
                 base: Url::parse(&format!("http://127.0.0.1:{port}/")).unwrap(),
                 remote_host: "127.0.0.1:4318".into(),
                 token: "a".repeat(64),
+                desktop_origin: None,
                 client: client().unwrap(),
                 _tunnel: None,
                 _embedded: None,

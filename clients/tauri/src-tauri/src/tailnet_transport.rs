@@ -1,6 +1,6 @@
 //! HTTP, event streams, binary files and desktop WebSocket share one SDK TCP tunnel.
 use crate::{
-    mobile_ssh::Tunnel,
+    transport::Tunnel,
     transport::{Endpoint, Profile},
 };
 use serde_json::{json, Value};
@@ -22,6 +22,9 @@ pub fn destination(p: &Profile) -> Result<(String, u16), String> {
     Ok((host.into(), port))
 }
 fn profile(params: &Value) -> Result<Profile, String> {
+    if params["url"].is_string() {
+        let mut p = Profile::local("", "", ""); p.mode = "direct".into(); p.url = params["url"].as_str().map(str::to_owned); crate::direct_transport::address(&p)?; return Ok(p);
+    }
     let host = params["host"].as_str().ok_or("缺少设备地址")?;
     let port = params["port"]
         .as_u64()
@@ -35,6 +38,7 @@ fn profile(params: &Value) -> Result<Profile, String> {
     Ok(p)
 }
 fn key(p: &Profile) -> Result<String, String> {
+    if p.mode == "direct" { return Ok(format!("https-runtime-{:x}", Sha256::digest(crate::direct_transport::address(p)?.as_str()))); }
     let (h, port) = destination(p)?;
     Ok(format!(
         "runtime-{:x}",
@@ -67,6 +71,7 @@ async fn ensure_ready() -> Result<(), String> {
     Ok(())
 }
 async fn endpoint(p: &Profile, token: String) -> Result<Endpoint, String> {
+    if p.mode == "direct" { return crate::direct_transport::endpoint(p, token); }
     let (host, port) = destination(p)?;
     ensure_ready().await?;
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -81,6 +86,7 @@ async fn endpoint(p: &Profile, token: String) -> Result<Endpoint, String> {
         }
     });
     Ok(Endpoint {
+        desktop_origin:None,
         base: reqwest::Url::parse(&format!("http://{addr}/")).unwrap(),
         remote_host,
         token,
@@ -115,7 +121,7 @@ async fn control(ep: &Endpoint, path: &str, body: Option<Value>) -> Result<Value
         .map_err(|_| "未找到 Pibo 服务，请核对服务端口和网络权限")?;
     if !response.status().is_success() {
         return Err(format!(
-            "Pibo 服务拒绝请求（{}）；检查配对码或重新配对",
+            "Pibo 服务拒绝请求（{}）；检查服务密码、会话是否过期，或重新登录",
             response.status().as_u16()
         ));
     }
@@ -143,7 +149,7 @@ pub async fn probe(params: &Value) -> Result<Value, String> {
         .filter(|s| !s.is_empty() && s.len() <= 300 && !s.chars().any(|c| c.is_control()))
         .ok_or("无效 Pibo 服务名称")?;
     let pairing = v["pairing"].as_bool().ok_or("无效 Pibo 服务状态")?;
-    Ok(json!({"name":name,"pairing":pairing}))
+    Ok(json!({"name":name,"pairing":pairing,"auth":v["auth"],"passwordConfigured":v["passwordConfigured"]}))
 }
 pub async fn pair(params: &Value) -> Result<Value, String> {
     let p = profile(params)?;
@@ -166,11 +172,33 @@ pub async fn pair(params: &Value) -> Result<Value, String> {
     crate::tailnet_secrets::save(&key(&p)?, token.as_bytes())?;
     Ok(json!({"paired":true,"deviceId":v["deviceId"]}))
 }
+pub async fn login(params: &Value, epoch: std::sync::Arc<std::sync::atomic::AtomicU64>, version:u64) -> Result<Value,String> {
+    let p=profile(params)?;
+    let password=zeroize::Zeroizing::new(params["password"].as_str().filter(|s| !s.is_empty() && s.len()<=512).ok_or("请输入服务访问密码")?.to_owned());
+    let ep=endpoint(&p,String::new()).await?;
+    let v=control(&ep,"/pibo/login",Some(json!({"password":&*password}))).await?;
+    let token=zeroize::Zeroizing::new(v["token"].as_str().filter(|s|s.len()==64&&s.bytes().all(|b|b.is_ascii_hexdigit())).ok_or("无效登录响应")?.to_owned());
+    if epoch.load(std::sync::atomic::Ordering::SeqCst)!=version {
+        let mut ep=ep;ep.token=token.to_string();let _=control(&ep,"/pibo/logout",Some(json!({}))).await;
+        return Err("登录已取消；未在设备保存会话".into());
+    }
+    crate::tailnet_secrets::save(&key(&p)?,token.as_bytes())?;
+    Ok(json!({"loggedIn":true,"expiresAt":v["expiresAt"]}))
+}
+pub async fn logout(params: &Value) -> Result<Value,String> {
+    let p=profile(params)?;
+    let bytes=zeroize::Zeroizing::new(crate::tailnet_secrets::load(&key(&p)?)?.ok_or("没有保存的服务会话")?);
+    let token=String::from_utf8(bytes.to_vec()).map_err(|_|"无效会话")?;
+    let ep=endpoint(&p,token).await?;
+    control(&ep,"/pibo/logout",Some(json!({}))).await?;
+    crate::tailnet_secrets::remove(&key(&p)?)?;
+    Ok(json!({"loggedOut":true}))
+}
 pub async fn connect(p: &Profile) -> Result<Endpoint, String> {
     // Restore the existing SDK identity before resolving a network-bound credential.
-    ensure_ready().await?;
+    if p.mode == "tailnet" { ensure_ready().await?; }
     let bytes = zeroize::Zeroizing::new(
-        crate::tailnet_secrets::load(&key(p)?)?.ok_or("请先为这台电脑配对 Pibo 服务")?,
+        crate::tailnet_secrets::load(&key(p)?)?.ok_or("请先使用服务访问密码登录")?,
     );
     let token = String::from_utf8(bytes.to_vec()).map_err(|_| "配对信息无效")?;
     let ep = endpoint(p, token).await?;

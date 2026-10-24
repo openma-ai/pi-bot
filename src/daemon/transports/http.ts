@@ -65,7 +65,7 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
             if (authenticate(req, true) !== 'host' || req.headers.origin) return json({error:'Forbidden'},403);
             if (!gateway) return json({error:'Tailnet listener is disabled'},409);
             let text=''; for await(const chunk of req){text+=chunk;if(Buffer.byteLength(text)>1024)return json({error:'Too large'},413);}
-            try {const input=JSON.parse(text); if(input.action==='pair')return json(gateway.beginPairing());
+            try {const input=JSON.parse(text); if(input.action==='password')return json(await gateway.setPassword(input.password)); if(input.action==='pair')return json(gateway.beginPairing());
                 if(input.action==='cancel'){gateway.cancelPairing();return json({ok:true});}
                 if(input.action==='revoke')return json({revoked:gateway.revoke(String(input.id))});
                 if(input.action==='list')return json({devices:gateway.listDevices()});

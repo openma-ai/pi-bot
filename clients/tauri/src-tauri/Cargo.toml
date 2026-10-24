@@ -17,12 +17,12 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
-tokio = { version = "1", features = ["sync", "time", "io-util"] }
+tokio = { version = "1", features = ["sync", "time", "io-util", "macros", "net", "rt-multi-thread"] }
 futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
 sha2 = "0.10"
 semver = "1"
-russh = { version = "=0.64.1", default-features = false, features = ["ring", "rsa"] }
+russh = { optional = true, version = "=0.64.1", default-features = false, features = ["ring", "rsa"] }
 zeroize = "1"
 rand = { version = "0.10", optional = true }
 
@@ -34,7 +34,7 @@ tokio = { version = "1", features = ["process"] }
 
 [features]
 embedded-tailscale = []
-client-fixtures = ["dep:rand"]
+client-fixtures = ["dep:rand", "dep:russh"]
 
 custom-protocol = ["tauri/custom-protocol"]
 

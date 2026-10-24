@@ -12,25 +12,9 @@ const local = {
 const ssh = {
     mode: 'ssh' as const, host: 'alice@box', projectDir: '/home/alice/pi-bot', dataDir: 'work/gui/demo', serverPort: 4318, node: 'node'
 };
-test('runtime profiles reject SSH option injection and quote remote paths literally', () => {
-    assert.ok(managerModule, 'runtime manager is required');
-    assert.throws(() => managerModule.validateProfile({
-        ...ssh, host: '-oProxyCommand=evil'
-    }));
-    assert.throws(() => managerModule.validateProfile({
-        ...ssh, serverPort: 65536
-    }));
-    const args = managerModule.sshStartArgs({
-        ...ssh, projectDir: "/home/alice/it's $(touch NEVER)"
-    });
-    assert.ok(args.includes('BatchMode=yes'));
-    assert.ok(args.includes('StrictHostKeyChecking=yes'));
-    assert.ok(args.includes('ForwardAgent=no'));
-    assert.match(args.at(-1)!, /cd '\/home\/alice\/it'"'"'s \$\(touch NEVER\)'/);
-    const custom = managerModule.sshStartArgs({
-        ...ssh, configFile: '/tmp/pi-bot-ssh-config'
-    });
-    assert.equal(custom[custom.indexOf('-F') + 1], '/tmp/pi-bot-ssh-config');
+test('legacy SSH metadata is retained but no SSH launcher is exposed',()=>{
+ assert.equal(managerModule!.validateProfile(ssh).mode,'ssh');
+ assert.equal('sshStartArgs' in managerModule!,false);
 });
 test('switch is atomic, failed SSH leaves local connected, old routes are revoked, no tokens persist', async () => {
     assert.ok(managerModule, 'runtime manager is required');
@@ -57,7 +41,7 @@ test('switch is atomic, failed SSH leaves local connected, old routes are revoke
         assert.equal(manager.status().active!.id, a.active!.id);
         assert.equal(closed, 0);
         fail = false;
-        const b = await manager.connect(ssh);
+        const b = await manager.connect({...local,dataDir:'/tmp/pi-runtime-test-second'});
         assert.notEqual(a.active!.scope, b.active!.scope);
         assert.throws(() => manager.route(a.active!.id), /切换/);
         assert.equal(closed, 1);
@@ -66,7 +50,8 @@ test('switch is atomic, failed SSH leaves local connected, old routes are revoke
         assert.equal(a.active!.scope, c.active!.scope, 'draft scope survives reconnect');
         assert.equal(typeof (manager as any).remove, 'function', 'configured Cloud can be removed without deleting remote data');
         const removed = manager.remove(b.active!.profileId);
-        assert.ok(removed.profiles.every(p => p.mode !== 'ssh'));
+        assert.ok(removed.profiles.every(p => p.id !== b.active!.profileId));
+        assert.ok(removed.profiles.some(p=>p.mode==='ssh'),'legacy metadata stays intact');
         assert.equal(removed.active!.id, c.active!.id);
     }
     finally {
@@ -115,10 +100,10 @@ test('named runtimes are added without connecting, multiple VPS profiles remain 
     });
     try {
         manager.configure({
-            ...ssh, name: 'Research VPS'
+            ...local, dataDir:'/tmp/pibo-research', name: 'Research VPS'
         });
         const added = manager.configure({
-            ...ssh, host: 'bob@other-box', name: 'Build VPS'
+            ...local, dataDir:'/tmp/pibo-build', name: 'Build VPS'
         });
         assert.ok(Array.isArray(added.profiles), 'runtime settings are a collection, not two fixed slots');
         assert.equal(added.profiles.length, 3);
@@ -171,7 +156,7 @@ test('client gateway forwards existing SDK calls and private Pi auth to the chos
         file: join(dir, 'client.json'), defaults: {
             local, ssh
         }, open: async (p: any) => {
-            const s = servers[p.mode === 'local' ? 0 : 1];
+            const s = servers[p.dataDir === local.dataDir ? 0 : 1];
             return {
                 url: s.url, host: new URL(s.url).host, token: s.token, close() {
                 }
@@ -218,7 +203,7 @@ test('client gateway forwards existing SDK calls and private Pi auth to the chos
             await new Promise(r => setTimeout(r, 5));
         assert.ok(subscription.some(e => e.method === 'bot/created'), 'SSE travels through the same runtime path');
         const b = await control.runtime.connect({
-            profile: ssh
+            profile: {...local,dataDir:'/tmp/pibo-second-runtime'}
         });
         assert.equal((await fetch(host.url + a.active!.baseUrl + '/rpc', {
             method: 'POST', headers: {
@@ -278,5 +263,5 @@ test('client gateway forwards existing SDK calls and private Pi auth to the chos
 });
 
 test('browser runtime refuses native embedded routing instead of falling back to system SSH', () => {
-  assert.throws(() => managerModule!.validateProfile({mode:'ssh',host:'user@host',projectDir:'~/pi-bot',dataDir:'/runtime',serverPort:0,embeddedTailscale:true}), /原生 Apple/);
+  assert.throws(() => managerModule!.validateProfile({mode:'ssh',host:'user@host',projectDir:'~/pi-bot',dataDir:'/runtime',serverPort:0,embeddedTailscale:true}), /原生 Pibo/);
 });

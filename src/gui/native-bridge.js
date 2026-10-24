@@ -1,5 +1,5 @@
 import { configureNativeViewport } from "./native-viewport.ts";
-// The native shell owns connection authentication and SSH. Existing SDKs keep their HTTP/SSE shape.
+// The native shell owns connection authentication and runtime transport. Existing SDKs keep their HTTP/SSE shape.
 if (window.__TAURI_INTERNALS__) {
   configureNativeViewport();
   window.__PIBOT_NATIVE__ = { call: async (command, args) => {

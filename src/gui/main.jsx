@@ -1,5 +1,5 @@
 import {ConnectionLanding} from "./ConnectionLanding.jsx";
-import { NativeSshChallenge } from "./NativeSshChallenge.jsx";
+
 import { layoutMessages, isUserMessage } from "./message-layout.ts";
 import { senderLabelColor } from "./identity-color.ts";
 import { conversationPalette } from "./identity-color.ts";
@@ -1782,7 +1782,7 @@ function RuntimeShell() {
         grayColor="sand"
         radius="large"
       >
-        <NativeSshChallenge />
+
         <SettingsPage
           open={settingsOpen}
           onOpenChange={setSettingsOpen}

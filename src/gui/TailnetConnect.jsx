@@ -75,11 +75,12 @@ export function TailnetConnect({ profile, onSave, onCancel }) {
         host, port: Number(port)
     };
     async function connect() {
+        if(!alive.current)return;
         await onSave({
             id: profile?.id || crypto.randomUUID(), name: service?.name || profile?.name || host, mode: 'tailnet', embeddedTailscale: true, host, serverPort: Number(port), dataDir: ''
         });
     }
-    return <div className="tailnet-connect"><Text as="p" color="gray" size="2">登录一次，选择电脑，再配对 Pibo 工作空间。无需 SSH 用户名或密钥。</Text>
+    return <div className="tailnet-connect"><Text as="p" color="gray" size="2">登录网络，选择电脑，再用服务访问密码登录 Pibo。</Text>
  {!running ? <Card><Text as="p" weight="medium">{status?.backendState === 'NeedsMachineAuth' ? '等待网络管理员批准设备' : '登录应用内网络'}</Text><Text as="p" size="2" color="gray">网络身份将仅保存在这台设备的安全存储中。不会启用系统 VPN。</Text><Flex gap="2" mt="3" wrap="wrap"><Button disabled={busy} onClick={() => void action(async () => {
             wantLogin.current = true;
             opened.current = '';
@@ -110,15 +111,17 @@ export function TailnetConnect({ profile, onSave, onCancel }) {
             if (alive.current && version === generation.current)
                 setService(found);
         })}>检查 Pibo 服务</Button>
- {service && <Card mt="3"><Text as="p" weight="medium">{service.name}</Text><Text as="p" size="2" color="gray">首次配对：在电脑上运行 tailnet-pair，将短时一次性配对码填入这里。配对后此设备可访问整个工作空间；电脑端可随时撤销。</Text><TextField.Root type="password" autoComplete="off" value={code} onChange={e => setCode(e.target.value)} placeholder="一次性配对码"/><Flex gap="2" mt="3" wrap="wrap"><Button disabled={busy || code.length !== 24} onClick={() => void action(async () => {
-            await control('pair', {
-                ...params, code
+ {service && <Card mt="3"><Text as="p" weight="medium">{service.name}</Text><Text as="p" size="2" color="gray">在服务端本机运行 service-password 设置访问密码。登录后记住此设备会话；密码不会保存在手机，服务端可撤销会话。</Text>{(!service.passwordConfigured||service.auth!=="password")&&<Text as="p" color="amber">服务端尚未设置访问密码或需要更新。请在服务端本机运行 service-password；不会远程初始化密码。</Text>}<TextField.Root type="password" autoComplete="off" value={code} onChange={e => setCode(e.target.value)} placeholder="服务访问密码"/><Flex gap="2" mt="3" wrap="wrap"><Button disabled={busy || !code.length || service.auth!=="password" || !service.passwordConfigured} onClick={() => void action(async () => {
+            await control('login', {
+                ...params, password:code
             });
             setCode('');
             await connect();
-        })}>配对并进入</Button><Button variant="soft" disabled={busy} onClick={() => void action(connect)}>已配对，直接进入</Button><Button variant="ghost" disabled={busy} onClick={() => void action(() => control('forgetDevice', params))}>清除本机配对</Button></Flex></Card>}
+        })}>登录并进入</Button><Button variant="soft" disabled={busy} onClick={() => void action(connect)}>恢复已保存会话</Button><Button variant="ghost" disabled={busy} onClick={() => void action(() => control('logoutService', params))}>退出并撤销服务会话</Button></Flex></Card>}
  </>}
- {error && <Text as="p" role="alert" color="red" mt="3">{error}</Text>}<Button mt="4" variant="ghost" disabled={busy} onClick={() => {
+ {error && <Text as="p" role="alert" color="red" mt="3">{error}</Text>}<Button mt="4" variant="ghost" onClick={() => {
+        alive.current=false;
+        void control('cancelLogin');
         generation.current++;
         wantLogin.current = false;
         void control('closeLogin');

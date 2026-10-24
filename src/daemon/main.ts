@@ -14,20 +14,20 @@ export async function main(args = process.argv.slice(2)) {
     };
     const command = args[0] ?? 'daemon';
     const dataDir = resolve(option('--data-dir') ?? process.env.PI_BOT_DIR ?? 'work/gui/demo');
-    if (command === 'tailnet-pair' || command === 'tailnet-devices' || command === 'tailnet-revoke' || command === 'tailnet-cancel') {
+    if (command === 'service-password' || command === 'tailnet-pair' || command === 'tailnet-devices' || command === 'tailnet-revoke' || command === 'tailnet-cancel') {
         const info = JSON.parse(readFileSync(join(dataDir, 'daemon.json'), 'utf8'));
         const url = new URL(info.http);
         if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.pathname !== '/' || !url.port || url.username || url.password || url.search || url.hash)
             throw Error('Only local daemon control is supported');
         const token = readFileSync(join(dataDir, 'daemon.token'), 'utf8').trim();
         const action = ({
-            'tailnet-pair': 'pair', 'tailnet-devices': 'list', 'tailnet-revoke': 'revoke', 'tailnet-cancel': 'cancel'
+            'service-password':'password', 'tailnet-pair': 'pair', 'tailnet-devices': 'list', 'tailnet-revoke': 'revoke', 'tailnet-cancel': 'cancel'
         } as const)[command];
         const response = await fetch(new URL('/tailnet/admin', url), {
             method: 'POST', headers: {
                 authorization: 'Bearer ' + token, 'content-type': 'application/json'
             }, body: JSON.stringify({
-                action, id: option('--device')
+                action, id: option('--device'), ...(command==='service-password'?{password:await (await import('./service-password-cli.ts')).readServicePassword()}:{})
             }), signal: AbortSignal.timeout(5000)
         });
         if (!response.ok)

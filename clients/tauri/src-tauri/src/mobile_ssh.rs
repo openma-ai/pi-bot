@@ -39,14 +39,7 @@ pub fn destination(p: &Profile) -> Result<(&str, &str), String> {
     }
     Ok((user, host))
 }
-pub struct Tunnel {
-    pub(crate) task: JoinHandle<()>,
-}
-impl Drop for Tunnel {
-    fn drop(&mut self) {
-        self.task.abort();
-    }
-}
+pub use crate::transport::Tunnel;
 
 pub type PromptFuture =
     std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>, String>> + Send>>;
@@ -322,6 +315,7 @@ pub async fn connect_authenticated(
         // JoinSet drop aborts all owned streams; dropping session closes SSH.
     });
     let endpoint = Endpoint {
+        desktop_origin:None,
         base: reqwest::Url::parse(&format!("http://127.0.0.1:{local_port}")).unwrap(),
         remote_host,
         token: token.trim().into(),

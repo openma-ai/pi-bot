@@ -169,6 +169,7 @@ pub async fn serve(root: PathBuf) {
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let profile = crate::transport::Profile {
+        url: None,
         id: "ios-fixture".into(),
         name: "iOS SSH fixture".into(),
         mode: "ssh".into(),
