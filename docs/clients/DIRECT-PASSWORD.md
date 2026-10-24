@@ -27,3 +27,14 @@ No TLS proxy is installed or configured by this change. For an operator-managed 
 Old clients can keep using legacy pairing **only before** a service password is configured. Password setup deliberately revokes those pairings; new clients ask for the service password and never silently reuse SSH credentials or switch destinations. Old releases do not gain the new password form automatically: a new client build and server deployment are required, neither performed here. Normal Tailnet identity storage is unchanged.
 
 Validation uses synthetic credentials, loopback services and isolated browser fixtures. New production password login, Keychain writes, HTTPS proxy deployment, true-device noVNC and live Tailnet password transport were not exercised. Existing published 1023.7.1 and current user test resources remain untouched.
+
+## Isolated Docker test deployment preparation
+
+The test runtime uses `/data/runtime`; its launcher writes the same owner-only `daemon.json` discovery metadata needed by the CLI. After rebuilding and restoring the approved test container (not performed by these instructions), the local hidden-input command is:
+
+```
+docker exec -it --user node --workdir /app pibo-tailnet-test-direct-1 \
+  node --import tsx /app/src/daemon/main.ts service-password --data-dir /data/runtime
+```
+
+Do not run it against the old stopped image: it does not contain password authentication. Existing `/data` is tmpfs, so password/session persistence across container replacement requires a separate project-specific runtime volume mounted at `/data/runtime` with uid/gid 1000 and restrictive permissions. This is distinct from `pibo-tailnet-test-state`; never mount the Tailscale identity store into the runtime. Volume creation/mounting, service start, Tailnet-only TCP 4319 Serve and real password configuration require the operator's deployment approval. No such changes were executed during preparation.

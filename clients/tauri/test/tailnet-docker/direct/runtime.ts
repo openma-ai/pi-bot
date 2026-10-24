@@ -2,6 +2,7 @@ import { PiBotDaemon } from '../../../../../src/daemon/core/daemon.ts';
 import { listenHttp } from '../../../../../src/daemon/transports/http.ts';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { PROTOCOL_VERSION } from '../../../../../src/sdk/protocol/version.ts';
 const daemon = await PiBotDaemon.create({
     dataDir: '/data/runtime', piOptions: {
         agentDir: '/data/empty-pi', cwd: '/data'
@@ -37,6 +38,7 @@ const http = await listenHttp(daemon, {
         host, port: 4319, listenMode: 'serve-loopback', name: 'Pibo isolated direct test'
     }
 });
+writeFileSync(join(daemon.dataDir, 'daemon.json'), JSON.stringify({pid:process.pid,protocolVersion:PROTOCOL_VERSION,http:http.url,tokenFile:join(daemon.dataDir,'daemon.token'),startedAt:daemon.startedAt}),{mode:0o600});
 console.log('Pibo isolated direct service ready; no model provider');
 process.once('SIGTERM', async () => {
     await http.close();
