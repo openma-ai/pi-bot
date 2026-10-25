@@ -1,5 +1,7 @@
 # Pibo user-path screenshots and composer menu review
 
+**Latest review state:** manual client scheduling and monitor configuration have been removed following the user decision at 15:22 UTC. Existing agent-created routine status/search remains read-only. Screenshots 58–64 show the latest implementation. Earlier scheduling/monitor forms (27, 50, 53–54, 56) and details containing create/lifecycle controls are historical and superseded; do not use them as current acceptance evidence.
+
 Date: 2026-10-25. Base revision: 0950971. Changes made only in the independent checkout `/Users/xiaoyang/Documents/Codex/2026-10-25/task/pibo-menu-review`; original checkout retained read-only. No app signing, upload, git push, deployment, account changes, real model execution or changes to the user's existing bots.
 
 ## Implemented menu behavior
@@ -125,3 +127,25 @@ Replacement and supplemental screenshots (new Library IDs; old images were not r
 | 55-details-small-phone.png | libfile_413703e870988191b101251b5dcffae2 | 320px details |
 | 56-monitor-small-phone.png | libfile_e3bad342fc7c8191879a71ab84b3d87f | 320px monitor; vertical scrolling remains available |
 | 57-cancel-return-list.png | libfile_6e471a2363b88191bfeb9bda7014d64e | Cancel/Return to synthetic bot list; zero create RPCs |
+
+## Latest follow-up: agent-owned scheduling and single-scroll details
+
+Continued from 3b938c0 in the independent checkout. User explicitly stated that scheduling is the agent responsibility and the client must not expose manual scheduling. Removed the schedule/monitor create buttons, form state, quick time buttons, time/interval/path inputs, create RPC wiring, empty-state create CTA and unreachable legacy schedule/monitor pages. Also removed manual pause/resume/enable/dry-run/cancel controls so the retained status presentation is read-only. Monitor configuration was the same manual trigger/scheduling flow, so its form was removed too.
+
+Preserved backend scheduling tools, SDK/protocol methods, existing task data, routine state/error/time text, routine search results, ordinary chat and non-routine bot/group creation. No actual tasks were cancelled, paused, disabled or deleted. Read-only rendering moved to RoutineStatus.jsx; tests verify visible populated/empty states without interactive schedule controls or data mutation.
+
+The user scrollbar reference libfile_1d05f2e4a1648191bd5562c354dfd774 was materialized with the official Library helper and actual pixels inspected. Details now use one Radix ScrollArea viewport. The dialog and outer Radix wrapper no longer form a second scrolling layer. Necessary long content remains scrollable to its end, with native scrollbar space suppressed and a 4px low-contrast overlay thumb. Phone indicators appear during scrolling and hide after 700ms; desktop long content retains an indicator. Background wheel scrolling is locked by the modal; closing restores the prior conversation scroll position and focuses the conversation title. Wide desktop inspector keeps its thin, now token-based low-contrast scrollbar.
+
+Validation: 21 related tests passed (new read-only routine rendering, GUI presentation/search and protocol tests including preserved schedule/monitor backend capabilities). TypeScript and GUI lint passed. GUI production build passed (2863 modules, 341ms); deterministic 21st review of two JSX files: zero findings. Browser matrix passed for short and long details at 320x568, 402x874 and 1024x768: six cases, one scrollable viewport only, no horizontal overflow, PageDown scrolling, Tab focus trap, bottom-of-content access, unchanged background scroll and released body lock after Escape. All browser routine RPC counts were zero. Existing task search opens the read-only detail view (two preserved synthetic cards, zero inputs). Reproducible results: artifacts/review/agent-owned-details-qa-results.json.
+
+All new screenshot data are isolated synthetic protocol fixtures rendered through the real React application, not native iPhone captures. No model ran and no real task/bot/service was modified. Device permissions, real Keychain, native picker/share-sheet and live noVNC remain outside this verification.
+
+| Latest screenshot | library_file_id | Purpose |
+|---|---|---|
+| 58-details-agent-owned-small.png | libfile_e9b6be41a0e48191a337d0177fdbf069 | 320px empty read-only details; single subtle scrollbar |
+| 59-details-agent-owned-empty.png | libfile_5a6069a22be88191a3f6e667a8632fbe | 402px empty details; no forced scrollbar |
+| 60-details-long-single-scroll-small.png | libfile_d3dc0de5d10c81918a7ee122f50aa265 | 320px long agent statuses; single overlay scrollbar and keyboard focus |
+| 61-details-agent-owned-existing.png | libfile_d7dc03cdacf08191a610d58497e4bd28 | 402px existing schedule and monitor status, no manual controls |
+| 62-details-long-desktop.png | libfile_f465fa8e7aa881919e64a031175a32fd | 1024px desktop long statuses; keyboard-visible focus and overlay thumb |
+| 63-agent-routine-search-readonly.png | libfile_72371bf5b8d48191b4c84d5e91427545 | Existing agent routine remains searchable |
+| 64-search-open-existing-status.png | libfile_21aa74927fc881918882734583045f70 | Selecting task search opens existing read-only status; zero time inputs |

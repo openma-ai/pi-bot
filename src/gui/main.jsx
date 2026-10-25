@@ -1,5 +1,6 @@
 import {isComposerSubmit,resizeComposerTextarea} from './composer-keyboard.ts';
 import {RuntimeRestoring} from './RuntimeRestoring.jsx';
+import {BotRoutineStatus} from './RoutineStatus.jsx';
 import {ComposerFrame,releaseAttachmentPreview} from './ComposerAttachments.jsx';
 import {createBotAttempt} from './create-bot-attempt.ts';
 import {ConnectionLanding} from "./ConnectionLanding.jsx";
@@ -38,8 +39,6 @@ import {
   X,
   ArrowUp,
   Menu,
-  Clock3,
-  Radar,
   MessagesSquare,
   ChevronDown,
   ChevronLeft,
@@ -54,7 +53,6 @@ import {
   Theme,
   Button,
   TextField,
-  TextArea,
   Heading,
   Text,
   Badge,
@@ -63,8 +61,8 @@ import {
   Callout,
   Select,
   Checkbox,
-  Switch,
   IconButton,
+  ScrollArea,
 } from "@radix-ui/themes";
 import "@radix-ui/themes/styles.css";
 import "./style.css";
@@ -258,18 +256,12 @@ function App({ runtime, setPiSettingsOpen }) {
     [members, setMembers] = useState([]),
     [details, setDetails] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
-  const [routineOwner, setRoutineOwner] = useState("");
-  const [routineKind, setRoutineKind] = useState(""),
-    [prompt, setPrompt] = useState(""),
-    [when, setWhen] = useState(""),
-    [interval, setIntervalMinutes] = useState(""),
-    [watchPath, setWatchPath] = useState(""),
-    [routineGroup, setRoutineGroup] = useState("direct");
   const [result, setResult] = useState(""),
     [answer, setAnswer] = useState(""),
     [mentionIndex, setMentionIndex] = useState(0),
     [hideMentions, setHideMentions] = useState(false);
   const end = useRef(null),
+    conversationIdentity = useRef(null),
     composer = useRef(null),
     conversation = useRef(null),
     pinnedToEnd = useRef(true),
@@ -488,178 +480,10 @@ function App({ runtime, setPiSettingsOpen }) {
       setBusy(false);
     }
   }
-  const action = async (kind, r, act) => {
-    try {
-      const v = await mutate(
-        api.routine[act === "dry-run" ? "dryRun" : act]({
-          routineId: kind + ":" + r.id,
-        }),
-      );
-      if (act === "dry-run")
-        setNotice(
-          v.decision === "error"
-            ? "试运行失败：" + v.error
-            : "试运行通过：" + v.decision,
-        );
-    } catch (e) {
-      setNotice(errorText(e));
-    }
-  };
-  function openRoutine(kind) {
-    setNotice("");
-    setRoutineKind(kind);
-    setRoutineOwner(selected || data.bots[0]?.id || "");
-    setRoutineGroup(view === "group" ? groupId : "direct");
-  }
-  function routineCard(kind, r) {
-    return (
-      <div className="routine" key={r.id}>
-        <Flex gap="2" align="center" wrap="wrap">
-          <Text weight="medium">
-            {kind === "schedule" ? "定时任务" : "监控"}
-          </Text>
-          <Badge color={r.state === "active" ? "green" : "gray"}>
-            {kind === "schedule" && r.state === "completed"
-              ? "已触发"
-              : kind === "monitor" && r.state === "active" && !r.enabled
-                ? "未启用"
-                : labels[r.state] || r.state}
-          </Badge>
-          {r.dryRunVerified && <Badge color="green">试运行通过</Badge>}
-        </Flex>
-        <Text size="2">{r.prompt}</Text>
-        <Text size="1" color="gray">
-          {kind === "schedule"
-            ? `执行时间：${time(r.nextFire)} · ${r.intervalMs ? `每 ${r.intervalMs / 60000} 分钟` : "仅一次"}`
-            : `${r.detector === "file" ? data.watchFile : r.detector.replace(/^file:/, "")} · 每 ${r.intervalMs / 1000} 秒 · 截止 ${time(r.deadline)}`}
-        </Text>
-        {kind === "monitor" && (
-          <Text size="1" color="gray">
-            {r.enabled ? "已启用" : "未启用"} · 最近检查：
-            {{ silent: "无变化", wake: "发现变化", error: "检查失败" }[
-              r.lastDecision
-            ] || "尚未检查"}
-          </Text>
-        )}
-        <Flex gap="3" wrap="wrap" align="center">
-          {kind === "schedule" && ["active", "paused"].includes(r.state) && (
-            <Switch
-              aria-label={
-                r.state === "active" ? "暂停定时任务" : "恢复定时任务"
-              }
-              checked={r.state === "active"}
-              onCheckedChange={(checked) =>
-                action(kind, r, checked ? "resume" : "pause")
-              }
-            />
-          )}
-          {kind === "monitor" && r.state === "active" && (
-            <>
-              <Button
-                size="1"
-                variant="soft"
-                onClick={() => action(kind, r, "dry-run")}
-              >
-                试运行
-              </Button>
-              <Switch
-                aria-label={r.enabled ? "暂停监控" : "启用监控"}
-                checked={!!r.enabled}
-                onCheckedChange={(checked) =>
-                  action(kind, r, checked ? "enable" : "pause")
-                }
-              />
-            </>
-          )}
-          {["active", "paused"].includes(r.state) && (
-            <Button
-              variant="soft"
-              size="1"
-              color="red"
-              onClick={() => action(kind, r, "cancel")}
-            >
-              取消
-            </Button>
-          )}
-        </Flex>
-        {r.error && (
-          <Text size="1" color="red">
-            {r.error}
-          </Text>
-        )}
-      </div>
-    );
-  }
-  const routineRows =
-    view === "schedules"
-      ? state?.proactive?.schedules || []
-      : state?.proactive?.monitors || [];
-  const routineView = ["schedules", "monitors"].includes(view),
-    kind = view === "schedules" ? "schedule" : "monitor";
-  const title =
-    view === "requests"
-      ? "待处理"
-      : routineView
-        ? view === "schedules"
-          ? "定时任务"
-          : "监控"
-        : view === "peers"
-          ? "Bot 对话"
-          : view === "group"
-            ? group?.name
-            : bot?.name;
+  const title = view === "requests" ? "待处理" : view === "peers" ? "Bot 对话" : view === "group" ? group?.name : bot?.name;
   const inspector = (
     <>
-      <div className="details-section">
-        <Flex justify="between" align="center">
-          <Text size="2" color="gray">
-            定时任务
-          </Text>
-          <IconButton
-            variant="ghost"
-            aria-label="新建定时任务"
-            onClick={() => openRoutine("schedule")}
-          >
-            <Plus size={17} />
-          </IconButton>
-        </Flex>
-        {state?.proactive?.schedules?.some((r) =>
-          ["active", "paused"].includes(r.state),
-        ) ? (
-          state.proactive.schedules
-            .filter((r) => ["active", "paused"].includes(r.state))
-            .map((r) => routineCard("schedule", r))
-        ) : (
-          <Text as="p" size="2" color="gray">
-            还没有定时任务
-          </Text>
-        )}
-      </div>
-      <div className="details-section">
-        <Flex justify="between" align="center">
-          <Text size="2" color="gray">
-            监控
-          </Text>
-          <IconButton
-            variant="ghost"
-            aria-label="新建监控"
-            onClick={() => openRoutine("monitor")}
-          >
-            <Plus size={17} />
-          </IconButton>
-        </Flex>
-        {state?.proactive?.monitors?.some((r) =>
-          ["active", "paused"].includes(r.state),
-        ) ? (
-          state.proactive.monitors
-            .filter((r) => ["active", "paused"].includes(r.state))
-            .map((r) => routineCard("monitor", r))
-        ) : (
-          <Text as="p" size="2" color="gray">
-            还没有监控
-          </Text>
-        )}
-      </div>
+      <BotRoutineStatus proactive={state?.proactive} watchFile={data.watchFile}/>
       <Button
         variant="soft"
         color="gray"
@@ -971,6 +795,7 @@ function App({ runtime, setPiSettingsOpen }) {
           <header className="header">
             {(phone || privateFrom) && <button className={phone ? "sidebar-toggle phone-back" : "private-return"} aria-label={privateFrom ? "返回群聊" : "返回会话列表"} onClick={() => { composer.current?.blur(); navigation.back(); }}><ChevronLeft size={22} /></button>}
             <button
+              ref={conversationIdentity}
               className="conversation-identity"
               onClick={() => setDetails((v) => !v)}
               disabled={!bot && !group}
@@ -989,16 +814,6 @@ function App({ runtime, setPiSettingsOpen }) {
               ) : null}
               <Heading size="3">{title || "Pi Bot"}</Heading>
             </button>
-            {routineView && (
-              <Button
-                size="2"
-                disabled={!selected}
-                onClick={() => openRoutine(kind)}
-              >
-                <Plus size={16} />
-                新建
-              </Button>
-            )}
           </header>
           <ConnectionFeedback phase={connectionPhase} onSettings={() => setPiSettingsOpen(true)} />
           {data.configuration?.setupRequired && !connectionError && (
@@ -1026,7 +841,7 @@ function App({ runtime, setPiSettingsOpen }) {
             </ServiceNotice>
           )}
           <Notification
-            text={adding || newGroup || routineKind ? "" : notice}
+            text={adding || newGroup ? "" : notice}
             onClose={() => setNotice("")}
           />
           {view === "requests" ? (
@@ -1126,40 +941,6 @@ function App({ runtime, setPiSettingsOpen }) {
               {!(data.requests || []).some((r) => r.status === "pending") && (
                 <Text color="gray">没有待处理请求</Text>
               )}
-            </section>
-          ) : routineView ? (
-            <section className="routine-page">
-              <Flex gap="3" align="center" wrap="wrap">
-                <Text size="2">所属 bot</Text>
-                <Picker
-                  label="查看 bot 的任务"
-                  value={selected}
-                  onChange={setSelected}
-                  items={data.bots}
-                />
-              </Flex>
-              <Text as="p" size="2" color="gray">
-                {kind === "schedule"
-                  ? `${bot?.name || "当前 bot"} 的定时任务，时间按上海时区显示。`
-                  : `${bot?.name || "当前 bot"} 的文件变化监控，先试运行再启用。`}
-              </Text>
-              <div className="routine-list">
-                {routineRows.length ? (
-                  routineRows.map((r) => routineCard(kind, r))
-                ) : (
-                  <div className="empty">
-                    <Heading size="4">
-                      暂无{kind === "schedule" ? "定时任务" : "监控"}
-                    </Heading>
-                    <Button
-                      disabled={!selected}
-                      onClick={() => openRoutine(kind)}
-                    >
-                      创建第一个{kind === "schedule" ? "定时任务" : "监控"}
-                    </Button>
-                  </div>
-                )}
-              </div>
             </section>
           ) : (
             <>
@@ -1398,186 +1179,6 @@ function App({ runtime, setPiSettingsOpen }) {
             {detailContent}
           </aside>
         )}
-        <Dialog.Root
-          open={!!routineKind}
-          onOpenChange={(v) => {
-            if (!v) setRoutineKind("");
-          }}
-        >
-          <Dialog.Content maxWidth="440px">
-            <Dialog.Title>
-              {routineKind === "schedule" ? "新建定时任务" : "新建监控"}
-            </Dialog.Title>
-            <Dialog.Description size="2" mb="4">
-              {routineKind === "schedule"
-                ? "选择负责 bot、任务和执行时间。"
-                : "监控仓库内的文件变化；试运行通过后启用。"}
-            </Dialog.Description>
-            <Flex direction="column" gap="3">
-              {notice && (
-                <Text size="2" color="red">
-                  {notice}
-                </Text>
-              )}
-              <Picker
-                label="负责 bot"
-                value={routineOwner}
-                onChange={(v) => {
-                  setRoutineOwner(v);
-                  setRoutineGroup("direct");
-                }}
-                items={data.bots}
-              />
-              <Picker
-                label="回复到"
-                value={routineGroup}
-                onChange={setRoutineGroup}
-                items={[
-                  {
-                    id: "direct",
-                    name: "回复到 bot 私聊",
-                  },
-                  ...data.groups.filter((g) =>
-                    g.memberIds.includes(routineOwner),
-                  ),
-                ]}
-              />
-              <TextArea
-                aria-label="任务内容"
-                placeholder="任务内容"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-              />
-              <Flex gap="2">
-                <Button
-                  size="1"
-                  variant="soft"
-                  onClick={() =>
-                    setWhen(
-                      new Date(Date.now() + 120000)
-                        .toLocaleString("sv-SE", {
-                          timeZone: "Asia/Shanghai",
-                        })
-                        .replace(" ", "T")
-                        .slice(0, 16),
-                    )
-                  }
-                >
-                  2 分钟后
-                </Button>
-                <Button
-                  size="1"
-                  variant="soft"
-                  onClick={() =>
-                    setWhen(
-                      new Date(Date.now() + 3600000)
-                        .toLocaleString("sv-SE", {
-                          timeZone: "Asia/Shanghai",
-                        })
-                        .replace(" ", "T")
-                        .slice(0, 16),
-                    )
-                  }
-                >
-                  1 小时后
-                </Button>
-              </Flex>
-              <label>
-                <Text size="2">
-                  {routineKind === "schedule" ? "首次执行时间" : "监控截止时间"}
-                  （上海）
-                </Text>
-                <TextField.Root
-                  aria-label="执行时间"
-                  type="datetime-local"
-                  value={when}
-                  onChange={(e) => setWhen(e.target.value)}
-                />
-              </label>
-              <label>
-                <Text size="2">
-                  {routineKind === "schedule"
-                    ? "重复间隔（分钟，留空仅一次）"
-                    : "检查间隔（分钟）"}
-                </Text>
-                <TextField.Root
-                  aria-label="间隔分钟"
-                  type="number"
-                  min="1"
-                  value={interval}
-                  onChange={(e) => setIntervalMinutes(e.target.value)}
-                />
-              </label>
-              {routineKind === "monitor" && (
-                <label>
-                  <Text size="2">监控文件（仓库内路径）</Text>
-                  <TextField.Root
-                    aria-label="监控文件"
-                    placeholder={data.watchFile}
-                    value={watchPath}
-                    onChange={(e) => setWatchPath(e.target.value)}
-                  />
-                </label>
-              )}
-              <Flex gap="3" justify="end">
-                <Dialog.Close>
-                  <Button variant="soft" color="gray">
-                    返回
-                  </Button>
-                </Dialog.Close>
-                <Button
-                  disabled={busy || !routineOwner || !prompt.trim()}
-                  onClick={async () => {
-                    setBusy(true);
-                    try {
-                      const at = Date.parse(when + ":00+08:00");
-                      if (!Number.isFinite(at)) throw Error("请选择有效时间");
-                      await mutate(
-                        api.routine.create({
-                          botId: routineOwner,
-                          kind: routineKind,
-                          prompt,
-                          groupId:
-                            routineGroup === "direct"
-                              ? undefined
-                              : routineGroup,
-                          ...(routineKind === "schedule"
-                            ? {
-                                at,
-                                timezone: "Asia/Shanghai",
-                                intervalMs: interval
-                                  ? Number(interval) * 60000
-                                  : undefined,
-                              }
-                            : {
-                                deadline: at,
-                                intervalMs: interval
-                                  ? Number(interval) * 60000
-                                  : 60000,
-                                filePath: watchPath || undefined,
-                              }),
-                        }),
-                      );
-                      setSelected(routineOwner);
-                      setRoutineKind("");
-                      setPrompt("");
-                      setWhen("");
-                      setIntervalMinutes("");
-                      setWatchPath("");
-                      setNotice("");
-                    } catch (e) {
-                      setNotice(errorText(e));
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
-                  创建
-                </Button>
-              </Flex>
-            </Flex>
-          </Dialog.Content>
-        </Dialog.Root>
         <Dialog.Root open={newGroup} onOpenChange={setNewGroup}>
           <Dialog.Content maxWidth="400px">
             <Dialog.Title>新建群聊</Dialog.Title>
@@ -1679,12 +1280,12 @@ function App({ runtime, setPiSettingsOpen }) {
           open={details && (!wide || !["chat", "group"].includes(view))}
           onOpenChange={setDetails}
         >
-          <Dialog.Content className="details-dialog" maxWidth="460px">
+          <Dialog.Content className="details-dialog" maxWidth="460px" onCloseAutoFocus={(event)=>{if(!avatarOpen){event.preventDefault();conversationIdentity.current?.focus();}}}>
             <Dialog.Title className="sr-only">会话详情</Dialog.Title>
             <Dialog.Description className="sr-only">
               Bot 任务、运行状态和电脑
             </Dialog.Description>
-            {detailContent}
+            <ScrollArea className="details-scroll" type={phone?"scroll":"auto"} scrollbars="vertical" size="1" scrollHideDelay={700} tabIndex={0} role="region" aria-label="会话详情内容">{detailContent}</ScrollArea>
           </Dialog.Content>
         </Dialog.Root>
         <Dialog.Root

@@ -84,7 +84,7 @@ button:disabled {
   min-height: 0;
   overflow: auto;
   scrollbar-width: thin;
-  scrollbar-color: #373737 transparent;
+  scrollbar-color: var(--gray-a6) transparent;
   padding: 0 2px;
 }
 .home-bot {
@@ -255,7 +255,7 @@ button:disabled {
   overflow-x: hidden;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: #373737 transparent;
+  scrollbar-color: var(--gray-a6) transparent;
   padding: 16px max(22px, calc((100% - 820px) / 2));
 }
 .row {
@@ -518,7 +518,7 @@ button:disabled {
   background: #111;
   overflow: auto;
   scrollbar-width: thin;
-  scrollbar-color: #373737 transparent;
+  scrollbar-color: var(--gray-a6) transparent;
 }
 .details-top {
   display: flex;
@@ -721,8 +721,38 @@ button:disabled {
   display: none;
 }
 .details-dialog {
-  padding: 16px 22px !important;
-  max-height: 90dvh !important;
+  padding: 0 !important;
+  max-height: calc(var(--phone-height, 100dvh) - max(32px, env(safe-area-inset-top)) - max(32px, 6vh, env(safe-area-inset-bottom))) !important;
+  overflow: visible;
+}
+.details-scroll {
+  height: auto;
+  max-height: inherit;
+  border-radius: inherit;
+}
+.details-scroll .rt-ScrollAreaViewport {
+  height: auto !important;
+  max-height: inherit;
+  padding: 16px 22px;
+  box-sizing: border-box;
+  overscroll-behavior-y: contain;
+}
+.details-scroll .rt-ScrollAreaViewport > div {
+  width: 100% !important;
+  min-width: 0;
+}
+.details-scroll .rt-ScrollAreaScrollbar {
+  width: 4px !important;
+  right: 2px !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+.details-scroll .rt-ScrollAreaThumb {
+  background: var(--gray-a6);
+  border-radius: 8px;
+}
+.details-scroll .rt-ScrollAreaThumb:hover {
+  background: var(--gray-a8);
 }
 .details-dialog .rt-TabsList {
   justify-content: center;

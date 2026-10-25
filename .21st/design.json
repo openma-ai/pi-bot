@@ -102,6 +102,13 @@
       "components": "Existing Radix DropdownMenu; no additional actions beyond photos/files",
       "source": "User reference image(20261025-143945).png, libfile_35529e89dd6c81919e17605bf7060a65",
       "behavior": "Never flips below or overlays the composer; constrain height and scroll when keyboard leaves little space; preserve outside click/Escape/focus behavior"
+    },
+    {
+      "date": "2026-10-25",
+      "direction": "Agent-owned scheduling and monitoring; client provides read-only status and search, no manual forms or controls",
+      "source": "User 15:22:03 and 15:22:09 UTC: no manual scheduling entrance; this is the agent responsibility",
+      "scrolling": "One Radix ScrollArea in details, 4px low-contrast overlay thumb; mobile scroll-only visibility; preserve background position and keyboard focus",
+      "reference": "libfile_1d05f2e4a1648191bd5562c354dfd774 actual pixels inspected"
     }
   ],
   "evidence": [
