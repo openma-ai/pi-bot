@@ -47,7 +47,7 @@ None of these are native iPhone screenshots. 402x390 and 874x250 simulate keyboa
 
 Native picker dismissal, photo permissions, actual software keyboard/safe-area behavior, real Keychain persistence across restart, live Tailnet, paid model output, provider OAuth/API-key login, live noVNC connection/control and system share-sheet delivery are not verified here. These require authorized device/service checks. Browser hidden-input selection, upload cancellation and export bridge are covered; this is not a claim that the native dialogs were exercised.
 
-Existing detail/schedule/monitor overlays show a horizontal bottom scrollbar in the phone fixture (26–29, 50). It is outside the menu positioning change and remains an explicit UI follow-up. No indefinite permutation coverage or routine execution is claimed. Other task/job detail and collaboration execution states were not exhaustively generated because they require fixture expansion or executing work beyond this review.
+The horizontal bottom scrollbar previously observed in detail/schedule/monitor overlays (26–29, 50) is fixed in the follow-up below. Those historical screenshots are superseded for layout acceptance by 52–56. No indefinite permutation coverage or routine execution is claimed. Other task/job detail and collaboration execution states were not exhaustively generated because they require fixture expansion or executing work beyond this review.
 
 The first four connection screenshots can be reused; 05 must not be described as connecting. 06 visibly contains one local verification bot, not an empty list. New 38 is the actual connecting screen.
 
@@ -106,3 +106,22 @@ The first four connection screenshots can be reused; 05 must not be described as
 | 50-monitor-form.png | libfile_3ce3ce5387508191b107ad2d1501a67f |
 | 51-avatar-editor.png | libfile_cb0e4efd11848191bfd46e19a3e02a46 |
 
+
+## Follow-up: phone dialog overflow and safe cancellation
+
+Continued from commit 676c9c9 in the same independent checkout. The mobile details dialog overrode Radix sizing with viewport-minus-24px, while its scroll wrapper reserves 16px padding per side. This forced 8px overflow; small screens with a vertical scrollbar lost additional width. The minimal correction uses 100% of the available Radix container width, accounting for both padding and vertical scrollbars. No horizontal overflow is hidden or clipped.
+
+Actual details, schedule and monitor dialogs were checked at 402x874, 320x568 and 402x390 (9 layout cases). Each dialog fits within the viewport; every overlay and dialog scrollWidth is no greater than clientWidth (1px rounding tolerance). Controls remain available through vertical scrolling. Schedule Escape, monitor footer Return, details Close, new-bot Cancel and group-form Return were exercised; no bot/group/routine create RPC was made in these cancellation tests. 57 shows the unchanged synthetic list after returning.
+
+TypeScript and GUI lint passed. CSS review reported only 158 pre-existing hardcoded-color informational notes, no fixes. GUI production build passed (2862 modules, 417ms). Existing runtime/file integration tests remain 18/18 from the prior change; this follow-up changes only CSS sizing. Full measured results: artifacts/review/overlay-qa-results.json; reproducible script: artifacts/review/overlay-qa.py. Native/device validation boundaries above remain unchanged.
+
+Replacement and supplemental screenshots (new Library IDs; old images were not replaced or re-uploaded):
+
+| File | library_file_id | Purpose |
+|---|---|---|
+| 52-details-no-horizontal-overflow.png | libfile_e87ef81133f4819197566426be3680f9 | 402px details; replaces 26 |
+| 53-schedule-no-horizontal-overflow.png | libfile_f8f7b1ab17b081918c424afca0bdc5c4 | 402px schedule; replaces 27 |
+| 54-monitor-no-horizontal-overflow.png | libfile_6a21743e0174819187ab09bc2760ef24 | 402px monitor; replaces 50 |
+| 55-details-small-phone.png | libfile_413703e870988191b101251b5dcffae2 | 320px details |
+| 56-monitor-small-phone.png | libfile_e3bad342fc7c8191879a71ab84b3d87f | 320px monitor; vertical scrolling remains available |
+| 57-cancel-return-list.png | libfile_6e471a2363b88191bfeb9bda7014d64e | Cancel/Return to synthetic bot list; zero create RPCs |

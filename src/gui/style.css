@@ -912,7 +912,8 @@ button:disabled {
     padding: 10px 14px;
   }
   .details-dialog {
-    width: calc(100vw - 24px) !important;
+    /* Use Radix's available width, including padding and vertical scrollbars. */
+    width: 100% !important;
   }
   .composer {
     padding-left: 12px;
