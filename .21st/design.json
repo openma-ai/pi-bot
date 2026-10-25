@@ -95,6 +95,13 @@
       "components": "Existing Sidebar, Radix ScrollArea/HoverCard, BotAvatar and GroupAvatar",
       "source": "User-provided sidebar screenshots and explicit pinned-area correction",
       "toolbar": "Mac native titlebar overlay search/new with traffic-light inset; no visible collapse button, no footer connection or duplicate plus; divider/keyboard mode switch. Phone avatar-like settings/search/new top bar and right-aligned message timestamps."
+    },
+    {
+      "date": "2026-10-25",
+      "direction": "Attachment menu opens above the entire composer, left-aligned with an 8px gap, including multiline text and attachment previews",
+      "components": "Existing Radix DropdownMenu; no additional actions beyond photos/files",
+      "source": "User reference image(20261025-143945).png, libfile_35529e89dd6c81919e17605bf7060a65",
+      "behavior": "Never flips below or overlays the composer; constrain height and scroll when keyboard leaves little space; preserve outside click/Escape/focus behavior"
     }
   ],
   "evidence": [
