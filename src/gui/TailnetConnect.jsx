@@ -94,6 +94,7 @@ export function TailnetConnect({ profile, onSave, onCancel }) {
         })}>取消连接</Button></Flex></Card> : <>
  <Flex align="center" justify="between" my="3"><Badge color="green">网络已连接</Badge><Button variant="ghost" disabled={busy} onClick={() => void action(async () => {
             await control('logout');
+            try{localStorage.setItem('pibo.restoreEnabled','0');}catch{}
             setStatus(await control('status'));
             setService(null);
         })}>退出网络并清除本机节点身份</Button></Flex>
@@ -117,7 +118,7 @@ export function TailnetConnect({ profile, onSave, onCancel }) {
             });
             setCode('');
             await connect();
-        })}>登录并进入</Button><Button variant="soft" disabled={busy} onClick={() => void action(connect)}>恢复已保存会话</Button><Button variant="ghost" disabled={busy} onClick={() => void action(() => control('logoutService', params))}>退出并撤销服务会话</Button></Flex></Card>}
+        })}>登录并进入</Button><Button variant="soft" disabled={busy} onClick={() => void action(connect)}>恢复已保存会话</Button><Button variant="ghost" disabled={busy} onClick={() => void action(async()=>{await control('logoutService',params);try{localStorage.setItem('pibo.restoreEnabled','0');}catch{}})}>退出并撤销服务会话</Button></Flex></Card>}
  </>}
  {error && <Text as="p" role="alert" color="red" mt="3">{error}</Text>}<Button mt="4" variant="ghost" onClick={() => {
         alive.current=false;

@@ -1,3 +1,7 @@
+import {isComposerSubmit,resizeComposerTextarea} from './composer-keyboard.ts';
+import {RuntimeRestoring} from './RuntimeRestoring.jsx';
+import {ComposerFrame,releaseAttachmentPreview} from './ComposerAttachments.jsx';
+import {createBotAttempt} from './create-bot-attempt.ts';
 import {ConnectionLanding} from "./ConnectionLanding.jsx";
 
 import { layoutMessages, isUserMessage } from "./message-layout.ts";
@@ -244,6 +248,10 @@ function App({ runtime, setPiSettingsOpen }) {
       };
     }
   }, [searchTarget, view, selected, groupId]);
+  const botCreation=useRef(createBotAttempt());
+  const [creatingBot,setCreatingBot]=useState(false);
+  const creationScope=JSON.stringify([activeRuntime?.profileId,activeRuntime?.profile?.mode,activeRuntime?.profile?.url,activeRuntime?.profile?.host,activeRuntime?.profile?.serverPort,activeRuntime?.profile?.dataDir]);
+  useEffect(()=>{botCreation.current=createBotAttempt();setCreatingBot(false);setAdding(false);},[creationScope]);
   const [adding, setAdding] = useState(false),
     [name, setName] = useState(""),
     [newGroup, setNewGroup] = useState(false),
@@ -283,13 +291,8 @@ function App({ runtime, setPiSettingsOpen }) {
     if (conversation.current) observer.observe(conversation.current);
     return () => observer.disconnect();
   }, [view]);
-  useLayoutEffect(() => {
-    const input = composer.current;
-    if (!input) return;
-    input.style.height = "auto";
-    input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
-    input.style.overflowY = input.scrollHeight > 160 ? "auto" : "hidden";
-  }, [draft, view]);
+  useLayoutEffect(()=>resizeComposerTextarea(composer.current),[draft,view]);
+  useEffect(()=>{const resize=()=>resizeComposerTextarea(composer.current);window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);return()=>{window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);};},[]);
   const activity = (id) => botActivity(data, id);
   const scrollBottom = () => {
     end.current?.scrollIntoView({
@@ -428,12 +431,21 @@ function App({ runtime, setPiSettingsOpen }) {
   const sendScope = JSON.stringify([activeRuntime?.scope, view, selected, groupId, peerA, peerB, peerScope]);
   const sendFailure = sendFailures[sendScope];
   const [fileAttachments,setFileAttachments]=useState([]),[fileBusy,setFileBusy]=useState(false),[fileError,setFileError]=useState("");
-  const uploadCancel=useRef();
+  const uploadCancel=useRef(),uploadGeneration=useRef(0),uploadPending=useRef(false);
   const fileScope={botId:view==="peers"?peerA:selected,...(view==="group"?{groupId}:view==="peers"&&peerScope!=="direct"?{groupId:peerScope}:{})};
   const fileScopeKey=JSON.stringify(fileScope);
   const pendingFiles=useRef([]);pendingFiles.current=fileAttachments;
-  useEffect(()=>{setFileAttachments([]);setFileError("");uploadCancel.current?.abort();return ()=>{uploadCancel.current?.abort();for(const f of pendingFiles.current)void api?.file.cancel({...fileScope,id:f.id}).catch(()=>{});};},[fileScopeKey]);
-  async function pickFiles(event){const files=[...event.target.files];event.target.value="";if(fileAttachments.length+files.length>4){setFileError("每条消息最多 4 个附件");return;}setFileBusy(true);setFileError("");const controller=new AbortController();uploadCancel.current=controller;try{for(const file of files){const result=await uploadFile(api,fileScope,file,controller.signal);setFileAttachments(old=>[...old,result]);}}catch(e){if(e.name!=="AbortError")setFileError(String(e.message||e));}finally{setFileBusy(false);}}
+  useEffect(()=>{uploadGeneration.current++;uploadPending.current=false;setFileBusy(false);setFileAttachments([]);setFileError("");uploadCancel.current?.abort();return ()=>{uploadGeneration.current++;uploadCancel.current?.abort();for(const f of pendingFiles.current){releaseAttachmentPreview(f);void api?.file.cancel({...fileScope,id:f.id}).catch(()=>{});}};},[fileScopeKey]);
+  async function pickFiles(event){
+    const files=[...event.target.files];event.target.value="";
+    if(uploadPending.current||!files.length||!api)return;
+    if(fileAttachments.length+files.length>4){setFileError("每条消息最多 4 个附件");return;}
+    uploadPending.current=true;setFileBusy(true);setFileError("");
+    const generation=uploadGeneration.current,controller=new AbortController();uploadCancel.current=controller;
+    try{for(const file of files){const result=await uploadFile(api,fileScope,file,controller.signal);if(generation!==uploadGeneration.current){void api.file.cancel({...fileScope,id:result.id}).catch(()=>{});break;}const uploaded={...result,previewUrl:result.image?URL.createObjectURL(file):undefined};setFileAttachments(old=>[...old,uploaded]);}}
+    catch(e){if(e.name!=="AbortError"&&generation===uploadGeneration.current)setFileError(String(e.message||e));}
+    finally{if(generation===uploadGeneration.current){uploadPending.current=false;setFileBusy(false);}}
+  }
   async function send(retry = false) {
     if ((!(retry ? sendFailure?.draft : draft)?.trim() && !fileAttachments.length) || fileBusy || busy || !api || connectionPhase !== "ready") return;
     if (sendFailure?.uncertain && (retry || sendFailure.draft === draft)) return;
@@ -467,7 +479,7 @@ function App({ runtime, setPiSettingsOpen }) {
                 : undefined,
         }),
       );
-      setDraft((current) => current === attempt.draft ? "" : current); setFileAttachments([]);
+      setDraft((current) => current === attempt.draft ? "" : current); fileAttachments.forEach(releaseAttachmentPreview);setFileAttachments([]);
       setSendFailures((old) => { const next = { ...old }; delete next[sendScope]; return next; });
       pinnedToEnd.current = true;
     } catch (e) {
@@ -874,11 +886,11 @@ function App({ runtime, setPiSettingsOpen }) {
               <DesktopPanel
                 botId={selected}
                 name={bot?.name || "Bot"}
-                enabled={data.desktop}
+                enabled={!!api&&data.desktop}
                 baseUrl={activeRuntime?.baseUrl || ""}
                 registerBeforeSwitch={runtime.registerBeforeSwitch}
                 api={(path, body) =>
-                  api.desktop[path.endsWith("/bind") ? "bind" : "control"](body)
+                  api ? api.desktop[path.endsWith("/bind") ? "bind" : "control"](body) : Promise.reject(Error("连接尚未恢复"))
                 }
               />
             </Tabs.Content>
@@ -920,7 +932,7 @@ function App({ runtime, setPiSettingsOpen }) {
           onNewBot={() => {
             setNotice("");
             setName("");
-            setAdding(true);
+            botCreation.current.reset();setAdding(true);
           }}
           onNewGroup={() => {
             setNotice("");
@@ -947,7 +959,7 @@ function App({ runtime, setPiSettingsOpen }) {
             } else if (row.id === "settings") setPiSettingsOpen(true);
             else if (row.id === "new-bot") {
               setName("");
-              setAdding(true);
+              botCreation.current.reset();setAdding(true);
             } else if (row.id === "new-group") {
               setName("");
               setMembers([]);
@@ -1310,12 +1322,7 @@ function App({ runtime, setPiSettingsOpen }) {
                     ))}
                   </div>
                 )}
-                <div className="composer">
-                  <label className="attach-button">文件<input aria-label="上传聊天附件" type="file" multiple disabled={!api||busy||fileBusy||!fileScope.botId} onChange={pickFiles} /></label>
-                  <label className="attach-button">图片<input aria-label="上传图片" type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={!api||busy||fileBusy||!fileScope.botId} onChange={pickFiles} /></label>
-                  {fileBusy&&<button onClick={()=>uploadCancel.current?.abort()}>取消上传</button>}
-                  {fileError&&<span role="alert">{fileError}</span>}
-                  {fileAttachments.map(f=><span key={f.id}>{f.name} <button onClick={()=>{setFileAttachments(old=>old.filter(x=>x.id!==f.id));void api.file.cancel({...fileScope,id:f.id}).catch(()=>{});}}>移除附件</button></span>)}
+                <ComposerFrame disabled={!api||connectionPhase!=="ready"||busy||fileBusy||!fileScope.botId} busy={fileBusy} error={fileError} files={fileAttachments} onPick={pickFiles} onCancel={()=>uploadCancel.current?.abort()} onRemove={f=>{releaseAttachmentPreview(f);setFileAttachments(old=>old.filter(x=>x.id!==f.id));void api.file.cancel({...fileScope,id:f.id}).catch(()=>{});}}>
                   <ComposerTextarea
                     className="message-input"
                     data-gramm="false"
@@ -1354,17 +1361,13 @@ function App({ runtime, setPiSettingsOpen }) {
                           setHideMentions(true);
                           return;
                         }
-                        if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                        if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode!==229) {
                           e.preventDefault();
                           chooseMention(mentionOptions[mentionIndex]);
                           return;
                         }
                       }
-                      if (
-                        e.key === "Enter" &&
-                        !e.shiftKey &&
-                        !e.nativeEvent.isComposing
-                      ) {
+                      if (isComposerSubmit(e)) {
                         e.preventDefault();
                         send();
                       }
@@ -1385,7 +1388,7 @@ function App({ runtime, setPiSettingsOpen }) {
                   >
                     {busy ? "…" : <ArrowUp size={20} />}
                   </Button>
-                </div>
+                </ComposerFrame>
               </div>
             </>
           )}
@@ -1687,6 +1690,8 @@ function App({ runtime, setPiSettingsOpen }) {
         <Dialog.Root
           open={adding}
           onOpenChange={(v) => {
+            if(botCreation.current.pending)return;
+            if(v)botCreation.current.reset();
             setAdding(v);
             setNotice("");
           }}
@@ -1698,6 +1703,7 @@ function App({ runtime, setPiSettingsOpen }) {
             </Dialog.Description>
             <TextField.Root
               aria-label="名称"
+              disabled={creatingBot}
               placeholder="名称"
               maxLength={60}
               value={name}
@@ -1710,27 +1716,23 @@ function App({ runtime, setPiSettingsOpen }) {
             )}
             <Flex gap="3" justify="end" mt="5">
               <Dialog.Close>
-                <Button variant="soft">取消</Button>
+                <Button variant="soft" disabled={creatingBot}>取消</Button>
               </Dialog.Close>
               <Button
+                disabled={creatingBot||!api||connectionPhase!=="ready"||!name.trim()}
                 onClick={async () => {
+                  if(botCreation.current.pending||!api||!name.trim())return;
+                  const attempt=botCreation.current;
+                  setCreatingBot(true);
                   try {
-                    const { bot: b } = await mutate(
-                      api.bot.create({
-                        name,
-                      }),
-                    );
-                    navigation.list();
-                    setSelected(b.id);
-                    setView("chat");
-                    setName("");
-                    setAdding(false);
-                  } catch (e) {
-                    setNotice(errorText(e));
-                  }
+                    const result=await attempt.submit(api,{name:name.trim()});
+                    if(!result||botCreation.current!==attempt)return;
+                    navigation.list();setSelected(result.bot.id);setView("chat");setName("");setAdding(false);attempt.reset();
+                  } catch(e){if(botCreation.current===attempt)setNotice(e.reason==="reviewRequired"?e.message:errorText(e));}
+                  finally{if(botCreation.current===attempt)setCreatingBot(false);}
                 }}
               >
-                创建
+                {creatingBot ? "创建中…" : "创建"}
               </Button>
             </Flex>
           </Dialog.Content>
@@ -1770,8 +1772,8 @@ function RuntimeShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   return (
     <>
-      {runtime.managed&&!runtime.status.active?<ConnectionLanding runtime={runtime} onSettings={()=>setSettingsOpen(true)}/>:<App
-        key={runtime.status.active?.id || "disconnected"}
+      {runtime.managed&&!runtime.status.active?(runtime.displayRuntime?<RuntimeRestoring runtime={runtime} onSettings={()=>setSettingsOpen(true)}/>:<ConnectionLanding runtime={runtime} onSettings={()=>setSettingsOpen(true)}/>):<App
+        key={JSON.stringify([runtime.status.active?.profileId || runtime.status.active?.scope || "direct",runtime.status.active?.profile?.url,runtime.status.active?.profile?.host,runtime.status.active?.profile?.serverPort,runtime.status.active?.profile?.dataDir])}
         runtime={runtime}
         setPiSettingsOpen={setSettingsOpen}
       />}

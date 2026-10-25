@@ -120,10 +120,12 @@ async fn control(ep: &Endpoint, path: &str, body: Option<Value>) -> Result<Value
         .await
         .map_err(|_| "未找到 Pibo 服务，请核对服务端口和网络权限")?;
     if !response.status().is_success() {
-        return Err(format!(
-            "Pibo 服务拒绝请求（{}）；检查服务密码、会话是否过期，或重新登录",
-            response.status().as_u16()
-        ));
+        let status=response.status().as_u16();
+        return Err(match status {
+            401|403=>format!("服务会话已过期或被撤销，请重新登录（{status}）"),
+            429=>"尝试过于频繁，请稍后重试".into(),
+            _=>format!("服务暂不可用（{status}），请稍后重试"),
+        });
     }
     if response.content_length().is_some_and(|n| n > 4096) {
         return Err("服务响应过大".into());

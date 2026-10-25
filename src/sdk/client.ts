@@ -188,6 +188,7 @@ export class PiBotClient {
                 return;
             }
             catch (e) {
+                if((e as any)?.reason==='authenticationRequired'){this.reconnecting=false;this.emit('authenticationRequired',{});return;}
                 if (e instanceof PiBotApiError && e.reason === 'cursorExpired') {
                     this.emit('cursorExpired', {});
                     this.reconnecting = false;

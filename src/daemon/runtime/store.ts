@@ -5,7 +5,7 @@ import type { Thread } from '../../sdk/protocol/models.ts';
 import { threadId } from '../core/ids.ts';
 import { PiBotError } from '../core/errors.ts';
 import { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { projectChannelMessage, redactChannelText } from './channel-messages.ts';
@@ -28,6 +28,7 @@ export class Store {
         this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
         for (const t of ['bots', 'inbox', 'jobs', 'questions', 'outbox', 'schedules', 'monitors', 'fires', 'proposals', 'memories', 'groups', 'group_messages'])
             this.db.exec(`CREATE TABLE IF NOT EXISTS ${t}(id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
+        this.db.exec('CREATE TABLE IF NOT EXISTS bot_creation_receipts(key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, bot_id TEXT NOT NULL)');
         this.db.exec('CREATE TABLE IF NOT EXISTS channel_messages(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,data TEXT NOT NULL,updated_seq INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS channel_message_events(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL,data TEXT NOT NULL); CREATE INDEX IF NOT EXISTS channel_message_channel ON channel_messages(json_extract(data,\'$.channelId\')); CREATE INDEX IF NOT EXISTS channel_event_channel ON channel_message_events(json_extract(data,\'$.channelId\'));');
         this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS inbox_dedupe ON inbox(json_extract(data,'$.from'),json_extract(data,'$.key')); CREATE UNIQUE INDEX IF NOT EXISTS job_dedupe ON jobs(json_extract(data,'$.botId'),json_extract(data,'$.key')); CREATE UNIQUE INDEX IF NOT EXISTS question_dedupe ON questions(json_extract(data,'$.botId'),json_extract(data,'$.key')); CREATE UNIQUE INDEX IF NOT EXISTS outbox_dedupe ON outbox(json_extract(data,'$.botId'),json_extract(data,'$.key'));");
         this.transaction(() => migrate(this.db));
@@ -161,6 +162,22 @@ export class Store {
         if (!['bots', 'inbox', 'jobs', 'questions', 'outbox', 'schedules', 'monitors', 'fires', 'proposals', 'memories', 'groups', 'group_messages', 'threads', 'turns', 'requests', 'items'].includes(t))
             throw new PiBotError('invalidParams', 'Invalid table');
         return t;
+    }
+    createBotOnce(key: string, input: string, create: () => Bot): Bot {
+        if(!/^[a-zA-Z0-9_-]{1,128}$/.test(key))throw new PiBotError('invalidParams','Invalid bot creation key');
+        const fingerprint=createHash('sha256').update(input).digest('hex');
+        return this.transaction(()=>{
+            const prior=this.db.prepare('SELECT fingerprint,bot_id FROM bot_creation_receipts WHERE key=?').get(key) as {fingerprint:string;bot_id:string}|undefined;
+            if(prior){
+                if(prior.fingerprint!==fingerprint)throw new PiBotError('conflict','Creation key reused with different bot details');
+                const bot=this.get<Bot>('bots',prior.bot_id);
+                if(!bot)throw new PiBotError('notFound','Previously created bot no longer exists');
+                return bot;
+            }
+            const bot=create();
+            this.db.prepare('INSERT INTO bot_creation_receipts(key,fingerprint,bot_id) VALUES(?,?,?)').run(key,fingerprint,bot.id);
+            return bot;
+        });
     }
     createBot(name: string, description = ''): Bot {
         if (!name.trim() || name.length > 100 || description.length > 2000)

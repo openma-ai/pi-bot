@@ -13,6 +13,7 @@ const empty = {
   turns: [],
 };
 const errors = {
+  authenticationRequired:"登录已过期或被撤销，请在连接管理重新登录",
   notInitialized: "连接尚未准备好",
   setupRequired: "请先配置 Pi 模型和认证",
   budgetExhausted: "本轮已达到运行保护限制，可查看任务状态",
@@ -187,6 +188,7 @@ export function useDaemon(baseUrl = "") {
         connection.on("connected", () => {
           if (!stopped) { setError(""); if (initialized) { setPhase("ready"); setClient(connection); } }
         });
+        connection.on("authenticationRequired",()=>{if(!stopped){setError(errors.authenticationRequired);setPhase("failed");setClient(undefined);}});
         connection.on("cursorExpired", () => {
           unsubscribe?.();
           void snapshot().catch((e) => setError(errorText(e)));

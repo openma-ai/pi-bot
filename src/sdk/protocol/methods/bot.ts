@@ -18,6 +18,7 @@ export const botMethods = {
     },
     'bot/create': {
         params: O({
+            key:Type.Optional(Type.String({minLength:1,maxLength:128,pattern:'^[a-zA-Z0-9_-]+$'})),
             name: Type.String({
                 minLength: 1, maxLength: 100, pattern: '\\S'
             }), description: Type.Optional(Type.String({

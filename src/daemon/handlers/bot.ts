@@ -13,7 +13,7 @@ export async function botHandler(d: PiBotDaemon, c: DaemonConnection, method: st
             bot: d.required('bots', p.botId), threads: s.list<Thread>('threads').filter(t => t.botId === p.botId), state: s.state(p.botId)
         };
         case 'bot/create': return {
-            bot: r.createBot(p.name, p.description, p.channelId)
+            bot: r.createBot(p.name, p.description, p.channelId, p.key)
         };
         case 'bot/update': {
             const old: any = d.required('bots', p.botId);

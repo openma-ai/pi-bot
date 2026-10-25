@@ -32,3 +32,33 @@
 .connection-landing{height:100dvh;overflow-y:auto;background:var(--gray-1,#111);color:var(--gray-12,#ecebea);padding:env(safe-area-inset-top,0px) max(24px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom));box-sizing:border-box}.landing-top{max-width:960px;margin:auto;display:flex;align-items:center;justify-content:space-between;min-height:76px}.landing-brand{font-size:18px;font-weight:650;letter-spacing:-.5px}.landing-panel{max-width:560px;margin:5vh auto 32px;min-width:0}.landing-step{display:flex;gap:24px;font-size:12px;color:var(--gray-9);margin-bottom:28px}.landing-step [data-current=true]{color:var(--accent-10)}.landing-heading{outline:none;margin-bottom:12px!important;letter-spacing:-.6px}.landing-choices{border:0;padding:0;margin:28px 0 12px;display:grid;gap:10px}.landing-choices legend{font-size:13px;margin-bottom:12px;color:var(--gray-11)}.landing-choice{display:flex;align-items:center;gap:14px;border:1px solid var(--gray-6);border-radius:12px;padding:18px;cursor:pointer;background:var(--gray-2)}.landing-choice[data-selected=true]{border-color:var(--accent-8);background:var(--accent-2)}.landing-choice:focus-within{outline:2px solid var(--accent-8);outline-offset:3px}.landing-choice input{accent-color:var(--accent-9);margin:0}.landing-choice strong{font-size:15px;font-weight:550;display:block}.landing-choice small{display:block;font-size:12px;color:var(--gray-11);margin-top:5px;line-height:1.6}.choice-check{margin-left:auto;color:var(--accent-10)}.landing-saved{margin-top:10px}.landing-returning{margin-top:24px}.landing-footnote{margin-top:32px!important;line-height:1.6}.landing-connecting{padding:36px 0;display:grid;gap:18px;justify-items:start}.landing-spinner{animation:landing-spin 1.5s linear infinite;color:var(--accent-9)}.landing-error{display:grid;gap:16px;padding-top:12px}.landing-error details{font-size:12px;color:var(--gray-11)}.landing-error pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;background:var(--gray-3);border-radius:8px}.landing-network-status{display:grid;gap:8px}.landing-panel .runtime-editor{padding-top:12px}.landing-panel .settings-pane-heading{margin-bottom:20px}.landing-panel .settings-fields{margin:16px 0}.landing-loading{padding:24px 0;display:grid;gap:14px}@keyframes landing-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.landing-spinner{animation:none}}@media(max-width:600px){.connection-landing{padding-left:20px;padding-right:20px}.landing-top{min-height:64px}.landing-panel{margin:20px auto}.landing-step{gap:18px;margin-bottom:24px}.landing-choice{padding:16px;gap:11px}.landing-panel .rt-Flex{min-width:0}.landing-saved .rt-Flex{flex-wrap:wrap}.landing-heading{font-size:24px!important}.landing-panel input{max-width:100%}.landing-panel .runtime-editor{min-width:0;width:100%;box-sizing:border-box}}
 /* The large viewer stays larger than the thumbnail, including tiny raster fixtures. */
 .image-preview{width:100%;height:auto}
+
+/* Compact composer: attachments expand upward; the text row always keeps its width. */
+.composer-shell{min-width:0;max-width:100%;border:1px solid var(--gray-6);border-radius:26px;background:var(--gray-3);backdrop-filter:blur(14px);box-sizing:border-box}
+.composer-shell:focus-within{border-color:var(--gray-8)}
+.composer-shell .composer{min-width:0;max-width:100%;box-sizing:border-box;border:0;background:transparent;padding:4px 6px!important;gap:6px;align-items:flex-end;min-height:52px}
+.composer-shell .composer .message-input{width:0;flex:1 1 0;min-width:0;padding:10px 0!important;min-height:44px!important;height:44px;max-height:min(160px,30dvh);box-sizing:border-box;line-height:24px!important;color:var(--gray-12)}
+.composer-add{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;border:0;border-radius:50%;background:transparent;color:var(--gray-12);cursor:pointer}
+.composer-add:disabled{opacity:.4;cursor:default}
+.composer-add:focus-visible,.attachment-cancel:focus-visible,.composer-attachment-list button:focus-visible{outline:2px solid var(--accent-8);outline-offset:2px}
+.composer-add-menu{min-width:180px;border-radius:20px;padding:8px;backdrop-filter:blur(16px)}
+.composer-add-menu [role="menuitem"]{min-height:48px;gap:12px;font-size:16px;border-radius:12px}
+.composer-shell .send-button{flex-shrink:0;align-self:flex-end;margin:0;width:44px!important;height:44px!important;min-width:44px!important;}
+.composer-attachments{min-width:0;max-width:100%;padding:10px 12px 0}
+.attachment-progress{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gray-11)}
+.attachment-cancel{border:0;background:transparent;color:inherit;min-height:40px;font:inherit;cursor:pointer}
+.composer-attachment-list{display:flex;gap:8px;list-style:none;padding:0;margin:0;max-width:100%;min-width:0;overflow-x:auto;overscroll-behavior-x:contain}
+.composer-attachment-list li{position:relative;display:flex;align-items:center;flex:0 0 auto;min-width:0;max-width:220px;padding:0 38px 0 10px;background:var(--gray-4);border-radius:14px;min-height:56px}
+.composer-attachment-list li>span{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.composer-attachment-list li[data-image="true"]{padding:0;width:104px;height:104px;overflow:hidden}
+.composer-attachment-list img{width:100%;height:100%;object-fit:cover;display:block}
+.composer-attachment-list button{position:absolute;right:0;top:0;display:grid;place-items:center;width:36px;height:36px;border:0;border-radius:50%;background:var(--gray-a11);color:var(--gray-1);cursor:pointer}
+.attachment-error{font-size:13px;color:var(--red-11);overflow-wrap:anywhere;margin:4px 0}
+.runtime-restoring{height:100dvh;background:var(--gray-1);color:var(--gray-12);padding:env(safe-area-inset-top) max(20px,env(safe-area-inset-right)) env(safe-area-inset-bottom);box-sizing:border-box;overflow-y:auto}
+.runtime-restoring header{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:64px}
+.runtime-restoring header strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.runtime-restoring section{max-width:560px;margin:20vh auto 0;display:flex;align-items:flex-start;flex-direction:column;gap:16px}
+.runtime-restoring section .rt-Flex{flex-wrap:wrap}
+
+@media(max-height:350px){.composer-attachment-list li[data-image="true"]{width:72px;height:72px}.app[data-phone="true"] .composer-area{padding-bottom:8px}}
+@media(max-height:350px){.composer-shell .composer .message-input{max-height:44px!important}}

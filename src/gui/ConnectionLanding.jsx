@@ -43,11 +43,7 @@ export function ConnectionLanding({ runtime, onSettings }) {
             await runtime.connect(profile);
             if (version !== attempt.current)
                 return;
-            try {
-                localStorage.setItem('pibo.lastConnection', profile.id);
-            }
-            catch {
-            }
+
         }
         catch (e) {
             if (version !== attempt.current)
@@ -66,7 +62,7 @@ export function ConnectionLanding({ runtime, onSettings }) {
     return <Theme appearance="dark" accentColor="amber" grayColor="sand" radius="large"><main className="connection-landing"><div className="landing-top"><span className="landing-brand">Pibo</span><Button variant="ghost" color="gray" onClick={onSettings}>连接管理</Button></div><section className="landing-panel" aria-label="连接工作空间">
  <div className="landing-step" aria-label="连接步骤"><span data-current={step === 'choose'}>1 选择位置</span><span data-current={step === 'configure'}>2 连接信息</span><span data-current={['connecting', 'error'].includes(step)}>3 连接</span></div>
  <Heading ref={heading} tabIndex={-1} className="landing-heading" size="6">{step === 'choose' ? '从你的工作空间开始' : step === 'configure' ? '连接信息' : step === 'connecting' ? '正在连接工作空间…' : issue.title}</Heading>
- {step === 'choose' && <><Text as="p" color="gray" size="2">任务和文件保留在运行 Pibo 服务的电脑上。先连接，再开始会话。</Text>{runtime.status.profiles === null ? <div role="status" className="landing-loading">正在读取连接…{runtime.error && <><Text role="alert">{runtime.error}</Text><Button onClick={() => void runtime.refresh().catch(() => {
+ {step === 'choose' && <>{runtime.restoring&&<div role="status" className="landing-loading">正在恢复上次连接…<Button variant="soft" onClick={()=>void runtime.cancelConnect()}>取消恢复</Button></div>}{runtime.error&&<Text as="p" role="alert" color="amber">{runtime.error}</Text>}<Text as="p" color="gray" size="2">任务和文件保留在运行 Pibo 服务的电脑上。先连接，再开始会话。</Text>{runtime.status.profiles === null ? <div role="status" className="landing-loading">正在读取连接…{runtime.error && <><Text role="alert">{runtime.error}</Text><Button onClick={() => void runtime.refresh().catch(() => {
             })}>重新读取</Button></>}</div> : <>
  {(runtime.status.profiles||[]).some(p=>p.mode==='ssh')&&<Text as="p" color="amber">旧 SSH 连接已停用并保留。请新建 Tailscale 或 HTTPS 连接并使用服务访问密码登录；地址和凭据不会自动迁移。</Text>}{profiles.length > 0 && <div className="landing-returning"><Text as="p" size="2" weight="medium">继续使用</Text>{[...profiles].sort((a, b) => Number(b.id === last) - Number(a.id === last)).map(p => <Card key={p.id} className="landing-saved"><Flex justify="between" align="center" gap="3"><div><Text as="p" weight="medium">{p.name}</Text><Text size="1" color="gray">{p.mode === 'local' ? '这台 Mac' : p.embeddedTailscale ? '私有网络 · Tailscale' : '远程电脑'}</Text></div><Flex gap="2"><Button variant="ghost" onClick={() => {
                 setCandidate(p);

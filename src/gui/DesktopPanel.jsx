@@ -15,7 +15,8 @@ export function DesktopPanel({
     [open, setOpen] = useState(false),
     [control, setControl] = useState(false),
     [controlling, setControlling] = useState(false);
-  const [screen,setScreen]=useState('');
+  const [screen,setScreen]=useState(''),[viewerEpoch,setViewerEpoch]=useState(0);
+  const retryAttempt=useRef(0);
   const canvas = useRef(null),
     rfb = useRef(null),
     apiRef = useRef(api);
@@ -46,14 +47,15 @@ export function DesktopPanel({
   },[ready,enabled,botId,baseUrl,stamp]);
   useEffect(() => {
     if (!open || !ready) return;
-    let cancelled=false, nativeId;
+    let cancelled=false, nativeId,retryTimer;
+    const retry=()=>{if(cancelled)return;setControl(false);setError("屏幕连接中断，正在重新连接…");clearTimeout(retryTimer);retryTimer=setTimeout(()=>setViewerEpoch(v=>v+1),[1000,2000,5000,10000,30000][Math.min(retryAttempt.current++,4)]);};
     const t = setTimeout(async () => {
       if (!canvas.current) return;
       let url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${baseUrl}/api/desktop/${botId}/ws`;
       if(window.__PIBOT_NATIVE__) {
         nativeId=crypto.randomUUID();
         try {url=await window.__PIBOT_NATIVE__.call("desktop_open",{id:nativeId,path:`${baseUrl}/api/desktop/${botId}/ws`});}
-        catch(e){if(!cancelled)setError(String(e));return;}
+        catch(e){if(!cancelled){if(/401|403|过期|撤销|重新登录/.test(String(e)))setError("服务登录已失效，请重新登录");else retry();}return;}
         if(cancelled){void window.__PIBOT_NATIVE__.call("stream_close",{id:nativeId});return;}
       }
       const v = new RFB(canvas.current, url, { shared: true });
@@ -61,12 +63,13 @@ export function DesktopPanel({
       v.resizeSession = false;
       v.viewOnly = true;
       rfb.current = v;
+      v.addEventListener("connect",()=>{if(!cancelled&&rfb.current===v){retryAttempt.current=0;setError("");}});
       v.addEventListener("disconnect", () => {
-        if (rfb.current === v) setError("屏幕连接已断开");
+        if (!cancelled&&rfb.current === v){v.viewOnly=true;retry();}
       });
     }, 0);
     return () => {
-      cancelled=true;clearTimeout(t);
+      cancelled=true;clearTimeout(t);clearTimeout(retryTimer);
       if(nativeId)void window.__PIBOT_NATIVE__?.call("stream_close",{id:nativeId});
       const previous = rfb.current;
       rfb.current = null;
@@ -76,7 +79,7 @@ export function DesktopPanel({
         .current("/api/desktop/control", { botId, take: false })
         .catch(() => {});
     };
-  }, [open, ready, botId, baseUrl]);
+  }, [open, ready, botId, baseUrl,viewerEpoch]);
   useEffect(
     () =>
       registerBeforeSwitch?.(async () => {

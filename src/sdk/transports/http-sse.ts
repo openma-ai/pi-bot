@@ -42,6 +42,7 @@ export class HttpSseTransport implements RpcTransport {
             await this.refreshAuth();
             r = await send();
         }
+        if(r.status===401||r.status===403)throw Object.assign(Error('Service session expired or revoked ('+r.status+')'),{reason:'authenticationRequired',retryable:false});
         if (!r.ok)
             throw Error('Daemon connection rejected (' + r.status + ')');
         return r.status === 204 ? undefined : r.json();

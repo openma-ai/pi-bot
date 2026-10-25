@@ -128,7 +128,8 @@ export class BotRuntime implements BotHost {
             throw e;
         }
     }
-    createBot(name: string, description = '', channelId?: string) {
+    createBot(name: string, description = '', channelId?: string, key?: string) {
+        const create = () => {
         if (this.store.list('bots').length >= (this.options.maxBots ?? 16))
             throw new PiBotError('capacity', 'Bot capacity reached');
         const bot = this.store.createBot(name, description);
@@ -149,6 +150,8 @@ export class BotRuntime implements BotHost {
             }
         }
         return bot;
+        };
+        return key ? this.store.createBotOnce(key,JSON.stringify([name,description,channelId??null]),create) : create();
     }
     listBots() {
         return this.store.list<Bot>('bots');
