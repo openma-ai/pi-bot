@@ -21,6 +21,6 @@ test('desktop icon manifest resolves to real PNG and complete ICNS assets',()=>{
  const dir=join(root,'clients/tauri/src-tauri');const config=JSON.parse(readFileSync(join(dir,'tauri.conf.json'),'utf8'));
  for(const path of config.bundle.icon)assert.ok(existsSync(join(dir,path)),path);
  const icon=readFileSync(join(dir,'icons/icon.icns'));assert.equal(icon.toString('ascii',0,4),'icns');assert.equal(icon.readUInt32BE(4),icon.length);
- for(const [path,size] of [['icons/32x32.png',32],['icons/128x128.png',128],['icons/128x128@2x.png',256]] as const){const image=png(join(dir,path));assert.equal(image.width,size);assert.equal(image.height,size);}
+ for(const [path,size] of [['icons/32x32.png',32],['icons/128x128.png',128],['icons/128x128@2x.png',256]] as const){const image=png(join(dir,path));assert.equal(image.width,size);assert.equal(image.height,size);assert.equal(image.color,6);}
  assert.equal(png(join(root,'src/gui/assets/pibo-logo.png')).width,256);
 });

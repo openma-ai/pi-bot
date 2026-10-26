@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Resize the approved raster only; use Apple's sips/iconutil, no redraw or recoloring."""
-import hashlib,json,struct,subprocess,tempfile
+import argparse,hashlib,json,struct,subprocess,tempfile,shutil
 from pathlib import Path
 root=Path(__file__).resolve().parents[2]
+parser=argparse.ArgumentParser();parser.add_argument('--tauri-cli',type=Path,default=root/'clients/tauri/node_modules/.bin/tauri');args=parser.parse_args()
 source=root/'assets/brand/pibo-approved-source.png'
 icons=root/'clients/tauri/src-tauri/icons'
 catalog=root/'clients/tauri/src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset'
@@ -15,7 +16,12 @@ def resize(p,size):
  subprocess.run(['sips','-s','format','png','-z',str(size),str(size),str(source),'--out',str(p)],stdout=subprocess.DEVNULL,check=True)
  assert png_info(p)[:2]==(size,size)
  assert png_info(p)[3]==2,'App icons must remain opaque RGB'
-for name,size in [('icon.png',1024),('32x32.png',32),('128x128.png',128),('128x128@2x.png',256)]:resize(icons/name,size)
+icons.mkdir(parents=True,exist_ok=True)
+with tempfile.TemporaryDirectory(prefix='pibo-tauri-icon-') as d:
+ subprocess.run([str(args.tauri_cli),'icon',str(source),'--output',d,'-p','32','-p','128','-p','256','-p','1024'],check=True)
+ for name,size in [('icon.png',1024),('32x32.png',32),('128x128.png',128),('128x128@2x.png',256)]:
+  shutil.copyfile(Path(d)/f'{size}x{size}.png',icons/name)
+  assert png_info(icons/name)[3]==6,'Tauri window icons require RGBA'
 resize(root/'src/gui/assets/pibo-logo.png',256)
 manifest=json.loads((catalog/'Contents.json').read_text())
 for image in manifest['images']:
@@ -26,6 +32,6 @@ with tempfile.TemporaryDirectory(prefix='pibo-icon-') as d:
   resize(iconset/f'icon_{size}x{size}.png',size)
   resize(iconset/f'icon_{size}x{size}@2x.png',size*2)
  subprocess.run(['iconutil','-c','icns',str(iconset),'-o',str(icons/'icon.icns')],check=True)
-metadata={'library_file_id':'libfile_cae2cb5f50888191a7232fa5b60af9e7','source':'pibo-approved-source.png','sourceSHA256':hashlib.sha256(source.read_bytes()).hexdigest(),'sourcePixels':[w,h],'operations':'proportional resizing only; opaque RGB preserved; no crop, redraw, recolor, or eye cutouts','iosCatalogSlots':len(manifest['images']),'tools':['Apple sips','Apple iconutil']}
+metadata={'library_file_id':'libfile_cae2cb5f50888191a7232fa5b60af9e7','source':'pibo-approved-source.png','sourceSHA256':hashlib.sha256(source.read_bytes()).hexdigest(),'sourcePixels':[w,h],'operations':'proportional resizing only; opaque RGB preserved; no crop, redraw, recolor, or eye cutouts','iosCatalogSlots':len(manifest['images']),'desktopFormat':'RGBA required by Tauri; source is opaque, so alpha remains fully opaque','tools':['Apple sips','Apple iconutil','Tauri icon']}
 (root/'assets/brand/provenance.json').write_text(json.dumps(metadata,ensure_ascii=False,indent=2)+'\n')
 print(json.dumps(metadata,ensure_ascii=False))

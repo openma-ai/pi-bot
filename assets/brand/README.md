@@ -8,6 +8,8 @@ User selected this exact asset on 2026-10-26 and authorized immediate release in
 - Warm cream background, asymmetric coral π, no eyes/cutouts.
 - SHA-256 is pinned in `provenance.json` and `test/brand-assets.test.ts`.
 
-`python3 scripts/brand/generate-pibo-icons.py` uses Apple's `sips` and `iconutil` to generate proportional resizes only. It does not redraw, crop or recolor. The unmodified source remains here. iOS catalog slots retain their existing filenames/manifests and are opaque RGB; macOS ICNS and PNGs are referenced in the Tauri bundle manifest. `src/gui/assets/pibo-logo.png` is the 256px product UI derivative. UI corner rounding is presentation only, not baked into the iOS app icon.
+`python3 scripts/brand/generate-pibo-icons.py` uses Apple's `sips` and `iconutil`, plus the existing project Tauri icon CLI to generate proportional resizes only. It does not redraw, crop or recolor. The unmodified source remains here. iOS catalog slots retain their existing filenames/manifests and are opaque RGB; macOS ICNS and fully opaque RGBA PNGs (required by Tauri) are referenced in the Tauri bundle manifest. `src/gui/assets/pibo-logo.png` is the 256px product UI derivative. UI corner rounding is presentation only, not baked into the iOS app icon.
 
 This mark replaces product identity only. BotAvatar, user-selected bot pictures, profiles, databases and user data are unchanged. The confirmed composer/menu, mobile layout, agent-owned routines and details scrolling fixes remain included from 8901880.
+
+The generator accepts `--tauri-cli PATH` when using an already installed project CLI outside the current dependency tree. It does not install or download a tool.

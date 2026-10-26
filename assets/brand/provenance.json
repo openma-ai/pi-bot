@@ -10,6 +10,8 @@
   "iosCatalogSlots": 18,
   "tools": [
     "Apple sips",
-    "Apple iconutil"
-  ]
+    "Apple iconutil",
+    "Tauri icon"
+  ],
+  "desktopFormat": "RGBA required by Tauri; source is opaque, so alpha remains fully opaque"
 }
