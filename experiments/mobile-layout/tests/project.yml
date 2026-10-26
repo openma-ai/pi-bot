@@ -1,0 +1,17 @@
+name: PiboKeyboardUITests
+options:
+  deploymentTarget:
+    iOS: '17.0'
+targets:
+  PiboKeyboardUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [KeyboardTests.swift]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.pibot.keyboard-uitests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        SWIFT_VERSION: '5.0'
+    scheme:
+      testTargets: [PiboKeyboardUITests]
