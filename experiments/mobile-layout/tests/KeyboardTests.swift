@@ -45,6 +45,10 @@ final class KeyboardTests:XCTestCase{
   XCTAssertLessThan(abs(header.frame.minY-y),2)
   input.tap()
   input.typeText("中文第一行\n第二行")
+  // Dismiss keyboard and await the settled composer before measuring the menu.
+  app.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.3)).tap()
+  let settled=expectation(for:NSPredicate { _,_ in input.frame.minY > app.frame.height*0.7 }, evaluatedWith:nil)
+  wait(for:[settled],timeout:5)
   let inputTop=input.frame.minY
   app.coordinate(withNormalizedOffset:CGVector(dx:0.1,dy:input.frame.midY/app.frame.height)).tap()
   let file=app.descendants(matching:.any).matching(NSPredicate(format:"label == %@", "文件")).firstMatch

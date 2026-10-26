@@ -43,3 +43,11 @@ Official references: https://ionicframework.com/docs/api/content (one content pe
 Cost/boundary: 38 installed packages, about 104 MB local dependency tree; scoped package and lockfile, no root dependency changes. Adopting this in production would require router/modal/focus integration, strict CSS scoping, keyboard/rotation native telemetry and accessibility regression work. For now reuse the one-scroll-host/header/content/footer design and the provider-first flow; retain Tauri and the proven e1b7d97 fix.
 
 Official component defaults were checked against installed input-shims implementation: scrollAssist and scrollPadding can add independent keyboard compensation, so both are disabled here. No Capacitor keyboard functionality is claimed.
+
+### Final report correction
+
+The attachment oracle was corrected to dismiss the keyboard explicitly and await the settled composer location before opening the menu. The rerun of `testScrollMenuCancelAndLandscape` passed, including Chinese multiline input, long-message scroll isolation, upward menu geometry, synthetic error/cancel and return navigation. This removes the stale-coordinate test failure; it does **not** promote the landscape screenshot to acceptance. The landscape black region/cropping remains visually failed despite the control-interaction test passing.
+
+Experiment-scoped ESLint now runs with `node node_modules/eslint/bin/eslint.js --config experiments/mobile-layout/eslint.config.js experiments/mobile-layout/main.jsx experiments/mobile-layout/build.mjs experiments/mobile-layout/eslint.config.js` and passed. This supersedes the earlier ignored-directory lint limitation.
+
+Library evidence (all synthetic): chat keyboard `libfile_e13fdfbe794c8191a556312bc56e134a`; model page `libfile_9fc6c66edde081919e54f5c75edbe11c`; landscape failure `libfile_88784f1e3eb081918992beb3581fd45f`.
