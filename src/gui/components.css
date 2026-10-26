@@ -62,3 +62,12 @@
 
 @media(max-height:350px){.composer-attachment-list li[data-image="true"]{width:72px;height:72px}.app[data-phone="true"] .composer-area{padding-bottom:8px}}
 @media(max-height:350px){.composer-shell .composer .message-input{max-height:44px!important}}
+
+/* The approved product mark never substitutes for a bot's own identity. */
+.pibo-mark{display:inline-block;flex:none;object-fit:contain;border-radius:22%;vertical-align:middle}
+.pibo-brand{display:inline-flex;align-items:center;gap:8px;vertical-align:middle;font-weight:650;white-space:nowrap}
+.sidebar-brand{margin-right:auto;min-width:0;color:var(--gray-12)}
+.sidebar-brand .pibo-mark{width:24px;height:24px}
+.sidebar-brand .pibo-brand{font-size:14px}
+.app[data-native-titlebar="true"] .sidebar-brand{display:none}
+.settings-header .settings-title{display:inline-flex;align-items:center;gap:10px;margin:0}

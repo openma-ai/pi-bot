@@ -1,0 +1,15 @@
+{
+  "library_file_id": "libfile_cae2cb5f50888191a7232fa5b60af9e7",
+  "source": "pibo-approved-source.png",
+  "sourceSHA256": "4b2bdb034b7c0c013300a0b995f3837b69d51e71212653591f8135ad4a014235",
+  "sourcePixels": [
+    1254,
+    1254
+  ],
+  "operations": "proportional resizing only; opaque RGB preserved; no crop, redraw, recolor, or eye cutouts",
+  "iosCatalogSlots": 18,
+  "tools": [
+    "Apple sips",
+    "Apple iconutil"
+  ]
+}

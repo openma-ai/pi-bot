@@ -1,3 +1,4 @@
+import {PiboMark} from './PiboBrand.jsx';
 import { DirectConnect } from './DirectConnect.jsx';
 import { TailnetConnect } from './TailnetConnect.jsx';
 import React, { useState } from "react";
@@ -302,7 +303,7 @@ export function SettingsPage({ open, onOpenChange, runtime }) {
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Content className="settings-page" maxWidth="820px">
         <div className="settings-header">
-          <Dialog.Title>设置</Dialog.Title>
+          <Dialog.Title className="settings-title"><PiboMark size={24}/>设置</Dialog.Title>
           <Dialog.Description className="sr-only">
             管理运行环境与 Pi 模型
           </Dialog.Description>

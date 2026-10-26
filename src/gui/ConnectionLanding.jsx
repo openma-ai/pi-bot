@@ -1,3 +1,4 @@
+import {PiboBrand} from './PiboBrand.jsx';
 import React, { useState, useRef, useEffect } from 'react';
 import { Theme, Heading, Text, Button, Flex, Card, Badge } from '@radix-ui/themes';
 import { Laptop, Cloud, ArrowRight, ArrowLeft, Network, Check, LoaderCircle } from 'lucide-react';
@@ -59,7 +60,7 @@ export function ConnectionLanding({ runtime, onSettings }) {
         setStep('configure');
     }
     const issue = connectionIssue(failure, candidate, runtime.status.tailscaleNodeState);
-    return <Theme appearance="dark" accentColor="amber" grayColor="sand" radius="large"><main className="connection-landing"><div className="landing-top"><span className="landing-brand">Pibo</span><Button variant="ghost" color="gray" onClick={onSettings}>连接管理</Button></div><section className="landing-panel" aria-label="连接工作空间">
+    return <Theme appearance="dark" accentColor="amber" grayColor="sand" radius="large"><main className="connection-landing"><div className="landing-top"><span className="landing-brand"><PiboBrand/></span><Button variant="ghost" color="gray" onClick={onSettings}>连接管理</Button></div><section className="landing-panel" aria-label="连接工作空间">
  <div className="landing-step" aria-label="连接步骤"><span data-current={step === 'choose'}>1 选择位置</span><span data-current={step === 'configure'}>2 连接信息</span><span data-current={['connecting', 'error'].includes(step)}>3 连接</span></div>
  <Heading ref={heading} tabIndex={-1} className="landing-heading" size="6">{step === 'choose' ? '从你的工作空间开始' : step === 'configure' ? '连接信息' : step === 'connecting' ? '正在连接工作空间…' : issue.title}</Heading>
  {step === 'choose' && <>{runtime.restoring&&<div role="status" className="landing-loading">正在恢复上次连接…<Button variant="soft" onClick={()=>void runtime.cancelConnect()}>取消恢复</Button></div>}{runtime.error&&<Text as="p" role="alert" color="amber">{runtime.error}</Text>}<Text as="p" color="gray" size="2">任务和文件保留在运行 Pibo 服务的电脑上。先连接，再开始会话。</Text>{runtime.status.profiles === null ? <div role="status" className="landing-loading">正在读取连接…{runtime.error && <><Text role="alert">{runtime.error}</Text><Button onClick={() => void runtime.refresh().catch(() => {

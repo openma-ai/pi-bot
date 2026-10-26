@@ -1,5 +1,6 @@
 import React from "react";
-import { Plus, Search, Settings2, UserRound } from "lucide-react";
+import {PiboMark,PiboBrand} from "./PiboBrand.jsx";
+import { Plus, Search, Settings2 } from "lucide-react";
 import { DropdownMenu, ScrollArea, HoverCard, ContextMenu } from "@radix-ui/themes";
 import {
   Sidebar,
@@ -73,7 +74,8 @@ export function MessengerSidebar({
       {!compact && <>
       <SidebarHeader className="messenger-sidebar-header">
         <div className="sidebar-toolbar">
-          {phone && <button className="toolbar-profile" aria-label="设置" title="设置" onClick={onSettings}><UserRound size={22} /></button>}
+          {!phone&&<span className="sidebar-brand"><PiboBrand/></span>}
+          {phone && <button className="toolbar-profile" aria-label="设置" title="设置" onClick={onSettings}><PiboMark size={24}/></button>}
           <button className="toolbar-search" aria-label="搜索全部（⌘K）" title="搜索全部（⌘K）" onClick={onSearch}><Search size={20} /></button>
           <DropdownMenu.Root><DropdownMenu.Trigger><Button size="icon" variant="ghost" aria-label="新建会话" title="新建会话"><Plus size={21} /></Button></DropdownMenu.Trigger><DropdownMenu.Content><DropdownMenu.Item onSelect={onNewBot}>新建 bot</DropdownMenu.Item><DropdownMenu.Item onSelect={onNewGroup}>新建群聊</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Root>
         </div>
@@ -159,7 +161,7 @@ export function MessengerSidebar({
       <SidebarFooter className="messenger-sidebar-footer">
         {compact && <>
         <div className="sidebar-toolbar">
-          {phone && <button className="toolbar-profile" aria-label="设置" title="设置" onClick={onSettings}><UserRound size={22} /></button>}
+          {phone && <button className="toolbar-profile" aria-label="设置" title="设置" onClick={onSettings}><PiboMark size={24}/></button>}
           <button className="toolbar-search" aria-label="搜索全部（⌘K）" title="搜索全部（⌘K）" onClick={onSearch}><Search size={20} /></button>
           <DropdownMenu.Root><DropdownMenu.Trigger><Button size="icon" variant="ghost" aria-label="新建会话" title="新建会话"><Plus size={21} /></Button></DropdownMenu.Trigger><DropdownMenu.Content><DropdownMenu.Item onSelect={onNewBot}>新建 bot</DropdownMenu.Item><DropdownMenu.Item onSelect={onNewGroup}>新建群聊</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Root>
         </div>
