@@ -1,46 +1,77 @@
-# pi-bot v0.2
+# Pibo
 
-从空仓库实现的 **Pi 原生、多 bot、持久 inbox/outbox runtime**。不是另造一套 agent SDK，也不是把主 agent 换成永远等待的后台任务。
+<img src="assets/brand/pibo-approved-source.png" alt="Pibo 珊瑚色 π 标志" width="112" />
 
-核心依赖固定到 `@earendil-works/pi-coding-agent@1.1.0`。模型、工具 schema、extension hooks、工具权限链与会话文件复用 Pi。Node.js 24+（内置 SQLite），不需要外部数据库。
+Pibo 是基于 Pi 的多 bot 聊天客户端与持久 runtime。每个 bot 有独立身份、inbox 和 Pi session；聊天界面连接 runtime，模型和工具在 runtime 所在电脑上运行。Node.js 24+ 内置 SQLite，无需外部数据库。当前核心依赖固定为 `@earendil-works/pi-coding-agent@1.2.0`。
 
-## 客户端与打包
+## 开始使用
 
-桌面 Preview、生产候选包与移动端使用同一套聊天界面；回复完整后一次显示，运行中的 bot 独立显示 Running，支持按 runtime 保存会话置顶。
-
-| 平台 | 当前验证状态 |
-| --- | --- |
-| macOS arm64 | 独立 Preview 打包流程；临时签名，无正式公证 |
-| iOS | 仅 remote；Pibo 0.1.0 (1) 发行签名验证通过，已上传 TestFlight，Apple processing 已完成；待加密出口合规声明后开启内部测试 |
-| Android arm64 | 仅 remote；debug APK 与本地 Android 15 模拟器验证；凭据仅在本次进程内存中 |
-| Windows / Linux / Intel Mac | 尚未构建验证，不声称安装包 ready |
-
-```sh
-npm --prefix clients/tauri run package:preview
-# 正式流程先检查已有签名与公证配置，缺失时直接失败：
-npm --prefix clients/tauri run package:prod
-```
-
-Preview 的应用标识为 `dev.pibot.desktop.preview`，与正式应用的数据隔离，不替换已有包。正式签名、公证及发布仍需已有 Apple 配置和明确授权。
-
-详见 [桌面 Preview/Prod 流程](docs/clients/DESKTOP-RELEASE.md)、[Android 测试包](docs/clients/ANDROID-TEST-BUILD.md)、[iOS 与 TestFlight](docs/clients/IOS-TESTFLIGHT-PREPARATION.md)、[移动端 SSH 能力与限制](docs/clients/SSH-CLIENT-AUTH.md)。客户端要求独立运行的兼容 daemon；手机不执行本地 agent。
-
-## 本地 GUI
-
-命名 Runtime、SSH 原生 Linux 和可选 Docker 一体运行见 [当前设置与连接指南](docs/design/runtime-connections.md)。
-
-`npm run gui` 后访问 http://127.0.0.1:4317/。React + Radix Themes，连接真实 Pi、现有 bot 与消息记录，支持群聊 @ / @全体、bot 间协作和 schedule / monitor 管理。触发交接复用固定源码的 OpenMatter DurableInbox；Pi 仍负责工具和模型执行。参见 [GUI 使用说明](docs/gui.md) 和 [当前交接、验收与边界](docs/gui-openmatter-handoff-20261013.md)。
-
-## 快速验证（无需 API key）
+从仓库根目录运行，先安装 Node.js 24+：
 
 ```sh
 npm ci --ignore-scripts
+npm run gui
+```
+
+打开 http://127.0.0.1:4317/。浏览器开发入口使用本机 runtime；客户端会复用兼容的现有 daemon，或启动所选本地工作区的 daemon。默认 runtime 数据目录为 `work/gui/demo/`，可用 `PI_BOT_DIR` 指定其他目录。真实模型需要通过「Pi 登录与模型」或 Pi 的 `/login`、`/model` 配置认证和模型；模型调用可能产生供应商费用。
+
+只运行 runtime 或 CLI：
+
+```sh
+npm run daemon
+npm start
+```
+
+不要让 client 与 daemon 同时占用默认的 4317 端口；分别运行时可用 `npm run client -- --port 4318` 为客户端选择其他端口。一个数据目录只允许一个本机 runtime owner。
+
+## 客户端与连接
+
+| 客户端 | 当前能力与边界 |
+| --- | --- |
+| macOS Apple Silicon | Tauri 客户端；本机工作区、Tailscale 或 HTTPS 远程 runtime；提供独立 Preview 打包流程 |
+| iOS | Tauri 客户端；仅连接远程 runtime，手机不运行本地 agent；安装需 Apple 签名和分发流程 |
+| Android arm64 | 已有 debug 构建与模拟器验证；仅远程 runtime，服务会话凭据仅保留在当前进程内存 |
+| 浏览器 / Electron 开发入口 | 本机 runtime；不支持原生客户端的远程直连配置 |
+| Windows / Linux / Intel Mac | 尚未完成安装包构建验证 |
+
+原生远程客户端可选择 Tailscale 节点，或输入已有 HTTPS 服务地址，再用 **runtime 服务密码** 登录。Tailscale 网络授权与服务登录是两个步骤；网络可达并不代表服务已授权。内嵌 Tailscale 使用应用自己的节点与 SDK 连接，不接管系统 VPN。HTTPS 验证证书，普通远程 HTTP 被拒绝。
+
+服务密码由 runtime 所有者在服务端本地终端初始化；客户端不再提供 SSH 连接或配对码入口。Apple 客户端将登录后的服务会话保存到与目标绑定的、设备专用 Keychain，密码本身不保存。重开客户端会按已保存连接意图尝试恢复；离线可重试，过期或撤销的会话需要重新登录，显式断开会停止自动恢复。部署远程 runtime、网络监听和 HTTPS 代理需要服务所有者自行配置，启动 GUI 不会配置这些服务。
+
+详见 [服务密码与直连](docs/clients/DIRECT-PASSWORD.md)、[Tailscale 连接](docs/clients/TAILNET-DIRECT.md)。
+
+原生客户端开发与 Preview 打包另需 Rust、Xcode 命令行工具和对应平台 SDK：
+
+```sh
+npm --prefix clients/tauri ci
+npm --prefix clients/tauri run build:gui
+npm --prefix clients/tauri run package:preview
+```
+
+Preview 与正式应用的数据隔离；正式签名、公证、TestFlight 分发需要已有平台配置。此处不承诺某个内测版本已可安装，也不把浏览器或模拟器验证等同于真机端到端验证。详见 [Tauri 客户端](clients/tauri/README.md)、[桌面打包](docs/clients/DESKTOP-RELEASE.md)、[iOS 分发准备](docs/clients/IOS-TESTFLIGHT-PREPARATION.md)、[Android 测试包](docs/clients/ANDROID-TEST-BUILD.md)。部分交接文档保留历史阶段记录，当前连接方式以服务密码直连说明为准。
+
+## 聊天与工具
+
+- 创建 bot、单聊与群聊，使用 @ / @全体协作；按 runtime 保存置顶会话。手机采用列表和聊天分页，返回时保留当前渲染器中的草稿与滚动位置。
+- 支持多行输入、照片和文件附件、取消选择、移除与下载。单文件最多 8 MiB，PNG/JPEG/WebP 图片最多 5 MiB；附件接收不代表模型已处理，模型图片能力取决于所选 provider。
+- 回复完整后显示，运行状态单独呈现。消息提交、处理完成、工具执行和外部投递有不同收据，不能相互替代。
+- 桌面工具与实时画面依赖 runtime 侧已配置的桌面服务及授权；客户端本身不自动获得设备控制权限。见 [Linux 桌面与人工接管](docs/linux-desktop-image.md)。
+- 定时任务与监控由 **agent 管理**，runtime 保存状态和触发记录；客户端仅展示已有任务状态，不提供手填时间、cron 或监控创建表单。可通过普通聊天向 agent 表达需求，实际能力及启用方式见 [proactive runtime](docs/proactive-runtime.md)。
+
+## 开发与验证
+
+```sh
 npm run check
+npm run gui:check
 npm test
+node --import tsx --test test/*.test.mjs
+npm run gui:build
 npm run demo
 ```
 
-Demo 使用真实 Pi SDK + faux provider，并实际执行安全延迟工具：先拿 job receipt，继续回复、提出异步问题，接收后台完成事件，再接收关联答案。不会调用外部服务、shell 或真实模型。
+Demo 使用真实 Pi SDK 和 faux provider，不调用真实模型。测试使用隔离数据与本机进程/端口；受限环境需允许相应的本地测试操作。构建成功不等于原生设备、网络或签名验收。
+
+[GUI 使用说明](docs/gui.md)、[协议](docs/protocol.md)、[Pi 认证与后台 worker](docs/pi-auth-workers.md)、[手机回归](docs/clients/PHONE-REGRESSIONS.md)提供进一步说明。以下保留 runtime 架构、执行语义和恢复边界，便于开发与贡献时核对行为。
 
 ## 真实模型 CLI
 
@@ -116,7 +147,7 @@ evals ──► 任意层（层外评测工具）
 | ④ GUI 层 | `src/gui/` | React + Radix 前端，只通过 `PiBotClient` 访问 daemon |
 | 层外 | `src/evals/` | evaluation、benchmark、`demo.ts`、smoke provider |
 
-常用入口：`npm start`（SDK 附着现有 daemon，没有宿主才嵌入）、`npm run daemon`（app-server）、`npm run gui`（构建 GUI 并启动独立 client，复用或启动 server）。GUI 支持 Pi 原生登录和默认模型选择；定时任务、监控按 bot 绑定管理。GUI/CLI 的正常操作只走协议。
+常用入口：`npm start`（SDK 附着现有 daemon，没有宿主才嵌入）、`npm run daemon`（app-server）、`npm run gui`（构建 GUI 并启动独立 client，复用或启动 server）。GUI 支持 Pi 原生登录和默认模型选择；定时任务、监控由 agent 按 bot 管理，GUI 只读展示状态。GUI/CLI 的正常操作只走协议。
 
 实现、迁移、36 次真实 API 调用及验证边界见 [app-server 交接](docs/design/app-server-implementation-20261014.md)。协议表见 [docs/protocol.md](docs/protocol.md)。
 
@@ -177,3 +208,7 @@ Real flood, natural-language correction/cancellation and concurrent background c
 
 真实 daemon 默认加载 Pi 官方 sandbox 示例扩展，覆盖后台 bash 和 coding worker 的 bash；不改变原生 Pi 登录与模型设置。
 它不覆盖所有工具，且保留上游初始化失败时退回普通 bash 的行为。安装、配置、日志确认与限制见 [沙箱说明](docs/sandbox.md)。
+
+## 许可证与贡献
+
+项目使用 [MIT 许可证](LICENSE)。贡献前请运行上面的检查与测试，并说明改动影响、验证方法和未覆盖边界；客户端、SDK 与 runtime 的依赖方向需遵守本文的分层约束。
