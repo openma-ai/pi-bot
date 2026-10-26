@@ -1,3 +1,4 @@
+import {restoreNativePageOrigin} from './native-viewport.ts';
 import {isComposerSubmit,resizeComposerTextarea} from './composer-keyboard.ts';
 import {RuntimeRestoring} from './RuntimeRestoring.jsx';
 import {BotRoutineStatus} from './RoutineStatus.jsx';
@@ -220,12 +221,13 @@ function App({ runtime, setPiSettingsOpen }) {
     const update = () => {
       // A user pinch zoom must not resize the layout to the magnified viewport.
       if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
+      restoreNativePageOrigin(document, window);
       const height = viewport?.height || window.innerHeight;
       document.documentElement.style.setProperty("--phone-height", `${height}px`);
       document.documentElement.style.setProperty("--phone-bottom-inset", height < window.innerHeight - 80 ? "0px" : "env(safe-area-inset-bottom)");
     };
-    update(); viewport?.addEventListener("resize", update); window.addEventListener("resize", update);
-    return () => { viewport?.removeEventListener("resize", update); window.removeEventListener("resize", update); document.documentElement.style.removeProperty("--phone-height"); document.documentElement.style.removeProperty("--phone-bottom-inset"); };
+    update(); viewport?.addEventListener("resize", update); viewport?.addEventListener("scroll", update); window.addEventListener("resize", update); window.addEventListener("scroll", update);
+    return () => { viewport?.removeEventListener("resize", update); viewport?.removeEventListener("scroll", update); window.removeEventListener("resize", update); window.removeEventListener("scroll", update); document.documentElement.style.removeProperty("--phone-height"); document.documentElement.style.removeProperty("--phone-bottom-inset"); };
   }, [phone]);
   useLayoutEffect(() => {
     if (!searchTarget) return;

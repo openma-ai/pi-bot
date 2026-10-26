@@ -17,3 +17,16 @@ export function configureNativeViewport(doc: ViewportDocument = document as unkn
   viewport.content = [...options, "minimum-scale=1", "maximum-scale=1", "user-scalable=no"].join(",");
   doc.documentElement.dataset.nativeIos = "true";
 }
+
+// The messenger scrolls inside its own containers. WKWebView may scroll the
+// outer document to the focused textarea before the visual viewport resizes.
+// Cancel only that outer-page movement, leaving message/dialog scrolling alone.
+export function restoreNativePageOrigin(
+  doc: {documentElement: {dataset: Record<string, string | undefined>}},
+  win: {scrollX: number; scrollY: number; visualViewport?: {scale: number} | null; scrollTo(x: number, y: number): void},
+) {
+  if (doc.documentElement.dataset.nativeIos !== 'true' ||
+      Math.abs((win.visualViewport?.scale ?? 1) - 1) > 0.01 ||
+      (!win.scrollX && !win.scrollY)) return;
+  win.scrollTo(0, 0);
+}
