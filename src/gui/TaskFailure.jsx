@@ -56,6 +56,13 @@ export function TaskFailure({ message, api, onInspect, owner }) {
             错误详情
           </summary>
           <span>原因：{issue.code}</span>
+          {issue.httpStatus && <span>HTTP：{issue.httpStatus}</span>}
+          {issue.providerCode && <span>服务错误：{issue.providerCode}</span>}
+          {issue.retry && <span>处理建议：{{
+            "after-authentication": "检查认证后再处理", "after-configuration": "调整配置后再处理",
+            "after-delay": "稍后检查任务状态", "after-quota": "检查账号用量",
+            "after-connection": "恢复连接后检查任务", inspect: "先查看任务详情",
+          }[issue.retry]}</span>}
           <code>消息：{message.messageId}</code>
         </details>
       </div>

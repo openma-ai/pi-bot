@@ -1,3 +1,4 @@
+import { readProviderFailure } from '../sdk/provider-failure.ts';
 // Only persisted, delivered messages are presentable. Delta buffers remain
 // transport state and never become bubbles, previews, or replacement messages.
 export function completedMessages(items: any[]): any[] {
@@ -200,9 +201,27 @@ export function searchEverything(data: any, query = ""): Array<any> {
 
 export function taskFailure(
   message: any,
-): { title: string; description: string; code: string } | undefined {
+): { title: string; description: string; code: string; httpStatus?: number; providerCode?: string; retry?: string } | undefined {
   if (!["uncertain", "failed"].includes(message.status)) return undefined;
   const error = String(message.error ?? "");
+  const provider = readProviderFailure(error);
+  if (provider) {
+    const labels = {
+      authentication: ["模型认证未通过", "请在模型设置中检查当前连接。"],
+      permission: ["模型访问权限不足", "请检查账号权限或选择其他可用模型。"],
+      "rate-limit": ["模型请求受到限流", "请稍后检查任务状态，再决定是否继续。"],
+      quota: ["模型用量受到限制", "请检查账号的方案与用量限制。"],
+      model: ["所选模型不可用", "请在模型设置中重新检查可用型号。"],
+      request: ["模型请求未被接受", "请检查模型与运行环境配置。"],
+      network: ["模型服务连接异常", "请检查网络连接，已有任务记录已保留。"],
+      timeout: ["模型请求超时", "请先查看任务记录，再决定是否继续。"],
+      service: ["模型服务暂时不可用", "请稍后检查任务状态，再决定是否继续。"],
+      unknown: ["模型请求失败", "未获得可安全展示的具体原因，请查看任务详情。"],
+    };
+    const [title, description] = labels[provider.category];
+    return { title, description, code: `provider.${provider.category}`, httpStatus: provider.httpStatus,
+      providerCode: provider.providerCode, retry: provider.retry };
+  }
   if (/Image inputs need a provider-specific/.test(error))
     return {
       title: "回复未完成",

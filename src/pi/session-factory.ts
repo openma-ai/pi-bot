@@ -3,6 +3,7 @@ import type { SandboxHost } from './sandbox.ts';
 import { createDesktopExtension, desktopToolNames, type DesktopClient } from './desktop-client.ts';
 import { imageBudgetForModel } from './image-budget.ts';
 import { redactChannelText } from './redact.ts';
+import { ProviderFailureError } from './provider-failure.ts';
 import { runCodingWorker } from './coding-worker.ts';
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -649,22 +650,27 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                                 output.push(event);
                         }
                         const final = await source.result();
+                        const failure = !signal.aborted && final.stopReason === 'error'
+                            ? new ProviderFailureError(final.errorMessage, 'response') : undefined;
+                        if (failure && !scopeYielded) wakeError ??= failure;
                         if (!signal.aborted && !['error', 'aborted'].includes(final.stopReason))
                             runtime.checkpointInbox(requestInbox, final.stopReason === 'stop' ? 'resolved' : 'consumed');
-                        const message: AssistantMessage = signal.aborted
+                        const message: AssistantMessage = signal.aborted || final.stopReason === 'aborted'
                             ? {
                                 ...final, content: [], stopReason: 'aborted', errorMessage: 'Inference cancelled'
                             }
                             : final.stopReason === 'error' ? {
-                                ...final, content: [], errorMessage: 'Provider request failed'
+                                ...final, content: [], errorMessage: failure!.message
                             } : final;
                         output.end(message);
                     }
-                    catch {
+                    catch (error) {
+                        const failure = new ProviderFailureError(requestDeadline.signal.aborted ? 'Request timed out' : error, 'stream');
+                        if (!controller.signal.aborted && !scopeYielded) wakeError ??= failure;
                         output.end({
                             role: 'assistant', content: [], api: model.api, provider: model.provider, model: model.id,
                             timestamp: Date.now(), stopReason: controller.signal.aborted ? 'aborted' : 'error',
-                            errorMessage: controller.signal.aborted ? 'Inference superseded by host input' : 'Provider stream failed',
+                            errorMessage: controller.signal.aborted ? 'Inference superseded by host input' : failure.message,
                             usage: {
                                 input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: {
                                     input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0
@@ -688,7 +694,10 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                     wakeError = error;
                     throw Error('Model request blocked by host guard');
                 }
-                throw Error('Provider request refused or failed before streaming');
+                if (signal.aborted) throw Error('Provider request refused or failed before streaming');
+                const failure = new ProviderFailureError(error, 'before-stream');
+                wakeError ??= failure;
+                throw failure;
             }
         };
         const replyPrefixes = new Map<string, string>();
