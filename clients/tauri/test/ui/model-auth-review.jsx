@@ -48,6 +48,8 @@ window.__MODEL_AUTH_QA__ = {calls,flows,nativeForms,warnings,configuration(){ret
 if(parameters.has('native')) window.__PIBOT_NATIVE__ = {call:async(command,args={})=>{
   const id=args.path?.split('/').at(-1),flow=flows.get(id);
   calls.push({kind:'native-mock',command,path:args.path,promptId:args.promptId});
+  // Returning from the empty connection form only cancels its mock login scope.
+  if(command==='runtime_control' && args.method==='tailscale/cancelLogin')return;
   if(command==='pi_settings_credential_window'){
     if(flow?.status!=='pending'||flow.prompt?.id!==args.promptId)throw {code:'promptExpired',message:'隔离 QA：步骤失效'};
     nativeForms.set(id,args.promptId);return;
@@ -101,7 +103,7 @@ window.fetch = async (input,options={}) => {
   if(path==='logout'){const provider=providers.find(p=>p.id===body.provider);provider.credential=null;provider.configured=false;return json({applied:true});}
   return json({error:'QA fixture endpoint missing'},404);
 };
-const runtime={status:{active:{id:'qa-only',baseUrl:'/qa',mode:parameters.has('remote')?'tailnet':parameters.has('native')?'builtin':'direct',profile:{name:parameters.has('remote')?'隔离 QA 远端工作空间':'隔离 QA 工作空间'}},profiles:[]},busy:false,managed:false,registerBeforeSwitch(){return()=>{};}};
+const runtime={status:{active:{id:'qa-only',baseUrl:'/qa',mode:parameters.has('remote')?'tailnet':parameters.has('native')?'builtin':'direct',profile:{name:parameters.has('remote')?'隔离 QA 远端工作空间':'隔离 QA 工作空间'}},profiles:[]},busy:false,managed:parameters.has('manage'),registerBeforeSwitch(){return()=>{};}};
 function Fixture(){const[open,setOpen]=useState(true);return <Theme className="app-theme" radius="large" appearance="light" accentColor="tomato" grayColor="sand">
   <div style={{position:'fixed',top:2,left:4,zIndex:2147483647,fontSize:10,lineHeight:'14px',background:'#fff2d8',color:'#644a37',padding:'2px 6px',borderRadius:5,pointerEvents:'none'}}>隔离 QA · 全部假数据 · 无真实授权</div>
   <main style={{padding:24}}><Button onClick={()=>setOpen(true)}>打开隔离模型设置</Button></main>

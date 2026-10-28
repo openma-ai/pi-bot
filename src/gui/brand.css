@@ -310,17 +310,16 @@ html[data-short-viewport="true"] .app[data-phone="true"] .sidebar-toolbar { padd
 
 .pi-auth-summary{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}.pi-login-flow a{color:var(--pibo-accent);text-underline-offset:3px}
 
-/* Desktop settings follow their content; long forms retain an inner scroller. */
-@media(min-width:768px) and (min-height:501px) {
-  html:not([data-native-ios="true"]) .settings-page { max-width:680px!important; height:auto; max-height:min(620px,calc(100dvh - 64px)); }
-  html:not([data-native-ios="true"]) .settings-page[data-settings-tab="pi"] { height:auto; }
+/* Every desktop settings route shares one stable, centered frame. */
+@media(min-width:768px) {
+  html:not([data-native-ios="true"]) .settings-page { max-width:940px!important; height:min(680px,calc(var(--phone-height,100dvh) - 64px)); max-height:calc(var(--phone-height,100dvh) - 64px); }
+  html:not([data-native-ios="true"]) .settings-page[data-settings-tab="pi"] { height:min(680px,calc(var(--phone-height,100dvh) - 64px)); }
   .settings-header { padding:12px 20px; }
   .settings-header .rt-DialogTitle { font-size:19px; }
-  .settings-layout { grid-template-columns:124px minmax(0,1fr); flex:0 1 auto; }
+  .settings-layout { grid-template-columns:124px minmax(0,1fr); flex:1; }
   .settings-layout .rt-TabsList { padding:12px 8px; }
   .settings-layout .rt-TabsTrigger { padding:8px 10px; }
-  .settings-body { height:auto; min-height:0; max-height:min(544px,calc(100dvh - 140px)); }
-  .settings-body .rt-ScrollAreaViewport { max-height:inherit; }
+  .settings-body { height:100%; min-height:0; max-height:100%; }
   .settings-pane { padding:22px 24px 24px; gap:18px; }
   .settings-pane-heading h2 { font-size:18px; }
   .pi-settings-panel,.pi-mode-content { gap:16px; }
