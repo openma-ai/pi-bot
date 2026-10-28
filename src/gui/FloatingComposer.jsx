@@ -6,7 +6,7 @@ export function FloatingComposer({ children, conversationRef, pinnedToEnd }) {
   const ref = useRef(null);
   useLayoutEffect(() => {
     const node = ref.current, parent = node.parentElement;
-    let height = -1;
+    let height = -1, frame = 0;
     const measure = () => {
       const next = Math.ceil(node.getBoundingClientRect().height);
       if (next === height) return;
@@ -15,9 +15,12 @@ export function FloatingComposer({ children, conversationRef, pinnedToEnd }) {
       const feed = conversationRef.current;
       if (feed && pinnedToEnd.current) feed.scrollTop = feed.scrollHeight;
     };
-    const observer = new ResizeObserver(measure);
+    // Reserve space outside the observer delivery cycle to avoid resize loops.
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame); frame = requestAnimationFrame(measure);
+    });
     observer.observe(node); measure();
-    return () => { observer.disconnect(); parent.style.removeProperty("--composer-inset"); };
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); parent.style.removeProperty("--composer-inset"); };
   }, [conversationRef, pinnedToEnd]);
   return <div ref={ref} className="composer-area">{children}</div>;
 }

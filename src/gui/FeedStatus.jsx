@@ -5,7 +5,7 @@ export function FeedStatus({ children }) {
   const ref = useRef(null);
   useLayoutEffect(() => {
     const node = ref.current, feed = node.parentElement, content = node.previousElementSibling;
-    let pushed = 0;
+    let pushed = 0, frame = 0;
     const position = () => {
       const box = node.getBoundingClientRect(), viewport = feed.getBoundingClientRect();
       const inset = parseFloat(getComputedStyle(feed).scrollPaddingBottom) || 0;
@@ -16,10 +16,11 @@ export function FeedStatus({ children }) {
       const clipped = Math.max(0, restingTop + pushed + box.height - (viewport.bottom - inset));
       node.style.clipPath = `inset(0 0 ${Math.min(box.height, clipped)}px 0)`;
     };
-    const observer = new ResizeObserver(position);
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(position); };
+    const observer = new ResizeObserver(schedule);
     observer.observe(feed); observer.observe(content); observer.observe(node);
-    feed.addEventListener("scroll", position, { passive: true }); position();
-    return () => { observer.disconnect(); feed.removeEventListener("scroll", position); };
+    feed.addEventListener("scroll", schedule, { passive: true }); position();
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); feed.removeEventListener("scroll", schedule); };
   }, []);
   return <div ref={ref} className="conversation-status" onFocusCapture={() => {
     // Keyboard focus must reveal a request that was pushed out of view.
