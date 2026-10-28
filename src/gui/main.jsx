@@ -14,6 +14,7 @@ import { useConversationDraft } from "./hooks/use-conversation-draft.js";
 import { Notification, ServiceNotice, ConnectionFeedback } from "./Notification.jsx";
 import { TaskFailure } from "./TaskFailure.jsx";
 import { ConversationRequests, RequestAttention } from "./ConversationRequests.jsx";
+import { ActivityStatus } from "./ActivityStatus.jsx";
 import { SearchDialog } from "./SearchDialog.jsx";
 import { MessengerSidebar } from "./MessengerSidebar.jsx";
 import { SidebarProvider } from "./ui/sidebar.jsx";
@@ -24,7 +25,6 @@ import "./components.css";
 import {
   BotAvatar,
   GroupAvatar,
-  activityLabels,
   AvatarContext,
 } from "./BotAvatar.jsx";
 import {FileCards} from "./FileCards.jsx";
@@ -1085,20 +1085,7 @@ function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) 
                     最新消息
                   </Button>
                 )}
-                {view === "chat" && !["idle", "attention"].includes(activity(selected)) && (
-                  <div className="activity-line" role="status" data-activity={activity(selected)}>
-                    <BotAvatar
-                      id={selected}
-                      name={bot?.name}
-                      activity={activity(selected)}
-                      size={22}
-                      animated
-                    />
-                    <Text size="2" color="gray">
-                      {activityLabels[activity(selected)]}
-                    </Text>
-                  </div>
-                )}
+                {view === "chat" && <ActivityStatus id={selected} name={bot?.name} activity={activity(selected)} />}
                 {["chat", "group"].includes(view) && <RequestAttention data={data} kind={view === "group" ? "group" : "bot"} id={view === "group" ? groupId : selected} api={api} baseUrl={activeRuntime?.baseUrl || ""} />}
                 {mentionOptions.length > 0 && (
                   <div

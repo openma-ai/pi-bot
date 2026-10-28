@@ -1,13 +1,13 @@
 /* This summary lives outside the message scroller, directly above the composer. */
-.request-attention { flex-shrink:0; min-width:0; margin:0 0 8px; border:1px solid var(--pibo-line); border-radius:12px; background:var(--pibo-hover); color:var(--pibo-ink); }
-.request-attention-summary { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:44px; padding:4px 12px; font-size:12px; }
-.request-attention-summary>span { display:flex; align-items:center; flex-wrap:wrap; gap:4px 10px; min-width:0; }
+.request-attention { flex-shrink:0; min-width:0; margin:0 0 8px; color:var(--pibo-ink); }
+.request-attention-summary { display:flex; align-items:center; flex-wrap:wrap; gap:6px; width:fit-content; max-width:100%; font-size:12px; }
+.request-attention-summary>span { display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px; min-width:0; min-height:36px; padding:6px 10px; border-radius:9px; background:var(--pibo-hover); }
 .request-attention-summary strong { font-weight:550; }
 .request-attention-kind { color:var(--pibo-muted); }
-.request-attention-summary button { flex-shrink:0; min-height:36px; border:0; border-radius:8px; padding:6px 8px; color:var(--pibo-accent); background:transparent; font:inherit; cursor:pointer; }
+.request-attention-summary button { flex-shrink:0; min-height:36px; border:0; border-radius:9px; padding:6px 10px; color:var(--pibo-accent); background:var(--pibo-selected); font:inherit; cursor:pointer; }
 .request-attention-summary button:hover { background:var(--pibo-surface); }
 .conversation-request-target { min-width:0; scroll-margin-top:12px; border-radius:24px; }
 .conversation-request-target:focus { outline:none; }
 .conversation-request-target:focus-visible { outline:2px solid #c9ad9d; outline-offset:2px; }
-.request-attention-fallback { max-height:min(45vh,320px); overflow:auto; overscroll-behavior:contain; padding:4px 12px 12px; }
+.request-attention-fallback { max-height:min(45vh,320px); overflow:auto; overscroll-behavior:contain; margin-top:8px; border:1px solid var(--pibo-line); border-radius:12px; background:var(--pibo-surface); padding:4px 12px 12px; }
 .request-attention-fallback .decision-card { padding:8px 0; }

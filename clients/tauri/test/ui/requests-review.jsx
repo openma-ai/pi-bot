@@ -6,6 +6,7 @@ import '/src/gui/style.css';
 import '/src/gui/components.css';
 import '/src/gui/brand.css';
 import {ConversationRequests,RequestAttention} from '/src/gui/ConversationRequests.jsx';
+import {ActivityStatus} from '/src/gui/ActivityStatus.jsx';
 import {MessageBody} from '/src/gui/MessageBody.jsx';
 import {Textarea} from '/src/gui/ui/textarea.jsx';
 import {isComposerSubmit} from '/src/gui/composer-keyboard.ts';
@@ -21,6 +22,8 @@ const sample='中文输入：p w d 是什么？';
 function Fixture(){
  const [data,setData]=useState(initial),[draft,setDraft]=useState('');const conversation=useRef();
  const missing=new URLSearchParams(location.search).has('missing');
+ const activity=new URLSearchParams(location.search).get('activity');
+ const longMessage=new URLSearchParams(location.search).has('long');
  const api={request:{resolve:async(value)=>{calls.push(value);await new Promise(resolve=>setTimeout(resolve,50));setData(old=>({...old,requests:old.requests.map(r=>r.id===value.requestId?{...r,status:'resolved',response:value.response}:r)}));}}};
  window.__REQUEST_QA__={calls,sent,sample};
  useLayoutEffect(()=>{conversation.current.scrollTop=conversation.current.scrollHeight;},[]);
@@ -31,10 +34,10 @@ function Fixture(){
    <section ref={conversation} className="conversation" aria-label="聊天消息" style={{flex:1,minHeight:0,overflowY:'auto',padding:'12px 20px'}}>
     {!missing&&<ConversationRequests data={data} kind="bot" id="qa-bot" api={api}/>}
     {Array.from({length:24},(_,i)=><div className="row" key={i}><div className="bubble"><MessageBody text={'隔离测试消息 '+(i+1)}/></div></div>)}
-    <div className="row user"><div className="bubble"><MessageBody text={sample}/></div></div>
+    <div className="row user"><div className="bubble"><MessageBody text={longMessage ? sample.repeat(40) : sample}/></div></div>
    </section>
    <div className="composer-area" style={{padding:'8px 16px 14px',flexShrink:0}}>
-    <RequestAttention data={data} kind="bot" id="qa-bot" api={api}/>
+    {activity ? <ActivityStatus id="qa-bot" name="QA bot" activity={activity}/> : <RequestAttention data={data} kind="bot" id="qa-bot" api={api}/>}
     <div className="composer-shell"><div className="composer">
      <Textarea className="message-input" aria-label="消息" value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(isComposerSubmit(e)){e.preventDefault();sent.push(draft);setDraft('');}}}/>
     </div></div>
