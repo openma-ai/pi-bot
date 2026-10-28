@@ -4,7 +4,7 @@ import { createDesktopExtension, desktopToolNames, type DesktopClient } from './
 import { imageBudgetForModel } from './image-budget.ts';
 import { redactChannelText } from './redact.ts';
 import { ProviderFailureError } from './provider-failure.ts';
-import { ProviderTiming } from './latency.ts';
+import { ProviderTiming, toolTimingOutcome } from './latency.ts';
 import { TaskSourceRequiredError } from './task-source.ts';
 import { runCodingWorker } from './coding-worker.ts';
 import { createHash } from 'node:crypto';
@@ -709,17 +709,17 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
         };
         const replyPrefixes = new Map<string, string>();
         let internalPrefix = '';
-        const toolTimings = new Map<string, number>();
+        const toolTimings = new Map<string, { started: number; parentToolCallId?: string }>();
         session.subscribe(event => {
             if (event.type === 'tool_execution_start') {
-                toolTimings.set(event.toolCallId, performance.now());
-                runtime.events?.emit(bot.id, { type: 'latency', boundary: { kind: 'tool', phase: 'start', id: event.toolCallId, tool: event.toolName, elapsedMs: 0 } });
+                toolTimings.set(event.toolCallId, { started: performance.now(), parentToolCallId: event.parentToolCallId });
+                runtime.events?.emit(bot.id, { type: 'latency', boundary: { kind: 'tool', phase: 'start', id: event.toolCallId, parentToolCallId: event.parentToolCallId, tool: event.toolName, elapsedMs: 0 } });
             }
             if (event.type === 'tool_execution_end') {
                 const start = toolTimings.get(event.toolCallId);
                 toolTimings.delete(event.toolCallId);
                 const state = (event.result?.details as { state?: string } | undefined)?.state;
-                runtime.events?.emit(bot.id, { type: 'latency', boundary: { kind: 'tool', phase: 'end', id: event.toolCallId, tool: event.toolName, elapsedMs: start === undefined ? 0 : performance.now() - start, outcome: event.isError || ['failed','persistence_failed'].includes(state ?? '') ? 'error' : 'ok' } });
+                runtime.events?.emit(bot.id, { type: 'latency', boundary: { kind: 'tool', phase: 'end', id: event.toolCallId, parentToolCallId: event.parentToolCallId ?? start?.parentToolCallId, tool: event.toolName, elapsedMs: start === undefined ? 0 : performance.now() - start.started, outcome: toolTimingOutcome(event.isError, state) } });
             }
             if (event.type === 'message_start')
                 internalPrefix = '';

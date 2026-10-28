@@ -6,8 +6,10 @@ export type LatencyBoundary = {
     kind: 'provider' | 'tool';
     phase: 'start' | 'first_event' | 'first_content' | 'end';
     id: string;
+    /** Host SDK lineage only; LocalTrace hashes it and never exports the raw ID. */
+    parentToolCallId?: string;
     elapsedMs: number;
-    outcome?: 'ok' | 'error' | 'cancelled' | 'blocked';
+    outcome?: 'ok' | 'error' | 'cancelled' | 'blocked' | 'uncertain';
     tool?: string;
     inputTokens?: number;
     outputTokens?: number;
@@ -19,6 +21,13 @@ export type LatencyBoundary = {
     promptAndToolsChar4Estimate?: number;
     messageCount?: number;
 };
+/** A background receipt describes a tool return, not the final job outcome. */
+export function toolTimingOutcome(isError: boolean, state?: string): LatencyBoundary['outcome'] {
+    if (isError || ['failed','persistence_failed','timed_out'].includes(state ?? '')) return 'error';
+    if (state === 'cancelled' || state === 'interrupted') return 'cancelled';
+    if (state === 'blocked' || state === 'uncertain') return state;
+    return 'ok';
+}
 /** Snapshot only size/name metadata at the actual request boundary. */
 export function providerRequestShape(context: unknown): Partial<LatencyBoundary> {
     try {

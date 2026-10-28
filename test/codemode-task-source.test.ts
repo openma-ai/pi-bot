@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ModelRuntime, SessionManager } from '@earendil-works/pi-coding-agent';
@@ -47,6 +47,12 @@ test(`codemode source binding: ${variant}`,{timeout:15000},async()=>{
         } else {
             assert.equal(outbox.length,1);assert.equal(outbox[0].replyTo,source);assert.equal(output.isError,false);
             assert.equal(runtime.store.list('jobs').length,1,'one execution only');
+            const trace=(await readFile(join(dir,'diagnostics','latency.otlp.jsonl'),'utf8')).trim().split('\n').flatMap(line=>JSON.parse(line).resourceSpans.flatMap((r:any)=>r.scopeSpans.flatMap((s:any)=>s.spans)));
+            const tool=(s:any)=>s.attributes.find((a:any)=>a.key==='pibo.tool')?.value.stringValue;
+            const outer=trace.find((s:any)=>s.name==='tool.end'&&tool(s)==='codemode');
+            const inner=trace.find((s:any)=>s.name==='tool.end'&&tool(s)==='send_message');
+            assert.ok(outer&&inner,'actual SDK emits both tool completion spans');
+            assert.equal(inner.parentSpanId,outer.spanId,'nested SDK tool keeps the outer codemode parent');
         }
     } finally {await runtime.close();await rm(dir,{recursive:true,force:true});}
 });

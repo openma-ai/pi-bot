@@ -7,6 +7,7 @@ export class FrontendLatency {
     private records: unknown[] = [];
     private sequence = 0;
     private generation = 0;
+    private instanceId?: string;
     received(value: DeliveryTiming) {
         if (this.pending.has(value.itemId)) return;
         if (this.pending.size >= 256) this.pending.delete(this.pending.keys().next().value!);
@@ -21,7 +22,10 @@ export class FrontendLatency {
         const sequence = this.sequence++;
         const generation = this.generation;
         try {
-            const [traceId, spanId, parentSpanId, itemHash] = await Promise.all([digest('message:' + p.primaryInputId), digest('frontend:' + p.turnId + ':' + itemId + ':' + sequence, 16), digest('run:' + p.turnId, 16), digest(itemId)]);
+            // A reload/remount must not reuse a previously exported span ID.
+            // If secure randomness is unavailable, diagnostics fail closed below.
+            const instanceId = this.instanceId ??= Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+            const [traceId, spanId, parentSpanId, itemHash] = await Promise.all([digest('message:' + p.primaryInputId), digest('frontend:' + instanceId + ':' + p.turnId + ':' + itemId + ':' + sequence, 16), digest('run:' + p.turnId, 16), digest(itemId)]);
             if (generation !== this.generation) return;
             const attr = (key: string, value: string | number) => ({ key: 'pibo.' + key, value: typeof value === 'number' ? { doubleValue: value } : { stringValue: value } });
             const ns = (n: number) => (BigInt(Math.round(n * 1000)) * 1000n).toString();

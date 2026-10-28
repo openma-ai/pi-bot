@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialStore } from '@earendil-works/pi-ai';
 import { LocalTrace } from '../src/daemon/observability/local-trace.ts';
-import { ProviderTiming, providerRequestShape } from '../src/pi/latency.ts';
+import { ProviderTiming, providerRequestShape, toolTimingOutcome } from '../src/pi/latency.ts';
 import { FrontendLatency } from '../src/sdk/frontend-latency.ts';
 import { BotRuntime } from '../src/daemon/runtime/runtime.ts';
 import { piSessionFactory } from '../src/pi/session-factory.ts';
@@ -67,6 +67,46 @@ test('OTLP shape, safe fields, bounded rotation and failure/symlink isolation', 
         assert.equal(readFileSync(target,'utf8'),'preserve');
     } finally {rmSync(dir,{recursive:true,force:true});}
 });
+test('ended cancellations, blocked requests and uncertain runs are not successful spans', () => {
+    const dir=mkdtempSync(join(tmpdir(),'pibo-trace-status-'));
+    try {
+        const trace=new LocalTrace(dir);
+        for (const outcome of ['ok','error','cancelled','blocked',undefined] as const)
+            trace.boundary(scope,{kind:'provider',phase:'end',id:String(outcome),elapsedMs:1,outcome});
+        for (const status of ['completed','failed','uncertain','interrupted','yielded','cancelled','expired',undefined])
+            trace.point(scope,'run.end',{status,elapsedMs:1});
+        assert.deepEqual(spans(read(dir)).map(s=>s.status.code),[1,2,0,0,0,1,2,0,0,0,0,0,0]);
+    } finally {rmSync(dir,{recursive:true,force:true});}
+});
+test('background tool return classification does not turn cancelled or uncertain cells into success',()=>{
+    assert.equal(toolTimingOutcome(false,'cancelled'),'cancelled');
+    assert.equal(toolTimingOutcome(false,'interrupted'),'cancelled');
+    assert.equal(toolTimingOutcome(false,'uncertain'),'uncertain');
+    assert.equal(toolTimingOutcome(false,'blocked'),'blocked');
+    for(const state of ['failed','persistence_failed','timed_out'])assert.equal(toolTimingOutcome(false,state),'error');
+    assert.equal(toolTimingOutcome(true,'completed'),'error');
+    assert.equal(toolTimingOutcome(false,'completed'),'ok');
+    assert.equal(toolTimingOutcome(false,'running'),'ok','only the running receipt returned, not the job completion');
+});
+test('nested tool spans preserve lineage, hash IDs and isolate repeated tool IDs across runs',()=>{
+    const dir=mkdtempSync(join(tmpdir(),'pibo-trace-parent-'));
+    try {
+        const trace=new LocalTrace(dir);
+        const other={...scope,turnId:'trn_00000000-0000-0000-0000-000000000002'};
+        for(const current of [scope,other]) {
+            trace.point(current,'run.end',{status:'completed'});
+            trace.boundary(current,{kind:'tool',phase:'end',id:secret,tool:'codemode',outcome:'ok',elapsedMs:1});
+            trace.boundary(current,{kind:'tool',phase:'start',id:'child',parentToolCallId:secret,tool:'send_message',elapsedMs:0});
+            trace.boundary(current,{kind:'tool',phase:'end',id:'child',parentToolCallId:secret,tool:'send_message',outcome:'ok',elapsedMs:1});
+        }
+        const all=spans(read(dir));assert.equal(new Set(all.map(s=>s.spanId)).size,all.length);
+        for(let i=0;i<all.length;i+=4) {
+            const [run,parent,start,child]=all.slice(i,i+4);
+            assert.equal(parent.parentSpanId,run.spanId);assert.equal(child.parentSpanId,parent.spanId);assert.equal(start.parentSpanId,child.spanId);
+        }
+        assert.doesNotMatch(JSON.stringify(read(dir)),/SYNTHETIC|Bearer|fixture.invalid|PRIVATE/);
+    } finally {rmSync(dir,{recursive:true,force:true});}
+});
 test('frontend receive-to-layout-commit shares backend trace and is bounded/clearable', async () => {
     const dir=mkdtempSync(join(tmpdir(),'pibo-client-trace-'));
     try {
@@ -76,6 +116,9 @@ test('frontend receive-to-layout-commit shares backend trace and is bounded/clea
         const [client]=spans(frontend.snapshot());const [server]=spans(read(dir));
         assert.equal(client.traceId,server.traceId);assert.equal(client.parentSpanId,server.spanId);
         assert.ok(attrs(client).receiveToCommitMs>=0);assert.ok('serverToReceiveClockDeltaMs' in attrs(client));
+        const remounted=new FrontendLatency();remounted.received({primaryInputId:scope.inputId,turnId:scope.turnId!,itemId:secret,serverAt:Date.now()-10});
+        await remounted.committed(secret);const [afterRemount]=spans(remounted.snapshot());
+        assert.equal(afterRemount.traceId,client.traceId);assert.equal(afterRemount.parentSpanId,client.parentSpanId);assert.notEqual(afterRemount.spanId,client.spanId);
         assert.doesNotMatch(JSON.stringify(frontend.snapshot()),/SYNTHETIC|Bearer|PRIVATE|fixture.invalid/);
         frontend.received({primaryInputId:scope.inputId,turnId:scope.turnId!,itemId:'cancel',serverAt:0});const p=frontend.committed('cancel');frontend.clear();await p;assert.deepEqual(frontend.snapshot(),[]);
         for(let i=0;i<258;i++){frontend.received({primaryInputId:scope.inputId,turnId:scope.turnId!,itemId:String(i),serverAt:0});await frontend.committed(String(i));}

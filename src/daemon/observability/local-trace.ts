@@ -31,7 +31,8 @@ export class LocalTrace {
                 traceId: hash('message:' + scope.inputId), spanId: hash(span, 16), parentSpanId: !scope.turnId || span === 'run:' + run ? undefined : hash(parent ?? 'run:' + run, 16), name,
                 kind: name.startsWith('provider.') ? 3 : 1, startTimeUnixNano: nanos(at - duration), endTimeUnixNano: nanos(at),
                 attributes: Object.entries(attrs).filter(([,value]) => value !== undefined).map(([key,value]) => ({ key: 'pibo.' + key, value: typeof value === 'number' ? { doubleValue: value } : { stringValue: String(value) } })),
-                status: { code: attributes.outcome === 'error' || attributes.status === 'failed' ? 2 : name.endsWith('.end') ? 1 : 0 }
+                // An ended wait, cancellation or unknown outcome is not success.
+                status: { code: attributes.outcome === 'error' || attributes.status === 'failed' ? 2 : name.endsWith('.end') && (attributes.outcome === 'ok' || attributes.status === 'completed') ? 1 : 0 }
             }] }] }] };
             const line = JSON.stringify(record) + '\n';
             if (Buffer.byteLength(line) > this.maxBytes) return;
@@ -50,14 +51,17 @@ export class LocalTrace {
     }
     boundary(scope: TraceScope, event: LatencyBoundary) {
         if (!['provider','tool'].includes(event.kind) || !['start','first_event','first_content','end'].includes(event.phase)) return;
-        const base = event.kind + ':' + event.id;
+        const run = scope.turnId ?? scope.inputId;
+        const base = event.kind + ':' + run + ':' + event.id;
+        const parent = event.kind === 'tool' && event.parentToolCallId && event.parentToolCallId !== event.id
+            ? 'tool:' + run + ':' + event.parentToolCallId : undefined;
         this.write(scope, event.kind + '.' + event.phase, event.phase === 'end' ? base : base + ':' + event.phase, {
-            elapsedMs: finite(event.elapsedMs), outcome: ['ok','error','cancelled','blocked'].includes(event.outcome ?? '') ? event.outcome : undefined,
+            elapsedMs: finite(event.elapsedMs), outcome: ['ok','error','cancelled','blocked','uncertain'].includes(event.outcome ?? '') ? event.outcome : undefined,
             tool: this.tool(event.tool), inputTokens: finite(event.inputTokens), outputTokens: finite(event.outputTokens), cacheReadTokens: finite(event.cacheReadTokens)
             , systemPromptCharacters: finite(event.systemPromptCharacters), toolSchemaCharacters: finite(event.toolSchemaCharacters), declaredToolCount: finite(event.declaredToolCount),
             declaredToolNames: Array.isArray(event.declaredToolNames) ? event.declaredToolNames.slice(0,128).map(n=>/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(n) ? n : 'other').join(',') : undefined,
             promptAndToolsChar4Estimate: finite(event.promptAndToolsChar4Estimate), messageCount: finite(event.messageCount)
-        }, Date.now(), event.phase === 'end' ? finite(event.elapsedMs) ?? 0 : 0, event.phase === 'end' ? undefined : base);
+        }, Date.now(), event.phase === 'end' ? finite(event.elapsedMs) ?? 0 : 0, event.phase === 'end' ? parent : base);
     }
     private tool(value?: string) {
         // Known product tools only. Extension-controlled names are never copied.
