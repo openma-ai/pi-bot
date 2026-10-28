@@ -201,7 +201,7 @@ single-scope compatibility.
   update: redundant user-message processing text and stale composer interruption
   were absent; the historical failure card remained. The already-running app,
   harness and loopback frontend processes were retained.
-- The live harness still uses its earlier bundled backend. Source-binding fixes,
+- At this earlier checkpoint the live harness used its previous bundled backend. Source-binding fixes,
   SDK model-effort metadata and backend OTLP journaling require a later safe
   harness activation; they have only been verified in isolated runtimes here.
   No claim of improved real-provider latency is made.
@@ -233,9 +233,35 @@ dependencies also completed a synthetic Pi execution that produced 18 unique spa
 in one trace, including two provider attempts and message delivery, without the
 synthetic private payload in diagnostics. This was not a paid provider request.
 
-Activation stopped before quitting the old app because the native UI reported
+Initial activation stopped before quitting the old app because the native UI reported
 that the Mac was locked and automatic unlock was paused. The old app and harness
-remain running; the new backend is not active in the user's session. After manual
-unlock, recheck active turns, pending requests and visible authentication before
-switching. A scoped frontend update is prepared separately; do not replace native
+were retained. After manual unlock, active turns, pending requests and visible
+authentication were rechecked before switching. Do not replace native
 credential-window code without rebuilding and verifying its matching native API.
+
+## Native activation and local observations (2026-10-28)
+
+The user unlocked the Mac. With no running turns, pending requests or visible
+login in progress, the previous development app exited and the signed candidate
+started with harness `3c372f689fbd469bcc768f211c61e4c62110a9f6`. All 206 recorded
+source hashes matched. The app and its owned harness were the only development
+instances; the loopback frontend stayed available. Account credentials and
+conversation data were retained. The native model page loaded the current
+ChatGPT account catalog, including an explicit unsupported-SDK-model notice.
+
+Subsequent user-initiated messages produced actual local timing records. One
+5.564-second turn had a 6 ms queue, first provider event at 3.637 seconds and a
+normal SDK `stop` with empty text and no tool/delivery event. A later user turn
+called `send_message`, recorded delivery and completed. This distinguishes silent
+completion from lost UI delivery; it does not justify replaying either request.
+The existing prompt permits incidental chatter to need no `send_message`; no
+mandatory acknowledgement or automatic internal-text forwarding was added.
+
+The composer capsule now floats over a transparent outer region. Its measured
+height reserves feed space. A bottom-sticky status moves down when the message
+content reaches it and returns when scrolling back to the latest content; its
+description has no background. Isolated browser checks covered short/long feeds,
+push-away/return, multiline height, pending requests and no horizontal overflow
+at 1100, 320 and 844 pixels. Four settings sizes retained reachable back/close
+actions. These geometry checks are browser simulations, not a new iOS native run.
+The actual macOS window was inspected after the hot update and retained for use.
