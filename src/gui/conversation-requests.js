@@ -9,6 +9,18 @@ export function requestsForConversation(data, kind, id, includeResolved = false)
       : request.botId === id && !groupIds.has(channel);
   });
 }
+export function requestCardId(id) { return `conversation-request-${encodeURIComponent(id)}`; }
+/** Move only the message scroller; don't move the page/header or answer a request. */
+export function focusConversationRequest(id, root = document) {
+  const card = root.getElementById(requestCardId(id));
+  if (!card) return false;
+  const scroller = card.closest('.conversation');
+  if (!scroller) return false;
+  const top = scroller.scrollTop + card.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 12;
+  scroller.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+  card.focus({ preventScroll: true });
+  return true;
+}
 export function approvalTargets(request) {
   const fields = [];
   function collect(value, prefix = "") {

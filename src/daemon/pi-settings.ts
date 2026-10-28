@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getAgentDir, ModelRuntime, SettingsManager } from '@earendil-works/pi-coding-agent';
-import type { AuthEvent, AuthPrompt, AuthType } from '@earendil-works/pi-ai';
+import { clampThinkingLevel, getSupportedThinkingLevels, type AuthEvent, type AuthPrompt, type AuthType } from '@earendil-works/pi-ai';
 import type { ThinkingLevel } from '@earendil-works/pi-agent-core';
 import { PiBotError } from './core/errors.ts';
 import { PiModelCatalog } from './pi-model-catalog.ts';
@@ -56,9 +56,13 @@ export class PiSettings {
         const { models, providers, catalog } = await this.catalog.refresh();
         const saved = await this.models.listCredentials();
         const settings = SettingsManager.create(this.cwd, this.agentDir);
+        const provider = settings.getDefaultProvider() ?? '', model = settings.getDefaultModel() ?? '';
+        const thinkingLevel = settings.getDefaultThinkingLevel() ?? 'high';
+        const currentModel = this.models.getModel(provider, model);
         return {
             current: {
-                provider: settings.getDefaultProvider() ?? '', model: settings.getDefaultModel() ?? '', thinkingLevel: settings.getDefaultThinkingLevel() ?? 'high'
+                provider, model, thinkingLevel,
+                effectiveThinkingLevel: currentModel ? clampThinkingLevel(currentModel, thinkingLevel) : undefined
             }, providers: this.models.getProviders().map(p => ({
                 id: p.id, name: p.name, methods: [...(p.auth.apiKey?.login ? ['api_key'] : []), ...(p.auth.oauth ? ['oauth'] : [])],
                 methodLabels: {
@@ -68,7 +72,8 @@ export class PiSettings {
                 configured: providers.get(p.id)?.configured ?? false,
                 catalog: providers.get(p.id)?.catalog,
                 models: models.filter(m => m.provider === p.id).map(m => ({
-                    id: m.id, name: m.name, reasoning: m.reasoning
+                    id: m.id, name: m.name, reasoning: m.reasoning,
+                    thinkingLevels: getSupportedThinkingLevels(m)
                 }))
             })), catalog, agentDir: this.agentDir
         };
@@ -212,8 +217,11 @@ export class PiSettings {
         }
     }
     async selectModel(provider: string, id: string, thinkingLevel: ThinkingLevel) {
-        if (!this.models.getModel(provider, id) || !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(thinkingLevel))
+        const model = this.models.getModel(provider, id);
+        if (!model || !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(thinkingLevel))
             throw new PiBotError('invalidParams', 'Unknown Pi model or thinking level');
+        if (!getSupportedThinkingLevels(model).includes(thinkingLevel))
+            throw new PiBotError('invalidParams', '该模型不支持所选思考强度，请选择模型支持的档位');
         if (!await this.catalog.canSelect(provider, id))
             throw new PiBotError('invalidParams', '该模型未通过当前账号与 SDK 模型目录确认，请重新加载或连接提供商');
         const settings = SettingsManager.create(this.cwd, this.agentDir), project = settings.getProjectSettings();

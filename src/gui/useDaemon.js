@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { completedMessages } from "./presentation.ts";
 import { PiBotClient } from "../sdk/client.ts";
 import { createDaemonStore } from "../sdk/state/reducer.ts";
+import { FrontendLatency } from "../sdk/frontend-latency.ts";
 const empty = {
   bots: [],
   groups: [],
@@ -114,6 +115,12 @@ function view(snapshot, state) {
   };
 }
 export function useDaemon(baseUrl = "") {
+  const latency = useRef(new FrontendLatency());
+  useEffect(() => {
+    const snapshot = () => latency.current.snapshot();
+    globalThis.__PIBOT_LOCAL_TRACES__ = snapshot;
+    return () => { if (globalThis.__PIBOT_LOCAL_TRACES__ === snapshot) delete globalThis.__PIBOT_LOCAL_TRACES__; };
+  }, []);
   const [data, setData] = useState(empty),
     [client, setClient] = useState(),
     [error, setError] = useState(""),
@@ -160,6 +167,11 @@ export function useDaemon(baseUrl = "") {
             metadata = { ...metadata, groupMessages: [...messages.values()] };
           }
           store.apply(event);
+          const item = event.params?.item;
+          if (item?.type === "agentMessage" && item.message?.status === "delivered" && item.turnId) {
+            const turn = store.get().turns[item.turnId];
+            if (turn?.primaryInputId) latency.current.received({ primaryInputId: turn.primaryInputId, turnId: item.turnId, itemId: item.id, serverAt: event.at });
+          }
           publish();
           if (event.seq !== null)
             void connection.events.ack(event.seq).catch(() => {});
@@ -212,5 +224,5 @@ export function useDaemon(baseUrl = "") {
     };
   }, [baseUrl]);
   const matches = source === baseUrl && baseUrl !== null;
-  return { data, client: matches ? client : undefined, error, phase: matches ? phase : "disconnected" };
+  return { data, latency: latency.current, client: matches ? client : undefined, error, phase: matches ? phase : "disconnected" };
 }

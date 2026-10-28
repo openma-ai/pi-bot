@@ -6,6 +6,7 @@ import { Type } from 'typebox';
 import { createCodemodeExtension, type ExtensionAPI, type ExtensionFactory, type ExtensionToolContext, type ToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { AgentToolResult } from '@earendil-works/pi-agent-core';
 import type { AssistantMessage } from '@earendil-works/pi-ai';
+import { TaskSourceRequiredError } from './task-source.ts';
 type Result = AgentToolResult<unknown>;
 export interface CodemodeCellNotice {
     cellId: string;
@@ -208,7 +209,7 @@ export function createBackgroundCodemodeExtension(options: BackgroundCodemodeOpt
             const updates = cells.get(data.cellId)?.updates?.details;
             const base = (!cells.has(data.cellId) || cells.get(data.cellId)?.ready ? data.result : undefined) ?? textResult(data.toolName === "codemode" ? `Script running with cell ID ${data.cellId}. Read the result with codemode_wait.` : `Execution running with task ID ${data.cellId}. Read the result with exec_wait.`);
             return {
-                ...base, content: [...base.content, ...(details.observations.length ? [{
+                ...base, ...(['failed', 'persistence_failed'].includes(details.state) ? { isError: true } : {}), content: [...base.content, ...(details.observations.length ? [{
                             type: 'text' as const, text: 'Cell observations:\n' + JSON.stringify(details.observations)
                         }] : [])], details: {
                     ...updates as object, ...base.details as object, ...details
@@ -285,7 +286,7 @@ export function createBackgroundCodemodeExtension(options: BackgroundCodemodeOpt
             const objectParameters = original.parameters as ReturnType<typeof Type.Object>;
             const parameters = options.runExecution ? {
                 ...objectParameters, properties: {
-                    ...objectParameters.properties, source_message_id: Type.Optional(Type.String())
+                    ...objectParameters.properties, source_message_id: Type.Optional(Type.String({ minLength: 1, maxLength: 256, description: 'Original inbox messageId for this execution. Set this OUTER argument when multiple tasks are visible; putting it inside code or a nested tool call does not bind the execution. Never guess another task ID.' }))
                 }
             } : original.parameters;
             if (options.runExecution && objectParameters.type !== 'object')
@@ -296,7 +297,7 @@ export function createBackgroundCodemodeExtension(options: BackgroundCodemodeOpt
                     const changes = original.prepareLoadout?.(loadout);
                     return {
                         ...changes, descriptions: {
-                            ...changes?.descriptions, [original.name]: `${changes?.descriptions?.[original.name] ?? description}\nBackground: this call can return a running ID; collect it with ${collector}, never restart it.${options.runExecution ? ' Include source_message_id for the original inbox task.' : ''}`
+                            ...changes?.descriptions, [original.name]: `${changes?.descriptions?.[original.name] ?? description}\nBackground: this call can return a running ID; collect it with ${collector}, never restart it.${options.runExecution ? ' Include source_message_id as an OUTER argument for the original inbox task. It is required when multiple tasks are visible; a nested tool argument inside code cannot supply it. A taskSourceRequired error means no script was executed; correct only the outer source binding, never guess or replay an already accepted execution.' : ''}`
                         }
                     };
                 },
@@ -392,9 +393,10 @@ export function createBackgroundCodemodeExtension(options: BackgroundCodemodeOpt
                         }
                         catch (error) {
                             cell.data.state = cell.controller.signal.aborted ? interruptedState(cell) : 'failed';
-                            cell.data.result = textResult(`${original.name} execution failed; no automatic retry.\n${error instanceof Error ? error.message : 'Tool execution failed'}`, {
-                                cell_id: cell.data.cellId, state: cell.data.state
-                            });
+                            cell.data.result = { ...textResult(`${original.name} execution failed; no automatic retry.\n${error instanceof Error ? error.message : 'Tool execution failed'}`, {
+                                cell_id: cell.data.cellId, state: cell.data.state,
+                                ...(error instanceof TaskSourceRequiredError ? { error: { code: error.code, field: error.field, executed: false } } : {})
+                            }), isError: true } as Result;
                         }
                         finally {
                             clearTimeout(deadline);

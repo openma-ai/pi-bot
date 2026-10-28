@@ -95,12 +95,11 @@ export function botActivity(data: any, id: string): string {
     )
   )
     return "queued";
-  if (
-    owned(data.messages).some(
-      (m) =>
-        m.direction === "inbound" && ["uncertain", "failed"].includes(m.status),
-    )
-  )
+  // The composer reports the latest task, while each historical failure keeps
+  // its own message card and recovery action. An old failure is not current work.
+  const latestInput = owned(data.messages).filter(m => m.direction === "inbound")
+    .reduce((latest, message) => !latest || (message.receivedAt ?? message.createdAt ?? 0) >= (latest.receivedAt ?? latest.createdAt ?? 0) ? message : latest, undefined);
+  if (latestInput && ["uncertain", "failed"].includes(latestInput.status))
     return "interrupted";
   return "idle";
 }

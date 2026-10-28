@@ -156,6 +156,9 @@ export interface CredentialPort {
 }
 /** The host owns persistence, correlation and client capabilities. Pi only reports events. */
 export type PluginEvent = {
+    type: 'latency';
+    boundary: import('./latency.ts').LatencyBoundary;
+} | {
     type: 'toolStarted';
     toolCallId: string;
     tool: string;

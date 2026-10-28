@@ -681,6 +681,169 @@
           "status"
         ],
         "properties": {
+          "desktopCapabilities": {
+            "type": "object",
+            "required": [
+              "configured",
+              "canOpenView",
+              "platform",
+              "browser",
+              "computerUse",
+              "screenCapture",
+              "vnc",
+              "availableTools"
+            ],
+            "properties": {
+              "configured": {
+                "type": "boolean"
+              },
+              "canOpenView": {
+                "type": "boolean"
+              },
+              "platform": {
+                "type": "string"
+              },
+              "browser": {
+                "type": "object",
+                "required": [
+                  "state",
+                  "reason",
+                  "checkedAt"
+                ],
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "unsupported",
+                      "unconfigured",
+                      "permission-required",
+                      "unreachable",
+                      "ready",
+                      "unknown"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "checkedAt": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
+              "computerUse": {
+                "type": "object",
+                "required": [
+                  "state",
+                  "reason",
+                  "checkedAt"
+                ],
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "unsupported",
+                      "unconfigured",
+                      "permission-required",
+                      "unreachable",
+                      "ready",
+                      "unknown"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "checkedAt": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
+              "screenCapture": {
+                "type": "object",
+                "required": [
+                  "state",
+                  "reason",
+                  "checkedAt"
+                ],
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "unsupported",
+                      "unconfigured",
+                      "permission-required",
+                      "unreachable",
+                      "ready",
+                      "unknown"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "checkedAt": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
+              "vnc": {
+                "type": "object",
+                "required": [
+                  "state",
+                  "reason",
+                  "checkedAt"
+                ],
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "unsupported",
+                      "unconfigured",
+                      "permission-required",
+                      "unreachable",
+                      "ready",
+                      "unknown"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "checkedAt": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
+              "availableTools": {
+                "type": "object",
+                "required": [
+                  "browser",
+                  "computer"
+                ],
+                "properties": {
+                  "browser": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "computer": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
           "trigger": {
             "type": "object",
             "required": [
@@ -4907,6 +5070,185 @@
         "additionalProperties": false
       }
     },
+    "desktop/capabilities": {
+      "params": {
+        "type": "object",
+        "properties": {
+          "botId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "refresh": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "configured",
+          "canOpenView",
+          "platform",
+          "browser",
+          "computerUse",
+          "screenCapture",
+          "vnc",
+          "availableTools"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "canOpenView": {
+            "type": "boolean"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "browser": {
+            "type": "object",
+            "required": [
+              "state",
+              "reason",
+              "checkedAt"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "unsupported",
+                  "unconfigured",
+                  "permission-required",
+                  "unreachable",
+                  "ready",
+                  "unknown"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "checkedAt": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "computerUse": {
+            "type": "object",
+            "required": [
+              "state",
+              "reason",
+              "checkedAt"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "unsupported",
+                  "unconfigured",
+                  "permission-required",
+                  "unreachable",
+                  "ready",
+                  "unknown"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "checkedAt": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "screenCapture": {
+            "type": "object",
+            "required": [
+              "state",
+              "reason",
+              "checkedAt"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "unsupported",
+                  "unconfigured",
+                  "permission-required",
+                  "unreachable",
+                  "ready",
+                  "unknown"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "checkedAt": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "vnc": {
+            "type": "object",
+            "required": [
+              "state",
+              "reason",
+              "checkedAt"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "unsupported",
+                  "unconfigured",
+                  "permission-required",
+                  "unreachable",
+                  "ready",
+                  "unknown"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "checkedAt": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "availableTools": {
+            "type": "object",
+            "required": [
+              "browser",
+              "computer"
+            ],
+            "properties": {
+              "browser": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "computer": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "desktop/bind": {
       "params": {
         "type": "object",
@@ -4977,6 +5319,177 @@
     }
   },
   "notifications": {
+    "desktop/capabilitiesChanged": {
+      "type": "object",
+      "required": [
+        "desktopCapabilities"
+      ],
+      "properties": {
+        "desktopCapabilities": {
+          "type": "object",
+          "required": [
+            "configured",
+            "canOpenView",
+            "platform",
+            "browser",
+            "computerUse",
+            "screenCapture",
+            "vnc",
+            "availableTools"
+          ],
+          "properties": {
+            "configured": {
+              "type": "boolean"
+            },
+            "canOpenView": {
+              "type": "boolean"
+            },
+            "platform": {
+              "type": "string"
+            },
+            "browser": {
+              "type": "object",
+              "required": [
+                "state",
+                "reason",
+                "checkedAt"
+              ],
+              "properties": {
+                "state": {
+                  "enum": [
+                    "unsupported",
+                    "unconfigured",
+                    "permission-required",
+                    "unreachable",
+                    "ready",
+                    "unknown"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                "checkedAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "computerUse": {
+              "type": "object",
+              "required": [
+                "state",
+                "reason",
+                "checkedAt"
+              ],
+              "properties": {
+                "state": {
+                  "enum": [
+                    "unsupported",
+                    "unconfigured",
+                    "permission-required",
+                    "unreachable",
+                    "ready",
+                    "unknown"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                "checkedAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "screenCapture": {
+              "type": "object",
+              "required": [
+                "state",
+                "reason",
+                "checkedAt"
+              ],
+              "properties": {
+                "state": {
+                  "enum": [
+                    "unsupported",
+                    "unconfigured",
+                    "permission-required",
+                    "unreachable",
+                    "ready",
+                    "unknown"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                "checkedAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "vnc": {
+              "type": "object",
+              "required": [
+                "state",
+                "reason",
+                "checkedAt"
+              ],
+              "properties": {
+                "state": {
+                  "enum": [
+                    "unsupported",
+                    "unconfigured",
+                    "permission-required",
+                    "unreachable",
+                    "ready",
+                    "unknown"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                "checkedAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "availableTools": {
+              "type": "object",
+              "required": [
+                "browser",
+                "computer"
+              ],
+              "properties": {
+                "browser": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "computer": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
     "daemon/triggerChanged": {
       "type": "object",
       "required": [
@@ -5414,6 +5927,168 @@
       }
     },
     "turn/started": {
+      "type": "object",
+      "required": [
+        "turn"
+      ],
+      "properties": {
+        "turn": {
+          "type": "object",
+          "required": [
+            "id",
+            "threadId",
+            "botId",
+            "trigger",
+            "status",
+            "primaryInputId",
+            "inputIds",
+            "taskId",
+            "startedAt",
+            "endedAt",
+            "usage",
+            "error"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "threadId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "botId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "trigger": {
+              "enum": [
+                "user",
+                "answer",
+                "bot",
+                "job",
+                "schedule",
+                "monitor",
+                "research",
+                "memory"
+              ]
+            },
+            "status": {
+              "enum": [
+                "queued",
+                "running",
+                "completed",
+                "yielded",
+                "interrupted",
+                "uncertain",
+                "failed"
+              ]
+            },
+            "primaryInputId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "inputIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "taskId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "startedAt": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "endedAt": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "input",
+                    "output",
+                    "cacheRead",
+                    "reasoning",
+                    "totalTokens",
+                    "costUsd"
+                  ],
+                  "properties": {
+                    "input": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "cacheRead": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "reasoning": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "totalTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "costUsd": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {}
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "turn/updated": {
       "type": "object",
       "required": [
         "turn"

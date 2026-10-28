@@ -34,7 +34,7 @@ export function derive(table: string, before: any, after: any, context: any) {
             thread: after
         });
     if (table === 'turns')
-        add(after.status === 'running' ? 'turn/started' : 'turn/completed', {
+        add(after.status === 'running' ? (before ? 'turn/updated' : 'turn/started') : 'turn/completed', {
             turn: after
         });
     if (table === 'requests')

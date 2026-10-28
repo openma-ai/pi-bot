@@ -26,6 +26,7 @@ import { DropdownMenu } from "@radix-ui/themes";
 import { createPiSettingsClient } from "../sdk/pi-settings-client.ts";
 import { createPiLoginFlow } from "./pi-login-flow.ts";
 import { piLoginPresentation, piProviderConfigured, piCatalogNote } from "./pi-login-presentation.ts";
+import { piThinkingSelection } from "./pi-thinking.ts";
 const safeLink = (value) => {
   try {
     const url = new URL(value);
@@ -240,6 +241,7 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
   const selected = config?.providers.find(p => p.id === provider);
   const visibleCatalog = selected?.catalog || config?.providers.find(p => piProviderConfigured(p) || p.credential)?.catalog || config?.catalog;
   const selectedModel = selected?.models.find(m => m.id === model);
+  const thinkingSelection = piThinkingSelection(selectedModel, thinking);
   const validModel = piProviderConfigured(selected) && !!selectedModel;
   const active = flow?.status === "pending";
   const presentation = piLoginPresentation(flow, callbackPlacement);
@@ -423,14 +425,17 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
             {visibleCatalog && ["failed","partial"].includes(visibleCatalog.status) && <Button variant="ghost" color="gray" size="1" disabled={busy} onClick={reload}><RefreshCw size={13}/>重新检查模型目录</Button>}
             {validModel && selectedModel.reasoning && <details className="pi-advanced"><summary>更多选项</summary><div className="pi-thinking-row">
               <div><Text as="p" size="2" weight="medium">思考强度</Text><Text as="p" size="1" color="gray">更深入的推理可能需要更长时间</Text></div>
-              <Choice label="思考强度" value={thinking} onChange={setThinking} disabled={busy}
-                items={[["off","关闭"],["minimal","最低"],["low","低"],["medium","标准"],["high","高"],["xhigh","更高"],["max","最高"]].map(([id,name])=>({id,name}))} />
+              <Choice label="思考强度" value={thinkingSelection.value} onChange={setThinking}
+                disabled={busy || !thinkingSelection.known || !thinkingSelection.items.length} items={thinkingSelection.items} />
             </div></details>}
+            {validModel && thinkingSelection.note && <Text as="p" size="1" color="gray" role="status">{thinkingSelection.note}</Text>}
           </section>
           {validModel && <div className="pi-settings-footer">
             <Text size="1" color="gray" role="status">{config.reloadPending ? "已保存，等待当前任务完成后应用" : !configured ? "确认后即可开始聊天" : dirty ? "有未保存的更改" : "已保存"}</Text>
-            <Button size="2" disabled={busy || !dirty} onClick={() => void act(async () => {
-              const result=await request("model",{provider,model,thinkingLevel:thinking}); if (!await refresh()) return;
+            <Button size="2" disabled={busy || !dirty || !thinkingSelection.valid} onClick={() => void act(async () => {
+              const result=await request("model",{provider,model,thinkingLevel:thinkingSelection.saveLevel});
+              const saved=await refresh(); if (!saved) return;
+              setThinking(saved.current.thinkingLevel);
               setNotice(result.pending ? "已保存，当前任务完成后自动应用。" : "模型已保存。");
               if (!configured && !result.pending) onConfigured?.();
             })}>{busy ? <LoaderCircle size={14} className="pi-spinner" /> : <Check size={14} />}{configured ? "保存更改" : "完成设置"}</Button>

@@ -104,6 +104,21 @@ test("queued messages remain queued rather than pretending inference started", (
     "idle",
   );
 });
+test("composer activity follows the latest task while historical failure cards remain recoverable", async () => {
+  const { messageFailures } = await import("../src/gui/presentation.ts");
+  const old = { botId: "a", messageId: "old", channelId: "local:a", direction: "inbound", status: "uncertain", receivedAt: 1 };
+  const current = { botId: "a", messageId: "new", channelId: "local:a", direction: "inbound", status: "processed", receivedAt: 2 };
+  const data: any = { messages: [current, old], turns: [{ botId: "a", status: "completed" }] };
+  assert.equal(botActivity(data, "a"), "idle");
+  assert.deepEqual(messageFailures(data, old), [old]);
+  data.messages.push({ botId: "a", direction: "outbound", status: "delivered", receivedAt: 10 });
+  current.status = "uncertain";
+  assert.equal(botActivity(data, "a"), "interrupted", "an outbound reply does not prove its task succeeded");
+  data.turns.push({ botId: "a", status: "running" });
+  assert.equal(botActivity(data, "a"), "working");
+  data.turns = []; data.requests = [{ botId: "a", status: "pending" }];
+  assert.equal(botActivity(data, "a"), "attention");
+});
 test("a scoped human wait does not hide independent active work or become a forever-running job", () => {
   const data: any = { turns: [], messages: [], jobs: [{ botId: "a", taskId: "A", state: "running" }], requests: [{ botId: "a", status: "pending", kind: "approval", params: { taskId: "A" } }] };
   assert.equal(botActivity(data, "a"), "attention");

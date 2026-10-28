@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { redactTraceValue } from '../../pi/redact.ts';
 import { authorize, type EventSink, type PluginEvent, type ApprovalPort } from '../../pi/host.ts';
 import { TurnTracker } from '../events/turn-tracker.ts';
+import { LocalTrace } from '../observability/local-trace.ts';
 import { PiBotError } from '../core/errors.ts';
 import type { Thread, Turn, Item } from '../../sdk/protocol/models.ts';
 import { acquireLock } from './lock.ts';
@@ -73,6 +74,7 @@ export class BotRuntime implements BotHost {
         return commit;
     }
     readonly tracker: TurnTracker;
+    readonly trace: LocalTrace;
     readonly state: StateGuard;
     approvals?: ApprovalPort;
     readonly events: EventSink = {
@@ -122,6 +124,19 @@ export class BotRuntime implements BotHost {
             this.store.recover();
             this.state = new StateGuard(this.store);
             this.tracker = new TurnTracker(this.store);
+            this.trace = new LocalTrace(join(dirname(path), 'diagnostics'));
+            // Observe only newly committed lifecycle events; no history/payload export.
+            this.store.events.subscribe(this.store.events.seq, event => {
+                const p = event.params, item = p.item, request = p.request;
+                if (event.method === 'turn/queued' && p.inputId) this.trace.point({ inputId: p.inputId }, 'message.queued', {}, event.at);
+                const turnId = request?.turnId ?? item?.turnId;
+                const turn = turnId ? this.store.get<Turn>('turns', turnId) : undefined;
+                if (!turn) return;
+                const scope = { inputId: turn.primaryInputId, turnId: turn.id };
+                if (event.method === 'request/created' || event.method === 'request/resolved') this.trace.point(scope, event.method === 'request/created' ? 'request.pending' : 'request.resolved', { id: request.id, status: request.status, elapsedMs: event.at - request.createdAt }, event.at);
+                if (item?.type === 'agentMessage' && ['pending','sending','delivered','uncertain','superseded'].includes(item.delivery)) this.trace.point(scope, `delivery.${item.delivery}` as 'delivery.pending', { id: item.outboxId }, event.at);
+                if (item?.type === 'job' && ['item/started','item/completed'].includes(event.method)) this.trace.point(scope, event.method === 'item/started' ? 'job.start' : 'job.end', { id: item.jobId, tool: item.tool }, event.at);
+            });
         }
         catch (e) {
             this.releaseLock();
@@ -381,6 +396,7 @@ export class BotRuntime implements BotHost {
             });
             active.batch.push(item);
             this.tracker.addInput(active.turnId, item);
+            this.trace.point({ inputId: active.batch[0].id, turnId: active.turnId }, 'message.admitted', { messageId: item.id, elapsedMs: Date.now() - item.createdAt });
             void active.session.enqueue(item).catch(error => {
                 this.errors.push(error);
                 this.store.put('inbox', {
@@ -395,6 +411,8 @@ export class BotRuntime implements BotHost {
             if (!e)
                 return;
             const turn = this.tracker.begin(e);
+            const runStarted = performance.now();
+            this.trace.point({ inputId: e.id, turnId: turn.id }, 'run.start');
             await this.store.events.context.run({
                 botId: id, threadId: turn.threadId, turnId: turn.id
             }, async () => {
@@ -405,6 +423,7 @@ export class BotRuntime implements BotHost {
                     ...e, state: 'processing', admittedAt: Date.now()
                 });
                 const batch = [e];
+                this.trace.point({ inputId: e.id, turnId: turn.id }, 'message.admitted', { messageId: e.id, elapsedMs: Date.now() - e.createdAt });
                 let activeSession: BotSession | undefined;
                 try {
                     const scope = this.sessionScope(e);
@@ -415,6 +434,7 @@ export class BotRuntime implements BotHost {
                         this.sessions.set(sessionKey, s);
                     }
                     const session = await s;
+                    this.trace.point({ inputId: e.id, turnId: turn.id }, 'session.ready', { elapsedMs: performance.now() - runStarted });
                     activeSession = session;
                     const run = session.run(e);
                     this.active.set(id, {
@@ -466,6 +486,7 @@ export class BotRuntime implements BotHost {
                     if (finalStatus === 'failed' && primary?.state === 'processed')
                         finalStatus = 'completed';
                     this.tracker.end(turn.id, finalStatus, finalError);
+                    this.trace.point({ inputId: e.id, turnId: turn.id }, 'run.end', { status: finalStatus, elapsedMs: performance.now() - runStarted });
                 }
             });
         }
@@ -798,6 +819,11 @@ export class BotRuntime implements BotHost {
         if (!ctx || ctx.botId !== botId)
             return;
         const { threadId, turnId } = ctx;
+        if (event.type === 'latency') {
+            const turn = this.store.get<Turn>('turns', turnId);
+            if (turn) this.trace.boundary({ inputId: turn.primaryInputId, turnId }, event.boundary);
+            return;
+        }
         if (event.type === 'usage') {
             this.tracker.usage(turnId, event);
             return;

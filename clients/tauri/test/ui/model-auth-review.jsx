@@ -9,14 +9,20 @@ import {SettingsPage} from '/src/gui/SettingsPage.jsx';
 
 // UI fixture only: no daemon, provider, OAuth grant, real credentials or native bridge.
 const parameters = new URLSearchParams(location.search);
+// Synthetic models deliberately support this small fixture-only set. Production
+// choices come from the runtime SDK, never from this QA definition.
+const fakeThinkingLevels = ['off','low','medium','high'];
 const providers = [
-  {id:'openai',name:'OpenAI',methods:['api_key','oauth'],methodLabels:{api_key:'OpenAI API key',oauth:'Sign in with ChatGPT'},credential:null,configured:false,catalog:{status:"cached"},models:[{id:'qa-model',name:'QA fixture model',reasoning:true},{id:'qa-fast',name:'QA fixture fast',reasoning:false}]},
-  {id:'openai-codex',name:'OpenAI Codex (legacy)',methods:['oauth'],methodLabels:{oauth:'OpenAI (ChatGPT Plus/Pro)'},credential:null,configured:false,catalog:{status:"cached"},models:[{id:'qa-codex',name:'QA fixture Codex',reasoning:true}]},
-  {id:'deepseek',name:'DeepSeek',methods:['api_key'],methodLabels:{api_key:'DeepSeek API key'},credential:null,configured:false,catalog:{status:"cached"},models:[{id:'qa-deepseek',name:'QA fixture DeepSeek',reasoning:true}]},
+  {id:'openai',name:'OpenAI',methods:['api_key','oauth'],methodLabels:{api_key:'OpenAI API key',oauth:'Sign in with ChatGPT'},credential:null,configured:false,catalog:{status:"cached"},models:[{id:'qa-model',name:'QA fixture model',reasoning:true,thinkingLevels:fakeThinkingLevels},{id:'qa-fast',name:'QA fixture fast',reasoning:false,thinkingLevels:['off']}]},
+  {id:'openai-codex',name:'OpenAI Codex (legacy)',methods:['oauth'],methodLabels:{oauth:'OpenAI (ChatGPT Plus/Pro)'},credential:null,configured:false,catalog:{status:"cached"},models:[{id:'qa-codex',name:'QA fixture Codex',reasoning:true,thinkingLevels:fakeThinkingLevels}]},
+  {id:'deepseek',name:'DeepSeek',methods:['api_key'],methodLabels:{api_key:'DeepSeek API key'},credential:null,configured:false,catalog:{status:"cached"},models:[{id:'qa-deepseek',name:'QA fixture DeepSeek',reasoning:true,thinkingLevels:fakeThinkingLevels}]},
 ];
+if(parameters.get('effort')==='gpt-6-sol')providers[0].models[0]={id:'gpt-6-sol',name:'GPT-6 Sol · 隔离 QA',reasoning:true,
+  // Checked against the bundled Pi 1.2.0 specification; no account or inference call.
+  thinkingLevels:['off','low','medium','high','xhigh','max']};
 let config = {current:{provider:'',model:'',thinkingLevel:'high'},providers,catalog:{status:parameters.get('catalog')||'cached',source:'isolated-sdk-fixture'},reloadPending:false};
 providers.forEach(provider=>{provider.catalog={...config.catalog};});
-if(parameters.has('configured')||parameters.has('ambient')){providers[0].configured=true;if(!parameters.has('ambient'))providers[0].credential='oauth';if(parameters.has('configured'))config.current={provider:'openai',model:'qa-model',thinkingLevel:'high'};}
+if(parameters.has('configured')||parameters.has('ambient')){providers[0].configured=true;if(!parameters.has('ambient'))providers[0].credential='oauth';if(parameters.has('configured'))config.current={provider:'openai',model:providers[0].models[0].id,thinkingLevel:parameters.get('thinking')||'high'};}
 // Account catalog states are synthetic. Never query a real account or provider.
 function accountCatalog(provider,state='confirmed'){
   provider.catalog={source:'openai-account',status:state==='failed'?'failed':state==='partial'?'partial':'refreshed',accountAccess:state==='failed'?'unverified':'confirmed',authChecked:state!=='failed',unsupportedModelCount:state==='partial'?1:0,...(state==='partial'?{unsupportedModelReason:'隔离 QA：未知 SDK 型号已过滤'}:{})};
@@ -87,7 +93,11 @@ window.fetch = async (input,options={}) => {
     if(mode==='lost-poll'){mode='';throw new TypeError('isolated simulated lost status read');}
     return json(flow);
   }
-  if(path==='model'){config={...config,current:{provider:body.provider,model:body.model,thinkingLevel:body.thinkingLevel}};return json({applied:true});}
+  if(path==='model'){
+    const model=providers.find(p=>p.id===body.provider)?.models.find(m=>m.id===body.model);
+    if(!model?.thinkingLevels.includes(body.thinkingLevel))return json({error:'隔离 QA：该模型不支持所选思考强度'},400);
+    config={...config,current:{provider:body.provider,model:body.model,thinkingLevel:body.thinkingLevel}};return json({applied:true});
+  }
   if(path==='logout'){const provider=providers.find(p=>p.id===body.provider);provider.credential=null;provider.configured=false;return json({applied:true});}
   return json({error:'QA fixture endpoint missing'},404);
 };

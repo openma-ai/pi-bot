@@ -13,7 +13,7 @@ import { ErrorBoundary } from "./ErrorBoundary.jsx";
 import { useConversationDraft } from "./hooks/use-conversation-draft.js";
 import { Notification, ServiceNotice, ConnectionFeedback } from "./Notification.jsx";
 import { TaskFailure } from "./TaskFailure.jsx";
-import { ConversationRequests } from "./ConversationRequests.jsx";
+import { ConversationRequests, RequestAttention } from "./ConversationRequests.jsx";
 import { SearchDialog } from "./SearchDialog.jsx";
 import { MessengerSidebar } from "./MessengerSidebar.jsx";
 import { SidebarProvider } from "./ui/sidebar.jsx";
@@ -133,6 +133,7 @@ function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) 
   const navigation = useConversationRoute();
   const {
     data,
+    latency,
     client: api,
     error: connectionError,
     phase: connectionPhase,
@@ -363,6 +364,12 @@ function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) 
     chooseConversation({ kind: "bot", id: sender.id }, { piPrivateFrom: groupId, piPrivateScope: activeRuntime?.scope });
   }
   const laidOutMessages = layoutMessages(messages, view === "group", data.bots);
+  useLayoutEffect(() => {
+    const visible = new Set(laidOutMessages.map(({ message }) => message.messageId));
+    for (const item of data.items || []) {
+      if (item.type === "agentMessage" && visible.has(item.message?.messageId)) void latency.committed(item.id);
+    }
+  }, [data.items, laidOutMessages, latency]);
   const mentionMatch =
     view === "group" && !hideMentions
       ? draft.match(/(?:^|\s)@([^\s]*)$/)
@@ -1020,7 +1027,7 @@ function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) 
                           <MessageBody text={displayText(m)} />
                           <FileCards files={m.attachments} imageInputStatus={m.imageInputStatus} api={api} scope={{botId:m.botId||selected,...(view==="group"?{groupId}:{})}} />
 
-                          {["queued", "processing"].includes(m.status) && (
+                          {(m.status === "queued" || (m.status === "processing" && !isUserMessage(m))) && (
                             <Text size="1" className="status">
                               {labels[m.status] || m.status}
                             </Text>
@@ -1078,7 +1085,7 @@ function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) 
                     最新消息
                   </Button>
                 )}
-                {view === "chat" && activity(selected) !== "idle" && (
+                {view === "chat" && !["idle", "attention"].includes(activity(selected)) && (
                   <div className="activity-line" role="status" data-activity={activity(selected)}>
                     <BotAvatar
                       id={selected}
@@ -1092,6 +1099,7 @@ function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) 
                     </Text>
                   </div>
                 )}
+                {["chat", "group"].includes(view) && <RequestAttention data={data} kind={view === "group" ? "group" : "bot"} id={view === "group" ? groupId : selected} api={api} baseUrl={activeRuntime?.baseUrl || ""} />}
                 {mentionOptions.length > 0 && (
                   <div
                     className="mention-menu"

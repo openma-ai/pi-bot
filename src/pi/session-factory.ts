@@ -4,6 +4,8 @@ import { createDesktopExtension, desktopToolNames, type DesktopClient } from './
 import { imageBudgetForModel } from './image-budget.ts';
 import { redactChannelText } from './redact.ts';
 import { ProviderFailureError } from './provider-failure.ts';
+import { ProviderTiming } from './latency.ts';
+import { TaskSourceRequiredError } from './task-source.ts';
 import { runCodingWorker } from './coding-worker.ts';
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -186,7 +188,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                 throw Error('Source inbox event unavailable or ambiguous to this bot; use its own inbox messageId');
             }
             if (routedAction && visibleTaskScopes.size > 1)
-                throw Error('Ambiguous task source; supply source_message_id for the intended inbox task');
+                throw new TaskSourceRequiredError();
             return current;
         };
         const origins = new Map<string, {
@@ -614,6 +616,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
         // provider boundary, rather than waiting behind one queued item per turn.
         session.setSteeringMode('all');
         session.agent.streamFunction = async (model, context, request) => {
+            const timing = new ProviderTiming(boundary => runtime.events?.emit(bot.id, { type: 'latency', boundary }), context);
             const requestInbox = [...consumed];
             const controller = new AbortController();
             inference = controller;
@@ -646,10 +649,12 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                 void (async () => {
                     try {
                         for await (const event of source) {
+                            timing.event(event.type);
                             if (!controller.signal.aborted && event.type !== 'done' && event.type !== 'error')
                                 output.push(event);
                         }
                         const final = await source.result();
+                        timing.end(signal.aborted || final.stopReason === 'aborted' ? 'cancelled' : final.stopReason === 'error' ? 'error' : 'ok', final.usage);
                         const failure = !signal.aborted && final.stopReason === 'error'
                             ? new ProviderFailureError(final.errorMessage, 'response') : undefined;
                         if (failure && !scopeYielded) wakeError ??= failure;
@@ -665,6 +670,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                         output.end(message);
                     }
                     catch (error) {
+                        timing.end(signal.aborted ? 'cancelled' : 'error');
                         const failure = new ProviderFailureError(requestDeadline.signal.aborted ? 'Request timed out' : error, 'stream');
                         if (!controller.signal.aborted && !scopeYielded) wakeError ??= failure;
                         output.end({
@@ -685,6 +691,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                 return output;
             }
             catch (error) {
+                timing.end(signal.aborted || scopeYielded ? 'cancelled' : error instanceof ProviderRequestGuardError ? 'blocked' : 'error');
                 clearDeadline();
                 if (inference === controller)
                     inference = undefined;
@@ -702,7 +709,18 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
         };
         const replyPrefixes = new Map<string, string>();
         let internalPrefix = '';
+        const toolTimings = new Map<string, number>();
         session.subscribe(event => {
+            if (event.type === 'tool_execution_start') {
+                toolTimings.set(event.toolCallId, performance.now());
+                runtime.events?.emit(bot.id, { type: 'latency', boundary: { kind: 'tool', phase: 'start', id: event.toolCallId, tool: event.toolName, elapsedMs: 0 } });
+            }
+            if (event.type === 'tool_execution_end') {
+                const start = toolTimings.get(event.toolCallId);
+                toolTimings.delete(event.toolCallId);
+                const state = (event.result?.details as { state?: string } | undefined)?.state;
+                runtime.events?.emit(bot.id, { type: 'latency', boundary: { kind: 'tool', phase: 'end', id: event.toolCallId, tool: event.toolName, elapsedMs: start === undefined ? 0 : performance.now() - start, outcome: event.isError || ['failed','persistence_failed'].includes(state ?? '') ? 'error' : 'ok' } });
+            }
             if (event.type === 'message_start')
                 internalPrefix = '';
             if (event.type === 'tool_execution_start' && event.toolName !== 'send_message')

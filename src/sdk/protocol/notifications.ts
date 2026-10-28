@@ -36,6 +36,8 @@ export const notificationSchemas: Record<string, any> = {
     }),
     'turn/started': Type.Object({
         turn: TurnSchema
+    }), 'turn/updated': Type.Object({
+        turn: TurnSchema
     }), 'turn/completed': Type.Object({
         turn: TurnSchema
     }),
