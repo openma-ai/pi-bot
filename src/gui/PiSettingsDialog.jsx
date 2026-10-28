@@ -25,6 +25,7 @@ import {
 import { DropdownMenu } from "@radix-ui/themes";
 import { createPiSettingsClient } from "../sdk/pi-settings-client.ts";
 import { createPiLoginFlow } from "./pi-login-flow.ts";
+import { piLoginPresentation, piProviderConfigured, piCatalogNote } from "./pi-login-presentation.ts";
 const safeLink = (value) => {
   try {
     const url = new URL(value);
@@ -167,7 +168,7 @@ function SettingsError({ error, onRetry, busy }) {
     </div>
   );
 }
-export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLabel = "当前工作空间", onConfigured }) {
+export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLabel = "当前工作空间", onConfigured, callbackPlacement = "unknown" }) {
   const request = useMemo(() => createPiSettingsClient(baseUrl), [baseUrl]);
   const alive = useRef(false), scope = useRef(0), controller = useRef();
   const pendingAction = useRef(false), promptId = useRef();
@@ -181,7 +182,8 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
     [value, setValue] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [openedFlow, setOpenedFlow] = useState("");
   const native = !!window.__PIBOT_NATIVE__;
   async function refresh(initial = false) {
     const version = scope.current;
@@ -193,9 +195,9 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
       setProvider(data.current.provider || "");
       setModel(data.current.model || "");
       setThinking(data.current.thinkingLevel || "high");
-      setAuthProvider(data.current.provider || data.providers.find(p => p.credential)?.id ||
+      setAuthProvider(data.current.provider || data.providers.find(p => piProviderConfigured(p))?.id ||
         data.providers.find(p => p.id === "openai")?.id || data.providers[0]?.id || "");
-      setSection(data.providers.some(p => p.credential) ? "use" : "auth");
+      setSection(data.providers.some(p => piProviderConfigured(p) || p.credential) ? "use" : "auth");
     }
     return data;
   }
@@ -223,6 +225,7 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
   useEffect(() => {
     if (flow?.status !== "complete") return;
     const version = scope.current;
+    void closeFlowWindows(flow.id);
     void refresh().then(data => {
       if(alive.current && version === scope.current) confirmConnection(data);
     }).catch(e => { if(alive.current && version === scope.current) setError(e); });
@@ -231,15 +234,17 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
     await controller.current?.cancel(); setValue("");
   }), [registerBeforeSwitch, request]);
   const account = config?.providers.find(p => p.id === authProvider);
-  const models = (config?.providers || []).filter(p => p.credential).flatMap(p =>
+  const models = (config?.providers || []).filter(p => piProviderConfigured(p)).flatMap(p =>
     p.models.map(m => ({ id: JSON.stringify([p.id, m.id]), name: m.name,
       detail: p.name + " · " + m.id, provider: p.id, model: m.id })));
   const selected = config?.providers.find(p => p.id === provider);
   const selectedModel = selected?.models.find(m => m.id === model);
-  const validModel = !!selected?.credential && !!selectedModel;
+  const validModel = piProviderConfigured(selected) && !!selectedModel;
   const active = flow?.status === "pending";
-  const hasConnection = !!config?.providers.some(p => p.credential);
-  const configured = !!config?.providers.some(p => p.credential && p.id === config.current.provider && p.models.some(m => m.id === config.current.model));
+  const presentation = piLoginPresentation(flow, callbackPlacement);
+  const confirming = flow?.status === "complete" && section === "auth";
+  const hasConnection = !!config?.providers.some(p => piProviderConfigured(p) || p.credential);
+  const configured = !!config?.providers.some(p => piProviderConfigured(p) && p.id === config.current.provider && p.models.some(m => m.id === config.current.model));
   const dirty = !!config && validModel && (provider !== config.current.provider ||
     model !== config.current.model || thinking !== config.current.thinkingLevel);
   const effectiveError = error || (flow?.error ? {message:flow.error,code:flow.errorCode,submitted:flow.uncertain} : undefined);
@@ -252,12 +257,12 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
     finally { pendingAction.current = false; if(alive.current && version === scope.current) setBusy(false); }
   }
   function confirmConnection(data) {
-    const connected = data?.providers.find(p => p.id === flow?.providerId && p.credential);
+    const connected = data?.providers.find(p => p.id === flow?.providerId && piProviderConfigured(p));
     if (!connected) {
       setError({message:"登录已结束，但连接状态尚未确认。请重新加载。",code:"invalidResponse"});
       return;
     }
-    setError(""); setNotice(connected.name + " 已连接，请选择可用模型。"); setSection("use");
+    setError(""); setNotice(connected.name + " 已连接，请选择模型。"); setSection("use");
   }
   const reload = () => act(async () => {
     const data = await refresh(!config);
@@ -265,20 +270,29 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
     else if(data && flow?.status === "complete") confirmConnection(data);
   });
   const login = method => act(() => controller.current.begin(authProvider, method));
+  async function closeFlowWindows(id) {
+    if (!native || !id) return;
+    try { await window.__PIBOT_NATIVE__.call("pi_settings_close_forms", {path:baseUrl + "/pi/login/" + id}); }
+    catch { /* Older native clients retain their existing secure-window behavior. */ }
+  }
   async function cancelLogin(back = false) {
-    const wasPending = controller.current?.current?.status === "pending";
+    const previous = controller.current?.current;
+    const wasPending = previous?.status === "pending";
     const cleanup = controller.current?.cancel();
     setValue(""); setError(""); setNotice(wasPending ? "登录已取消。" : "");
     if(back) setSection("use");
     await cleanup;
+    await closeFlowWindows(previous?.id);
   }
   function loginLink(url, label) {
     const href = safeLink(url);
     if (!href) return null;
     return native ? <Button key={url} variant="soft" size="2" disabled={busy}
-      onClick={() => void act(() => window.__PIBOT_NATIVE__.call("pi_settings_open_login", {
-        path: baseUrl + "/pi/login/" + flow.id, url,
-      }))}>{label}</Button> : <a key={url} href={href} target="_blank" rel="noreferrer">{label}</a>;
+      onClick={() => void act(async () => {
+        const id=flow.id;
+        await window.__PIBOT_NATIVE__.call("pi_settings_open_login", {path:baseUrl + "/pi/login/" + id,url});
+        if(controller.current?.current?.id===id) setOpenedFlow(id);
+      })}>{label}</Button> : <a key={url} href={href} target="_blank" rel="noreferrer" onClick={() => setOpenedFlow(flow.id)}>{label}</a>;
   }
   if (!config)
     return (
@@ -309,16 +323,17 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
             <Text size="1" color="gray">{runtimeLabel}</Text>
           </div>
           <section className="pi-settings-section" aria-label="提供商与认证">
-            <Text size="2" color="gray">{hasConnection ? "管理已连接账号，或添加其他提供商。" : "先连接账号，再选择可用模型。"}</Text>
-            <Choice label="模型提供商" value={authProvider} disabled={busy || active} searchable
+            {!active && <><Text size="2" color="gray">{hasConnection ? "管理已连接账号，或添加其他提供商。" : "先连接账号，再选择模型。"}</Text>
+            <Choice label="模型提供商" value={authProvider} disabled={busy || active || confirming} searchable
               items={config.providers.map(p => ({id:p.id,name:p.name,
                 detail:[p.methodLabels?.oauth, p.methods.includes("api_key") ? "API key" : ""].filter(Boolean).join(" · ")}))}
-              onChange={v => { void controller.current?.cancel(); setAuthProvider(v); setError(""); setNotice(""); }} />
+              onChange={v => { void controller.current?.cancel(); setAuthProvider(v); setError(""); setNotice(""); }} /></>}
             {account && <>
-              <div className="pi-account-row">
+              {active && <div className="pi-auth-summary"><Text size="2" weight="medium">{account.name}</Text><Text size="1" color="gray">{flow.type === "oauth" ? account.methodLabels?.oauth || "账号登录" : "API key"}</Text></div>}
+              {!active && <div className="pi-account-row">
                 <div className="pi-account-status">
-                  <span className="pi-status-dot" data-connected={!!account.credential} />
-                  <Text size="2" color="gray">{account.credential === "oauth" ? "账号已连接" : account.credential ? "API key 已配置" : "尚未连接"}</Text>
+                  <span className="pi-status-dot" data-connected={!!piProviderConfigured(account)} />
+                  <Text size="2" color="gray">{account.catalog?.authChecked === false ? "认证状态暂未确认" : account.credential === "oauth" ? "账号已连接" : account.credential ? "API key 已配置" : piProviderConfigured(account) ? "运行环境已配置认证" : "尚未连接"}</Text>
                 </div>
                 {account.credential && <DropdownMenu.Root>
                   <DropdownMenu.Trigger><Button aria-label="管理提供商认证" size="1" variant="ghost" color="gray" disabled={busy || active}><MoreHorizontal size={17} /></Button></DropdownMenu.Trigger>
@@ -326,8 +341,8 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
                     await request("logout", {provider:authProvider}); if (await refresh()) setNotice("已断开该提供商的认证。");
                   })}>断开连接</DropdownMenu.Item></DropdownMenu.Content>
                 </DropdownMenu.Root>}
-              </div>
-              {!active && <div className="pi-account-actions pi-auth-methods">
+              </div>}
+              {!active && !confirming && <div className="pi-account-actions pi-auth-methods">
                 {[...account.methods].sort((a,b) => (a === "oauth" ? 0 : 1) - (b === "oauth" ? 0 : 1)).map(method => <Button
                   key={method} variant={method === "oauth" ? "solid" : "soft"} size="2" disabled={busy}
                   onClick={() => void login(method)}>
@@ -335,20 +350,40 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
                   {method === "oauth" ? (account.methodLabels?.oauth || "登录账号") : (account.credential === "api_key" ? "更新 API key" : "添加 API key")}
                 </Button>)}
               </div>}
-              {!active && account.id === "openai" && account.methods.includes("oauth") && <Text as="p" size="1" color="gray" className="pi-auth-note">ChatGPT 账号登录与 OpenAI API key 是两种独立的连接方式。</Text>}
-              {!active && account.id === "openai-codex" && account.methods.includes("oauth") && <Text as="p" size="1" color="gray" className="pi-auth-note">此 SDK 提供商支持浏览器登录或设备码登录；设备码可在手机上授权。</Text>}
+              {!active && !confirming && account.id === "openai" && account.methods.includes("oauth") && <Text as="p" size="1" color="gray" className="pi-auth-note">ChatGPT 账号登录与 OpenAI API key 是两种独立的连接方式。</Text>}
+              {!active && !confirming && account.id === "openai" && config.providers.some(p => p.id === "openai-codex" && p.methods.includes("oauth")) &&
+                <Button className="pi-device-method" size="1" variant="ghost" color="gray" onClick={() => {
+                  void controller.current?.cancel(); setAuthProvider("openai-codex"); setError(""); setNotice("设备码由 OpenAI Codex (legacy) 提供。点击登录后选择设备码，不会更改当前模型或已有连接。");
+                }}>设备码登录（可在手机完成）<ChevronRight size={13}/></Button>}
+              {!active && !confirming && account.id === "openai-codex" && account.methods.includes("oauth") && <Text as="p" size="1" color="gray" className="pi-auth-note">此 SDK 提供商支持浏览器登录或设备码登录；设备码可在手机上授权。</Text>}
             </>}
           </section>
           {active && <div className="pi-login-flow" aria-busy={!!flow.starting || !!flow.submitting}>
-            <Text size="2" weight="medium">{flow.starting ? "正在准备登录…" : flow.uncertain ? "正在确认登录状态…" : "完成账号连接"}</Text>
+            <div className="pi-login-status" role="status">
+              {presentation.spinning && <LoaderCircle size={15} className="pi-spinner" aria-hidden="true"/>}
+              <Text size="2" weight="medium">{presentation.title}</Text>
+            </div>
+            {presentation.note && <Text size="1" color="gray">{presentation.note}</Text>}
             {(flow.events || []).map((event,i) => <React.Fragment key={i}>
-              {event.message && <Text size="2">{event.message}</Text>}
-              {event.instructions && <Text size="2">{event.instructions}</Text>}
+              {event.message && !(presentation.browser && event.type === "progress") && <Text size="2">{event.message}</Text>}
+              {event.instructions && !(presentation.browser && event.type === "auth_url") && <Text size="2">{event.instructions}</Text>}
               {event.userCode && <Text size="4" weight="bold" className="pi-device-code">{event.userCode}</Text>}
-              {loginLink(event.url || event.verificationUri, "打开授权页面")}
+              {!presentation.exchanging && loginLink(event.url || event.verificationUri, openedFlow === flow.id ? "重新打开授权页面" : "打开授权页面")}
               {event.links?.map(l => loginLink(l.url, l.label || "登录说明"))}
             </React.Fragment>)}
-            {flow.prompt && <form onSubmit={e => {
+            {flow.prompt && !presentation.exchanging && (presentation.fallback ? <details className="pi-login-fallback" key={flow.prompt.id}>
+              <summary>无法自动完成？</summary>
+              <Text as="p" size="1" color="gray">仅在授权后未自动返回时，使用浏览器最后显示的完整授权回跳地址。它包含一次性授权信息，请勿发送到聊天。</Text>
+              {native ? <Button type="button" disabled={busy} onClick={() => void act(() => window.__PIBOT_NATIVE__.call("pi_settings_credential_window", {
+                path:baseUrl + "/pi/login/" + flow.id,promptId:flow.prompt.id,
+              }))}>粘贴授权回跳地址</Button> : <form onSubmit={e => {
+                e.preventDefault(); const entered=value; setValue(""); void act(() => controller.current.answer(flow.prompt.id,entered));
+              }}><Flex direction="column" gap="3">
+                <TextField.Root aria-label="授权回跳地址" type="password" autoComplete="off" placeholder="完整授权回跳地址"
+                  value={value} disabled={busy || flow.submitting} onChange={e => setValue(e.target.value)}/>
+                <Button type="submit" disabled={busy || flow.submitting || !value.trim()}>提交备用回跳地址</Button>
+              </Flex></form>}
+            </details> : <form onSubmit={e => {
               e.preventDefault(); const entered = value; setValue("");
               void act(() => controller.current.answer(flow.prompt.id, entered));
             }}><Flex direction="column" gap="3">
@@ -364,9 +399,10 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
                     disabled={busy || flow.submitting} onChange={e => setValue(e.target.value)} />}
                 <Button type="submit" disabled={busy || flow.submitting || !value.trim()}>继续</Button>
               </>}
-            </Flex></form>}
+            </Flex></form>)}
             <Button variant="ghost" color="gray" onClick={() => void cancelLogin()}>取消登录</Button>
           </div>}
+          {confirming && !error && <div className="pi-login-status" role="status"><LoaderCircle size={15} className="pi-spinner" aria-hidden="true"/><Text size="2">正在核对认证和模型目录…</Text></div>}
         </section>
       ) : (
         <section className="pi-mode-content" aria-label="模型使用">
@@ -378,10 +414,12 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
               </Button>
             </div>
             <Choice label="默认模型" value={validModel ? JSON.stringify([provider,model]) : ""}
-              fallback={models.length ? "请选择模型" : "尚无可用模型"}
+              fallback={models.length ? "请选择模型" : config.catalog?.status === "failed" ? "模型目录暂未确认" : "尚无模型目录"}
               onChange={id => {const option=models.find(m => m.id===id); if(option){setProvider(option.provider);setModel(option.model);setNotice("");}}}
               disabled={busy || !models.length} searchable items={models} />
-            {!models.length && <Text size="2" color="gray">{hasConnection ? "已连接的提供商暂未返回可用模型。" : "连接提供商后，即可选择模型。"}</Text>}
+            <Text as="p" size="1" color="gray" className="pi-catalog-note">{piCatalogNote(config.catalog)}</Text>
+            {!models.length && <Text size="2" color="gray">{config.catalog?.status === "failed" ? "暂时无法确认认证或模型目录，请重新检查。" : hasConnection ? "已连接的提供商暂未返回模型目录。" : "连接提供商后，即可选择模型。"}</Text>}
+            {config.catalog && ["failed","partial"].includes(config.catalog.status) && <Button variant="ghost" color="gray" size="1" disabled={busy} onClick={reload}><RefreshCw size={13}/>重新检查模型目录</Button>}
             {validModel && selectedModel.reasoning && <details className="pi-advanced"><summary>更多选项</summary><div className="pi-thinking-row">
               <div><Text as="p" size="2" weight="medium">思考强度</Text><Text as="p" size="1" color="gray">更深入的推理可能需要更长时间</Text></div>
               <Choice label="思考强度" value={thinking} onChange={setThinking} disabled={busy}

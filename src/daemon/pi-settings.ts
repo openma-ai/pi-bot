@@ -4,6 +4,7 @@ import { getAgentDir, ModelRuntime, SettingsManager } from '@earendil-works/pi-c
 import type { AuthEvent, AuthPrompt, AuthType } from '@earendil-works/pi-ai';
 import type { ThinkingLevel } from '@earendil-works/pi-agent-core';
 import { PiBotError } from './core/errors.ts';
+import { PiModelCatalog } from './pi-model-catalog.ts';
 type Login = {
     id: string;
     providerId: string;
@@ -35,19 +36,24 @@ const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 export class PiSettings {
     onLogin?: () => Promise<unknown>;
     private flows = new Map<string, Flow>();
-    private constructor(readonly agentDir: string, readonly cwd: string, private models: ModelRuntime) {
+    private catalog: PiModelCatalog;
+    private constructor(readonly agentDir: string, readonly cwd: string, private models: ModelRuntime, allowModelNetwork?: boolean) {
+        this.catalog = new PiModelCatalog(models, { allowNetwork: allowModelNetwork });
     }
     static async create(options: {
         agentDir?: string;
         cwd?: string;
+        /** Like Pi's interactive selector; false keeps catalog reads cache-only. */
+        allowModelNetwork?: boolean;
     } = {}) {
         const agentDir = options.agentDir ?? getAgentDir(), cwd = options.cwd ?? process.cwd();
         const models = await ModelRuntime.create({
             authPath: join(agentDir, 'auth.json'), modelsPath: join(agentDir, 'models.json'), modelsStorePath: join(agentDir, 'models-store.json'), refreshOnCreate: false, allowModelNetwork: false
         });
-        return new PiSettings(agentDir, cwd, models);
+        return new PiSettings(agentDir, cwd, models, options.allowModelNetwork);
     }
     async state() {
+        const { models, providers, catalog } = await this.catalog.refresh();
         const saved = await this.models.listCredentials();
         const settings = SettingsManager.create(this.cwd, this.agentDir);
         return {
@@ -58,10 +64,13 @@ export class PiSettings {
                 methodLabels: {
                     ...(p.auth.apiKey?.login ? { api_key: p.auth.apiKey.name } : {}),
                     ...(p.auth.oauth ? { oauth: p.auth.oauth.loginLabel ?? p.auth.oauth.name } : {})
-                }, credential: saved.find(c => c.providerId === p.id)?.type ?? null, models: this.models.getModels(p.id).map(m => ({
+                }, credential: saved.find(c => c.providerId === p.id)?.type ?? null,
+                configured: providers.get(p.id)?.configured ?? false,
+                catalog: providers.get(p.id)?.catalog,
+                models: models.filter(m => m.provider === p.id).map(m => ({
                     id: m.id, name: m.name, reasoning: m.reasoning
                 }))
-            })), agentDir: this.agentDir
+            })), catalog, agentDir: this.agentDir
         };
     }
     startLogin(providerId: string, type: AuthType, requestId?: string) {
@@ -203,6 +212,8 @@ export class PiSettings {
     async selectModel(provider: string, id: string, thinkingLevel: ThinkingLevel) {
         if (!this.models.getModel(provider, id) || !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(thinkingLevel))
             throw new PiBotError('invalidParams', 'Unknown Pi model or thinking level');
+        if (!await this.catalog.canSelect(provider, id))
+            throw new PiBotError('invalidParams', '该模型不在当前认证配置的 SDK 模型目录中，请重新加载或连接提供商');
         const settings = SettingsManager.create(this.cwd, this.agentDir), project = settings.getProjectSettings();
         if ((project.defaultProvider && project.defaultProvider !== provider) || (project.defaultModel && project.defaultModel !== id) || (project.defaultThinkingLevel && project.defaultThinkingLevel !== thinkingLevel))
             throw new PiBotError('conflict', '当前项目的 .pi/settings.json 覆盖了默认模型，请先在 Pi 中调整该项目配置');

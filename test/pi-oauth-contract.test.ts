@@ -19,7 +19,7 @@ const waitFor = async (predicate: () => boolean) => {
 };
 const isolated = async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pibo-oauth-contract-'));
-    return { dir, service: await PiSettings.create({ agentDir: dir, cwd: dir }) };
+    return { dir, service: await PiSettings.create({ agentDir: dir, cwd: dir, allowModelNetwork: false }) };
 };
 
 test('installed SDK registers distinct OpenAI login methods and exports their true labels', async () => {
@@ -45,7 +45,7 @@ test('actual SDK device flow returns HTTP control immediately, resumes by reques
     const { PiBotDaemon } = await import('../src/daemon/core/daemon.ts');
     const { listenHttp } = await import('../src/daemon/transports/http.ts');
     const dir = mkdtempSync(join(tmpdir(), 'pibo-oauth-http-'));
-    const daemon = await PiBotDaemon.create({ dataDir: join(dir, 'data'), piOptions: { agentDir: join(dir, 'pi'), cwd: dir }, factory: async () => ({ run: async () => {}, close: async () => {} }) });
+    const daemon = await PiBotDaemon.create({ dataDir: join(dir, 'data'), piOptions: { agentDir: join(dir, 'pi'), cwd: dir, allowModelNetwork: false }, factory: async () => ({ run: async () => {}, close: async () => {} }) });
     const http = await listenHttp(daemon, { port: 0 });
     const realFetch = globalThis.fetch;
     let release!: (response: Response) => void;

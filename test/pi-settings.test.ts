@@ -9,7 +9,7 @@ test('GUI login uses native Pi auth storage and model settings without exposing 
     assert.ok(loaded?.PiSettings, 'GUI Pi settings service must exist');
     const dir = mkdtempSync(join(tmpdir(), 'pi-settings-'));
     const settings = await loaded.PiSettings.create({
-        agentDir: dir, cwd: dir
+        agentDir: dir, cwd: dir, allowModelNetwork: false
     });
     try {
         const initial = await settings.state();
@@ -33,12 +33,14 @@ test('GUI login uses native Pi auth storage and model settings without exposing 
         }
         assert.equal(status.status, 'complete');
         assert.equal(JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8')).deepseek.key, 'fixture-key-not-real');
-        assert.ok(!JSON.stringify(await settings.state()).includes('fixture-key-not-real'));
+        const authenticated = await settings.state();
+        assert.ok(!JSON.stringify(authenticated).includes('fixture-key-not-real'));
         assert.ok(!JSON.stringify(status).includes('fixture-key-not-real'));
-        await settings.selectModel('deepseek', provider.models[0].id, 'high');
+        const model = authenticated.providers.find((p: any) => p.id === 'deepseek').models[0];
+        await settings.selectModel('deepseek', model.id, 'high');
         const saved = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'));
         assert.equal(saved.defaultProvider, 'deepseek');
-        assert.equal(saved.defaultModel, provider.models[0].id);
+        assert.equal(saved.defaultModel, model.id);
         assert.equal(saved.defaultThinkingLevel, 'high');
     }
     finally {
@@ -92,7 +94,7 @@ test('private GUI auth requires authentication and keeps secrets out of RPC, sna
     const dir = mkdtempSync(join(tmpdir(), 'pi-auth-http-'));
     const d = await PiBotDaemon.create({
         dataDir: join(dir, 'data'), piOptions: {
-            agentDir: join(dir, 'pi'), cwd: dir
+            agentDir: join(dir, 'pi'), cwd: dir, allowModelNetwork: false
         }, factory: async () => ({
             run: async () => {
             }, close: async () => {
@@ -238,7 +240,7 @@ test('native Pi model changes apply to the live daemon without a provider reques
     }));
     const d = await PiBotDaemon.create({
         dataDir: join(dir, 'data'), piOptions: {
-            agentDir, cwd: dir
+            agentDir, cwd: dir, allowModelNetwork: false
         }
     });
     try {
@@ -262,7 +264,7 @@ test('native OAuth interaction bridges links, prompts and cancellation without r
     const { fauxProvider } = await import('@earendil-works/pi-ai');
     const dir = mkdtempSync(join(tmpdir(), 'pi-oauth-'));
     const service = await loaded.PiSettings.create({
-        agentDir: dir, cwd: dir
+        agentDir: dir, cwd: dir, allowModelNetwork: false
     });
     const faux = fauxProvider({
         provider: 'oauth-fixture'

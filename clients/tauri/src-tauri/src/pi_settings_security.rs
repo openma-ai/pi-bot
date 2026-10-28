@@ -87,12 +87,43 @@ pub(crate) fn validate_secure(state: &Value, flow: &str, prompt: &str) -> Result
     if !matches!(p["type"].as_str(), Some("text" | "secret" | "manual_code")) { return Err(expired()); }
     Ok(())
 }
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CredentialMetadata {
+    pub state: &'static str,
+    pub field_type: &'static str,
+    pub label: &'static str,
+}
+impl CredentialMetadata {
+    pub fn closed(state: &'static str) -> Self { Self { state, field_type: "none", label: "" } }
+    pub fn is_terminal(&self) -> bool { matches!(self.state, "complete" | "cancelled" | "failed" | "expired") }
+}
+pub(crate) fn credential_metadata(state: &Value, flow: &str, prompt: &str, claimed: bool) -> CredentialMetadata {
+    if state["id"] != flow { return CredentialMetadata::closed("expired"); }
+    match state["status"].as_str() {
+        Some("complete") => return CredentialMetadata::closed("complete"),
+        Some("cancelled") => return CredentialMetadata::closed("cancelled"),
+        Some("failed") => return CredentialMetadata::closed("failed"),
+        Some("pending") => {},
+        _ => return CredentialMetadata::closed("expired"),
+    }
+    if validate_secure(state, flow, prompt).is_err() { return CredentialMetadata::closed("expired"); }
+    let (field_type,label) = if state["prompt"]["type"] == "manual_code" {
+        ("manual_code", "授权回跳地址")
+    } else if state["type"] == "api_key" {
+        ("api_key", "API key")
+    } else {
+        ("authorization_code", "授权输入")
+    };
+    CredentialMetadata { state: if claimed { "locked" } else { "pending" }, field_type, label }
+}
 pub(crate) async fn read_login(endpoint: &Endpoint, flow: &str) -> Result<Value, RequestError> {
     if !valid_id(flow) { return Err(denied()); }
     let read = async {
         let response = endpoint.request(&format!("/pi/login/{flow}"), "GET", "", "").await
             .map_err(|_| RequestError::transport("无法检查当前登录步骤", false))?;
-        if !response.status().is_success() { return Err(expired()); }
+        if matches!(response.status().as_u16(), 404 | 410) { return Err(expired()); }
+        if !response.status().is_success() { return Err(RequestError::transport("暂时无法确认登录状态", false)); }
         let bytes = response.bytes().await.map_err(|_| RequestError::transport("无法读取登录步骤", false))?;
         if bytes.len() > 65536 { return Err(denied()); }
         serde_json::from_slice(&bytes).map_err(|_| denied())
@@ -122,6 +153,18 @@ pub(crate) fn secure_body(prompt: &str, secret: &str) -> Result<zeroize::Zeroizi
 mod tests {
     use super::*;
     fn pending(kind: &str) -> Value { json!({"id":"flow-1","status":"pending","prompt":{"id":"step-1","type":kind,"options":[{"id":"device_code"}]}}) }
+    #[test]
+    fn safe_metadata_exposes_only_fixed_field_labels_and_terminal_state() {
+        let mut state=pending("manual_code");state["type"]=json!("oauth");
+        state["prompt"]["message"]=json!("https://sensitive.invalid/callback?code=synthetic");
+        state["events"]=json!([{"type":"auth_url","url":"https://sensitive.invalid/"}]);
+        state["secret"]=json!("synthetic-test-value");
+        assert_eq!(serde_json::to_value(credential_metadata(&state,"flow-1","step-1",false)).unwrap(),json!({"state":"pending","fieldType":"manual_code","label":"授权回跳地址"}));
+        state["type"]=json!("api_key");state["prompt"]["type"]=json!("secret");
+        assert_eq!(credential_metadata(&state,"flow-1","step-1",true),CredentialMetadata {state:"locked",field_type:"api_key",label:"API key"});
+        assert!(credential_metadata(&state,"flow-1","old-step",false).is_terminal());
+        for status in ["complete","cancelled","failed"] { state["status"]=json!(status);let metadata=credential_metadata(&state,"flow-1","step-1",false);assert!(metadata.is_terminal());assert_eq!(metadata.field_type,"none"); }
+    }
     #[test]
     fn only_exact_non_secret_controls_are_accepted() {
         for kind in ["oauth", "api_key"] {

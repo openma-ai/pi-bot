@@ -299,3 +299,13 @@ html[data-short-viewport="true"] .app[data-phone="true"] .sidebar-toolbar { padd
 .pi-advanced summary { cursor:pointer; font-size:13px; color:var(--pibo-muted); padding:8px 0; }
 .pi-advanced[open] summary { margin-bottom:12px; }
 .pi-advanced summary:focus-visible { outline:2px solid var(--pibo-accent); outline-offset:3px; border-radius:4px; }
+
+.pi-login-status { display:flex; align-items:center; gap:8px; }
+.pi-login-status svg { flex:none; }
+.pi-login-fallback summary { cursor:pointer; font-size:13px; color:var(--pibo-muted); padding:8px 0; }
+.pi-login-fallback[open] { display:flex; flex-direction:column; gap:12px; }
+.pi-login-fallback p,.pi-catalog-note { line-height:1.6; margin:0; }
+.pi-login-fallback summary:focus-visible { outline:2px solid var(--pibo-accent); outline-offset:3px; border-radius:4px; }
+.pi-device-method { align-self:flex-start; white-space:normal; min-height:32px; height:auto; }
+
+.pi-auth-summary{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}.pi-login-flow a{color:var(--pibo-accent);text-underline-offset:3px}

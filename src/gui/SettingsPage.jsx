@@ -364,6 +364,7 @@ export function SettingsPage({ open, onOpenChange, runtime, initialTab }) {
                     runtimeLabel={active.profile?.name || "当前工作空间"}
                     registerBeforeSwitch={runtime.registerBeforeSwitch}
                     onConfigured={() => onOpenChange(false)}
+                    callbackPlacement={window.__PIBOT_NATIVE__ && ["builtin","local"].includes(active.mode) ? "local" : ["tailnet","ssh"].includes(active.mode) ? "remote" : "unknown"}
                   />
                 </div>
               )}

@@ -58,6 +58,7 @@ export class PiBotDaemon {
         piOptions?: {
             agentDir?: string;
             cwd?: string;
+            allowModelNetwork?: boolean;
         };
     }) {
     }
@@ -76,6 +77,7 @@ export class PiBotDaemon {
         piOptions?: {
             agentDir?: string;
             cwd?: string;
+            allowModelNetwork?: boolean;
         };
     } = {}) {
         const d = new PiBotDaemon(resolve(options.dataDir ?? process.env.PI_BOT_DIR ?? 'work/gui/demo'), options);

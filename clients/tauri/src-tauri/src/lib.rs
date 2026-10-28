@@ -61,8 +61,13 @@ struct State {
     forms: HashMap<String, SecureForm>,
 }
 impl State {
+    fn take_pi_form_labels(&mut self, endpoint: &Arc<Endpoint>, flow: &str) -> Vec<String> {
+        let labels: Vec<_> = self.forms.iter().filter(|(_, form)| form.belongs_to(endpoint, flow)).map(|(label, _)| label.clone()).collect();
+        for label in &labels { self.forms.remove(label); }
+        labels
+    }
     fn invalidate_pi_forms(&mut self, endpoint: &Arc<Endpoint>, flow: &str) {
-        self.forms.retain(|_, form| !form.belongs_to(endpoint, flow));
+        self.take_pi_form_labels(endpoint, flow);
     }
     fn status(&self) -> Value {
         json!({"builtinHarness":self.builtin.status(),"tailscaleNodeState":tailscale::state(),"embeddedTailscaleAvailable":cfg!(feature="embedded-tailscale"),"remoteOnly":cfg!(any(target_os = "ios", target_os = "android")),"credentialStorage":if cfg!(target_os="android") {"session"} else if cfg!(target_os="ios") {"keychain"} else {"system"},"profiles":self.profiles,"connecting":false,"active":self.active.as_ref().map(|(id,p,_)|json!({"id":id,"profileId":p.id,"mode":p.mode,"baseUrl":format!("/runtime/{id}"),"scope":p.id,"label":p.name,"profile":p}))})
@@ -659,6 +664,54 @@ async fn pi_settings_credential_window(
     s.forms.insert(label, SecureForm { endpoint, target: FormTarget::PiPrompt { flow, prompt: prompt_id }, claimed: false });
     Ok(())
 }
+async fn form_metadata(label: &str, state: &Shared) -> Result<pi_settings_security::CredentialMetadata, pi_settings_security::RequestError> {
+    use pi_settings_security::{CredentialMetadata, RequestError};
+    if !label.starts_with("credential-") { return Err(RequestError::new("nativePolicyDenied", "此命令只属于安全输入窗口")); }
+    let form = {
+        let s=state.lock().await;
+        let Some(form)=s.forms.get(label) else { return Ok(CredentialMetadata::closed("expired")); };
+        if !s.active.as_ref().is_some_and(|(_,_,active)|Arc::ptr_eq(active,&form.endpoint)) { return Ok(CredentialMetadata::closed("expired")); }
+        form.clone()
+    };
+    let mut metadata=match &form.target {
+        FormTarget::Credential(_) => CredentialMetadata {state:if form.claimed {"locked"} else {"pending"},field_type:"credential",label:"安全输入"},
+        FormTarget::PiPrompt {flow,prompt} => match pi_settings_security::read_login(&form.endpoint,flow).await {
+            Ok(current) => pi_settings_security::credential_metadata(&current,flow,prompt,form.claimed),
+            Err(error) if error.code=="promptExpired" => CredentialMetadata::closed("expired"),
+            Err(error) => return Err(error),
+        }
+    };
+    let mut s=state.lock().await;
+    if !s.forms.contains_key(label) || !s.active.as_ref().is_some_and(|(_,_,active)|Arc::ptr_eq(active,&form.endpoint)) {
+        return Ok(CredentialMetadata::closed("expired"));
+    }
+    if metadata.state=="pending" && s.forms.get(label).is_some_and(|form|form.claimed) {metadata.state="locked";}
+    if metadata.is_terminal() {s.forms.remove(label);}
+    Ok(metadata)
+}
+#[tauri::command]
+async fn credential_form_metadata(window: tauri::Window, state: tauri::State<'_, Shared>) -> Result<pi_settings_security::CredentialMetadata, pi_settings_security::RequestError> {
+    let metadata=form_metadata(window.label(),state.inner()).await?;
+    // This command can close only its own bound secure window, never another flow.
+    if metadata.is_terminal() {let _=window.close();}
+    Ok(metadata)
+}
+#[tauri::command]
+async fn pi_settings_close_forms(window: tauri::Window, app: tauri::AppHandle, state: tauri::State<'_, Shared>, path: String) -> Result<usize, pi_settings_security::RequestError> {
+    use pi_settings_security::RequestError;
+    main_window(&window).map_err(|e| RequestError::new("nativePolicyDenied",e))?;
+    let (endpoint,suffix)=state.lock().await.route(&path).map_err(|e| RequestError::new("runtimeChanged",e))?;
+    let flow=pi_settings_security::flow_path(&suffix).ok_or_else(||RequestError::new("nativePolicyDenied","Invalid Pi login path"))?;
+    let terminal=match pi_settings_security::read_login(&endpoint,flow).await {
+        Ok(current) => current["id"]==flow && matches!(current["status"].as_str(),Some("complete"|"cancelled"|"failed")),
+        Err(error) if error.code=="promptExpired" => true,
+        Err(error) => return Err(error),
+    };
+    if !terminal {return Ok(0);}
+    let labels=state.lock().await.take_pi_form_labels(&endpoint,flow);
+    for label in &labels {if let Some(window)=app.get_webview_window(label) {let _=window.close();}}
+    Ok(labels.len())
+}
 #[tauri::command]
 async fn credential_submit(
     window: tauri::Window,
@@ -690,10 +743,11 @@ async fn submit_credential(label: &str, state: &Shared, secret: String) -> Resul
         }
     }.await;
     let mut s = state.lock().await;
-    let still_valid = s.forms.remove(label).is_some()
+    let still_valid = s.forms.contains_key(label)
         && s.active.as_ref().is_some_and(|(_, _, active)| Arc::ptr_eq(active, &form.endpoint));
     if !still_valid { return Err("登录已取消或运行环境已切换，请重新打开安全输入窗口".into()); }
-    let (path, body) = prepared?;
+    let (path, body) = match prepared { Ok(value)=>value, Err(error)=>{s.forms.remove(label);return Err(error);} };
+    if matches!(form.target,FormTarget::Credential(_)) {s.forms.remove(label);}
     // Serialize the final bounded POST against cancel/runtime switching. A cancel
     // that already invalidated the form can never be followed by a late answer.
     let response = tokio::time::timeout(std::time::Duration::from_secs(30), form.endpoint.request(&path, "POST", &body, ""))
@@ -857,6 +911,8 @@ pub fn run() {
             pi_settings_credential_window,
             pi_settings_open_login,
             credential_submit,
+            credential_form_metadata,
+            pi_settings_close_forms,
             file_export::file_export
         ])
         .build(tauri::generate_context!())
@@ -949,6 +1005,29 @@ mod secure_form_tests {
     }
     async fn result(task: tokio::task::JoinHandle<Result<(), String>>) -> Result<(), String> {
         tokio::time::timeout(std::time::Duration::from_secs(5),task).await.unwrap().unwrap()
+    }
+    #[tokio::test]
+    async fn metadata_closes_only_the_bound_completed_form() {
+        let f=fixture("complete","prompt-1").await;f.release.notify_one();
+        let metadata=form_metadata("credential-test",&f.state).await.unwrap();
+        assert_eq!(metadata.state,"complete");assert_eq!(metadata.field_type,"none");
+        let state=f.state.lock().await;assert!(!state.forms.contains_key("credential-test"));assert!(state.forms.contains_key("credential-other"));
+        assert_eq!(f.posts.load(Ordering::SeqCst),0);
+    }
+    #[tokio::test]
+    async fn metadata_denies_main_window_and_scope_cleanup_preserves_other_endpoints() {
+        let f=fixture("pending","prompt-1").await;let other=fixture("pending","prompt-1").await;
+        assert_eq!(form_metadata("main",&f.state).await.unwrap_err().code,"nativePolicyDenied");
+        let mut state=f.state.lock().await;
+        state.forms.insert("credential-other-runtime".into(),SecureForm {endpoint:other.endpoint.clone(),target:FormTarget::PiPrompt {flow:"flow-1".into(),prompt:"prompt-1".into()},claimed:false});
+        assert_eq!(state.take_pi_form_labels(&f.endpoint,"flow-1"),vec!["credential-test"]);
+        assert!(state.forms.contains_key("credential-other-runtime"));assert!(state.forms.contains_key("credential-other"));
+    }
+    #[tokio::test]
+    async fn submitted_pi_form_keeps_only_locked_metadata_until_its_flow_ends() {
+        let f=fixture("pending","prompt-1").await;f.release.notify_one();assert!(result(submit(f.state.clone())).await.is_ok());
+        f.release.notify_one();let metadata=form_metadata("credential-test",&f.state).await.unwrap();
+        assert_eq!(metadata.state,"locked");assert!(result(submit(f.state.clone())).await.is_err());assert_eq!(f.posts.load(Ordering::SeqCst),1);
     }
     #[tokio::test]
     async fn cancel_during_prompt_check_prevents_late_secret_post_and_preserves_other_flow() {
