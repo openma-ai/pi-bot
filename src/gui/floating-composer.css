@@ -1,0 +1,8 @@
+.main > .composer-area { position:absolute; bottom:0; left:0; right:0; background:transparent; pointer-events:none; }
+.main > .composer-area > * { pointer-events:auto; }
+.main > .conversation { display:flex; flex-direction:column; padding-bottom:calc(24px + var(--composer-inset,100px)); scroll-padding-bottom:var(--composer-inset,100px); }
+.conversation-feed { flex:none; min-width:0; }
+.conversation-status { flex:none; position:sticky; bottom:0; margin-top:auto; padding-top:8px; }
+.conversation-status:empty { display:none; }
+/* The existing very-short iOS keyboard layout keeps input beside navigation. */
+html[data-short-viewport="true"] .app[data-phone="true"] .main > .composer-area { bottom:auto; }

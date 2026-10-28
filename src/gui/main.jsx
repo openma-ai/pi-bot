@@ -15,6 +15,8 @@ import { Notification, ServiceNotice, ConnectionFeedback } from "./Notification.
 import { TaskFailure } from "./TaskFailure.jsx";
 import { ConversationRequests, RequestAttention } from "./ConversationRequests.jsx";
 import { ActivityStatus } from "./ActivityStatus.jsx";
+import { FloatingComposer } from "./FloatingComposer.jsx";
+import { FeedStatus } from "./FeedStatus.jsx";
 import { SearchDialog } from "./SearchDialog.jsx";
 import { MessengerSidebar } from "./MessengerSidebar.jsx";
 import { SidebarProvider } from "./ui/sidebar.jsx";
@@ -1012,6 +1014,7 @@ function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) 
                   scrollPositions.current.set(lastScope.current, { top: el.scrollTop, bottom });
                 }}
               >
+                <div className="conversation-feed">
                 <ConversationRequests data={data} kind={view === "group" ? "group" : "bot"} id={view === "group" ? groupId : selected} api={api} baseUrl={activeRuntime?.baseUrl || ""} />
                 {laidOutMessages.length ? (
                   laidOutMessages.map(({ message: m, separator, sender, runStart, runEnd, time: messageTime }) => (
@@ -1070,9 +1073,14 @@ function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) 
                     {!data.bots.length && <Button mt="3" onClick={() => { setName(""); botCreation.current.reset(); setAdding(true); }}>新建 bot</Button>}
                   </div>
                 )}
+                </div>
+                <FeedStatus>
+                  {view === "chat" && <ActivityStatus id={selected} name={bot?.name} activity={activity(selected)} />}
+                  {["chat", "group"].includes(view) && <RequestAttention data={data} kind={view === "group" ? "group" : "bot"} id={view === "group" ? groupId : selected} api={api} baseUrl={activeRuntime?.baseUrl || ""} />}
+                </FeedStatus>
                 <div ref={end} />
               </section>
-              <div className="composer-area">
+              <FloatingComposer conversationRef={conversation} pinnedToEnd={pinnedToEnd}>
                 {sendFailure && <div className="send-failure" role="status"><p>{sendFailure.draft}</p><span>{sendFailure.message}</span>{!sendFailure.uncertain && <button disabled={busy || connectionPhase !== "ready"} onClick={() => send(true)}>重试发送</button>}{sendFailure.uncertain && <button onClick={() => setServiceDetails(true)}>查看状态</button>}</div>}
                 {!atBottom && (
                   <Button
@@ -1085,8 +1093,6 @@ function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) 
                     最新消息
                   </Button>
                 )}
-                {view === "chat" && <ActivityStatus id={selected} name={bot?.name} activity={activity(selected)} />}
-                {["chat", "group"].includes(view) && <RequestAttention data={data} kind={view === "group" ? "group" : "bot"} id={view === "group" ? groupId : selected} api={api} baseUrl={activeRuntime?.baseUrl || ""} />}
                 {mentionOptions.length > 0 && (
                   <div
                     className="mention-menu"
@@ -1171,7 +1177,7 @@ function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) 
                     {busy ? "…" : <ArrowUp size={20} />}
                   </Button>
                 </ComposerFrame>
-              </div>
+              </FloatingComposer>
             </>
           )}
         </main>
