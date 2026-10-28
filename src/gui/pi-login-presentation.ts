@@ -26,6 +26,11 @@ export function piProviderConfigured(provider: any) {
     return provider?.configured ?? !!provider?.credential;
 }
 export function piCatalogNote(catalog: any) {
+    if (catalog?.source === 'openai-account') {
+        if (catalog.accountAccess !== 'confirmed') return '暂时无法读取当前 ChatGPT 账号的模型列表，请重新检查。';
+        const unsupported = catalog.unsupportedModelCount ? `其中 ${catalog.unsupportedModelCount} 个型号需要更新模型 SDK 后才能使用。` : '';
+        return '已读取当前 ChatGPT 账号的模型列表；实际调用仍受方案与用量限制。' + unsupported;
+    }
     if (!catalog) return '运行环境未提供目录刷新状态；账号的逐模型访问权限未经验证。';
     if (catalog.status === 'failed' || catalog.status === 'partial')
         return '模型目录刷新未完成，以下为 SDK 已缓存的目录；账号的逐模型访问权限未经验证。';

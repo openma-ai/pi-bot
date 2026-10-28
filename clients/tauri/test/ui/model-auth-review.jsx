@@ -15,7 +15,14 @@ const providers = [
   {id:'deepseek',name:'DeepSeek',methods:['api_key'],methodLabels:{api_key:'DeepSeek API key'},credential:null,configured:false,catalog:{status:"cached"},models:[{id:'qa-deepseek',name:'QA fixture DeepSeek',reasoning:true}]},
 ];
 let config = {current:{provider:'',model:'',thinkingLevel:'high'},providers,catalog:{status:parameters.get('catalog')||'cached',source:'isolated-sdk-fixture'},reloadPending:false};
+providers.forEach(provider=>{provider.catalog={...config.catalog};});
 if(parameters.has('configured')||parameters.has('ambient')){providers[0].configured=true;if(!parameters.has('ambient'))providers[0].credential='oauth';if(parameters.has('configured'))config.current={provider:'openai',model:'qa-model',thinkingLevel:'high'};}
+// Account catalog states are synthetic. Never query a real account or provider.
+function accountCatalog(provider,state='confirmed'){
+  provider.catalog={source:'openai-account',status:state==='failed'?'failed':state==='partial'?'partial':'refreshed',accountAccess:state==='failed'?'unverified':'confirmed',authChecked:state!=='failed',unsupportedModelCount:state==='partial'?1:0,...(state==='partial'?{unsupportedModelReason:'隔离 QA：未知 SDK 型号已过滤'}:{})};
+  if(state==='failed'){provider.models=[];provider.configured=false;}
+}
+if(parameters.has('account')){providers[0].credential='oauth';providers[0].configured=true;accountCatalog(providers[0],parameters.get('account'));}
 const flows = new Map(), calls = [], nativeForms = new Map();
 const fakeAuthUrl='https://example.invalid/isolated-qa-no-oauth';
 const browserEvents=()=>[{type:'auth_url',url:fakeAuthUrl,instructions:'隔离 QA：此链接不会执行真实授权'}];
@@ -31,7 +38,7 @@ const json = (value,status=200) => Response.json(structuredClone(value),{status}
 window.__MODEL_AUTH_QA__ = {calls,flows,nativeForms,warnings,configuration(){return structuredClone(config);},setMode(value){mode=value;},releaseStart(){releaseStart?.();},releaseAnswer(){releaseAnswer?.();},releaseState(){holdState=false;releaseState?.();},
   progress(id=lastId()){const flow=flows.get(id);if(flow){flow.events=[...browserEvents(),{type:'progress',message:'隔离 QA：正在确认授权结果'}];}},
   fail(id=lastId()){const flow=flows.get(id);if(flow){flow.status='failed';flow.error='隔离 QA：授权未完成';delete flow.prompt;}},
-  complete(id=lastId(),persist=true){const flow=flows.get(id);if(flow){flow.status='complete';delete flow.prompt;if(persist){const provider=providers.find(p=>p.id===flow.providerId);provider.credential=flow.type;provider.configured=true;config.catalog={status:'refreshed',source:'isolated-sdk-fixture'};}}}};
+  complete(id=lastId(),persist=true){const flow=flows.get(id);if(flow){flow.status='complete';delete flow.prompt;if(persist){const provider=providers.find(p=>p.id===flow.providerId);provider.credential=flow.type;provider.configured=true;config.catalog={status:'refreshed',source:'isolated-sdk-fixture'};provider.catalog={...config.catalog};if(provider.id==='openai'&&flow.type==='oauth')accountCatalog(provider,parameters.get('account')||'confirmed');}}}};
 if(parameters.has('native')) window.__PIBOT_NATIVE__ = {call:async(command,args={})=>{
   const id=args.path?.split('/').at(-1),flow=flows.get(id);
   calls.push({kind:'native-mock',command,path:args.path,promptId:args.promptId});

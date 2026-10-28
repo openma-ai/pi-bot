@@ -4,7 +4,7 @@ from pathlib import Path
 m=runpy.run_path('clients/tauri/test/ui/model-auth-check.py')
 ab,js,click,snapshot=m['ab'],m['js'],m['click'],m['snapshot']
 out=Path('artifacts/model-auth-review');checks=[];screenshots=[]
-base='http://127.0.0.1:5196/clients/tauri/test/ui/model-auth-review.html'
+base='http://127.0.0.1:5208/clients/tauri/test/ui/model-auth-review.html'
 def save():
  result={'scope':'Provider-first incremental browser QA; fake credentials and OAuth completion only','checks':checks,'passed':sum(c['pass'] for c in checks),'failed':sum(not c['pass'] for c in checks),'screenshots':screenshots,
  'limits':['Chromium viewport simulation, not native/device keyboard or secure credential-window validation','No real OAuth, provider request, user credentials or runtime data used'],
@@ -36,7 +36,7 @@ def first_run():
   check(f'{w} first run opens provider-first without empty model step',has('[aria-label="认证管理"]') and not has('[aria-label="默认模型"]'))
   check(f'{w} OpenAI default retains independent ChatGPT/API key choices',js('document.querySelector("[aria-label=模型提供商]").textContent.includes("OpenAI")&&["Sign in with ChatGPT","添加 API key"].every(t=>[...document.querySelectorAll("button")].some(b=>b.textContent.trim()===t))'))
   geometry(f'{w} auth',w,h);shot(f'{13+index*3:02d}-provider-first-{w}x{h}.png')
-  click('Sign in with ChatGPT');ab('wait','[aria-label="Pi 登录输入"]');latest_complete()
+  click('Sign in with ChatGPT');ab('wait','.pi-login-fallback');latest_complete()
   ab('wait','[aria-label="默认模型"]');snapshot()
   check(f'{w} confirmed credential unlocks model selection without auto-select/save',state()['model']=='' and count('model')==0 and js('document.querySelector("[aria-label=默认模型]").textContent.includes("请选择模型")') and not has('.pi-settings-footer'))
   click('默认模型','combobox')
@@ -57,14 +57,14 @@ def first_run():
   check(f'{w} controlled Select has no ownership warning',not no_warnings(),no_warnings())
 
 def failures():
- ab('set','viewport','393','852');openq();click('Sign in with ChatGPT');ab('wait','[aria-label="Pi 登录输入"]');click('取消登录')
+ ab('set','viewport','393','852');openq();click('Sign in with ChatGPT');ab('wait','.pi-login-fallback');click('取消登录')
  check('First-run cancel stays in auth and does not create a model/grant retry',has('[aria-label="认证管理"]') and not has('[aria-label="默认模型"]') and count('login')==1 and count('model')==0)
  openq('mode=lost-start');click('Sign in with ChatGPT');time.sleep(.25)
  check('Unknown response stays in auth with one grant',has('[aria-label="认证管理"]') and not has('[aria-label="默认模型"]') and count('login')==1 and js('document.body.textContent.includes("正在确认登录状态")'))
- js('window.__MODEL_AUTH_QA__.releaseState()');ab('wait','[aria-label="Pi 登录输入"]');snapshot()
+ js('window.__MODEL_AUTH_QA__.releaseState()');ab('wait','.pi-login-fallback');snapshot()
  check('Unknown response recovers with reads without choosing a model',count('login')==1 and count('model')==0 and has('[aria-label="认证管理"]'))
  click('取消登录')
- openq();click('Sign in with ChatGPT');ab('wait','[aria-label="Pi 登录输入"]');latest_complete(False);time.sleep(.9);snapshot()
+ openq();click('Sign in with ChatGPT');ab('wait','.pi-login-fallback');latest_complete(False);time.sleep(.9);snapshot()
  check('Completed login without confirmed credential does not enter model selection',has('[aria-label="认证管理"]') and not has('[aria-label="默认模型"]') and js('document.body.textContent.includes("连接状态尚未确认")'))
  shot('22-credential-unconfirmed.png')
  openq('mode=config-error','[role="alert"]')

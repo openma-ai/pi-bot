@@ -22,3 +22,9 @@ test('Model source labels never imply account entitlement, and SDK-configured au
  assert.match(piCatalogNote(undefined),/未提供目录刷新状态/);assert.match(piCatalogNote({status:'failed'}),/刷新未完成/);assert.match(piCatalogNote({status:'refreshed'}),/不代表账号/);
  assert.equal(piProviderConfigured({credential:null,configured:true}),true);assert.equal(piProviderConfigured({credential:'oauth',configured:false}),false);
 });
+
+test('ChatGPT account discovery never presents a failed query as a cached public model list',()=>{
+ assert.match(piCatalogNote({source:'openai-account',accountAccess:'confirmed',status:'refreshed'}),/当前 ChatGPT 账号/);
+ assert.match(piCatalogNote({source:'openai-account',accountAccess:'confirmed',unsupportedModelCount:2}),/2 个型号/);
+ assert.doesNotMatch(piCatalogNote({source:'openai-account',accountAccess:'unverified',status:'failed'}),/缓存|已读取/);
+});

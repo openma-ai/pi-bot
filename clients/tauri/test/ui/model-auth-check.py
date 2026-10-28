@@ -2,7 +2,7 @@
 import subprocess,json,time,traceback,sys
 from pathlib import Path
 out=Path('artifacts/model-auth-review');out.mkdir(parents=True,exist_ok=True)
-base='http://127.0.0.1:5196/clients/tauri/test/ui/model-auth-review.html'
+base='http://127.0.0.1:5208/clients/tauri/test/ui/model-auth-review.html'
 checks=[];shots=[]
 report_name='model-auth-results.json' if len(sys.argv)==1 else 'model-auth-'+ '-'.join(sys.argv[1:])+'-results.json'
 def ab(*args):
@@ -22,9 +22,9 @@ def click(name,role='button'):
  refs=snapshot().get('refs',{})
  ref=next(ref for ref,item in refs.items() if item.get('role')==role and item.get('name')==name)
  ab('click','@'+ref);wait();snapshot()
-def input_value():return js('document.querySelector('+json.dumps('[aria-label="Pi 登录输入"]')+').value')
+def input_value(label='Pi 登录输入'):return js('document.querySelector('+json.dumps('[aria-label="'+label+'"]')+').value')
 def openq(query=''):
- ab('open',base+('?' + query if query else ''));ab('wait','[aria-label="默认模型"]');wait();snapshot()
+ ab('open',base+('?' + query if query else ''));ab('wait','[aria-label="模型提供商"]');wait();snapshot()
 def shot(name):
  ab('screenshot',str(out/name));shots.append(name)
 def save():
@@ -32,7 +32,11 @@ def save():
 def check(name,value,details=None):
  checks.append({'check':name,'pass':bool(value),'details':details});save();print(name+': '+str(bool(value)),flush=True)
  if not value:raise AssertionError(name)
-def auth():click('连接提供商')
+def auth():
+ if not js('!!document.querySelector("[aria-label=认证管理]")'):click('管理连接')
+def fallback():
+ ab('wait','.pi-login-fallback');ab('find','text','无法自动完成？','click','--exact');wait();snapshot()
+ ab('wait','[aria-label="授权回跳地址"]')
 def legacy():
  click('模型提供商','combobox');click('OpenAI Codex (legacy) OpenAI (ChatGPT Plus/Pro)','option')
 def login():click('OpenAI (ChatGPT Plus/Pro)')
@@ -47,13 +51,13 @@ def run_case(name,fn):
 
 def initial():
  ab('set','viewport','1100','760');openq()
- check('Disconnected default model has exactly one connection CTA',js('[...document.querySelectorAll(".pi-settings-panel button")].filter(e=>e.textContent.includes("连接提供商")).length')==1)
+ check('Disconnected opens directly in provider connection',js('!!document.querySelector("[aria-label=认证管理]")&&!document.querySelector("[aria-label=默认模型]")'))
  check('Disconnected has no thinking, save button, or dirty state',js('!["思考强度","保存更改","有未保存的更改"].some(t=>document.querySelector(".pi-settings-panel").textContent.includes(t))'))
  check('Model page uses compact desktop dialog',js('document.querySelector(".settings-page").getBoundingClientRect().height')<=480)
  shot('01-disconnected-desktop.png');auth()
  check('Authentication defaults to openai',js('document.querySelector("[aria-label=模型提供商]").textContent.includes("OpenAI")&&!document.querySelector("[aria-label=模型提供商]").textContent.includes("legacy")'))
  check('ChatGPT and API key are separate visible actions',js('["Sign in with ChatGPT","添加 API key"].every(t=>[...document.querySelectorAll("button")].some(e=>e.textContent.trim()===t))'))
- shot('02-openai-auth-desktop.png');click('返回')
+ shot('02-openai-auth-desktop.png')
  check('Browsing authentication does not create a dirty model draft',js('!document.querySelector(".pi-settings-panel").textContent.includes("有未保存的更改")'))
  check('Browsing authentication makes no login request',count('login')==0)
 
@@ -63,17 +67,17 @@ def lifecycle():
  check('Duplicate start clicks dispatch one login',count('login')==1)
  click('取消登录');js('window.__MODEL_AUTH_QA__.releaseStart()');wait(.8);snapshot()
  check('Late start is cancelled again and cannot reopen auth UI',js('!document.querySelector(".pi-login-flow")&&window.__MODEL_AUTH_QA__.calls.filter(c=>c.path.endsWith("/cancel")).length===2&&[...window.__MODEL_AUTH_QA__.flows.values()].every(f=>f.status==="cancelled")'))
- login();choose('Device code login (headless)');wait(.8);snapshot()
- check('Legacy device-code option renders mocked code and authorization link',js('document.body.textContent.includes("QA-ONLY")&&[...document.querySelectorAll("a")].some(a=>a.href==="https://example.invalid/qa-no-oauth")'))
+ login();choose('设备码登录（可在手机授权）');wait(.8);snapshot()
+ check('Legacy device-code option renders mocked code and authorization link',js('document.body.textContent.includes("QA-ONLY")&&[...document.querySelectorAll("a")].some(a=>a.href==="https://example.invalid/isolated-qa-no-oauth")'))
  shot('03-legacy-device-desktop.png');click('取消登录')
- login();choose('Browser login (default)');ab('wait','[aria-label="Pi 登录输入"]')
- ab('fill','[aria-label="Pi 登录输入"]','QA-only-unsent-callback-draft');before=js('window.__MODEL_AUTH_QA__.calls.filter(c=>c.method==="GET"&&c.path.startsWith("login/")).length')
+ login();choose('浏览器登录');fallback()
+ ab('fill','[aria-label="授权回跳地址"]','QA-only-unsent-callback-draft');before=js('window.__MODEL_AUTH_QA__.calls.filter(c=>c.method==="GET"&&c.path.startsWith("login/")).length')
  wait(1.5);snapshot()
- check('Auth draft survives repeated same-prompt polling',input_value()=='QA-only-unsent-callback-draft')
+ check('Auth draft survives repeated same-prompt polling',input_value('授权回跳地址')=='QA-only-unsent-callback-draft')
  check('Draft retention was observed across at least two polls',js('window.__MODEL_AUTH_QA__.calls.filter(c=>c.method==="GET"&&c.path.startsWith("login/")).length')>=before+2)
  shot('04-draft-preserved-desktop.png')
  js('window.__MODEL_AUTH_QA__.setMode("late-answer")');before=js('window.__MODEL_AUTH_QA__.calls.filter(c=>c.path.endsWith("/input")).length')
- js('(()=>{const b=[...document.querySelectorAll("button")].find(e=>e.textContent.trim()==="继续");b.click();b.click()})()');wait();snapshot()
+ js('(()=>{const b=[...document.querySelectorAll("button")].find(e=>e.textContent.trim()==="提交备用回跳地址");b.click();b.click()})()');wait();snapshot()
  check('Duplicate answer clicks dispatch one input',js('window.__MODEL_AUTH_QA__.calls.filter(c=>c.path.endsWith("/input")).length')==before+1)
  click('取消登录');js('window.__MODEL_AUTH_QA__.releaseAnswer()');wait(.8);snapshot()
  check('Cancelled late answer cannot complete or resurrect UI',js('!document.querySelector(".pi-login-flow")&&[...window.__MODEL_AUTH_QA__.flows.values()].every(f=>f.status==="cancelled")'))
@@ -82,8 +86,8 @@ def uncertain():
  openq('mode=lost-start');auth();click('Sign in with ChatGPT');wait();snapshot()
  check('Lost start response shows uncertain state rather than starting again',js('document.body.textContent.includes("正在确认登录状态")') and count('login')==1)
  shot('05-uncertain-desktop.png');js('window.__MODEL_AUTH_QA__.releaseState()');wait(.8);snapshot()
- check('Uncertain start recovers its existing flow via GET only',count('login')==1 and js('!!document.querySelector('+json.dumps('[aria-label="Pi 登录输入"]')+')&&!document.body.textContent.includes("正在确认登录状态")'))
- click('返回');check('Back cancels pending login and returns to default model',js('!!document.querySelector("[aria-label=默认模型]")&&[...window.__MODEL_AUTH_QA__.flows.values()].every(f=>f.status==="cancelled")'))
+ check('Uncertain start recovers its existing flow via GET only',count('login')==1 and js('!!document.querySelector(".pi-login-fallback")&&!document.body.textContent.includes("正在确认登录状态")'))
+ click('取消登录');check('First-run cancel remains in provider connection',js('!!document.querySelector("[aria-label=模型提供商]")&&[...window.__MODEL_AUTH_QA__.flows.values()].every(f=>f.status==="cancelled")'))
 
 def geometry():
  for w,h in [(393,852),(320,568),(874,402)]:

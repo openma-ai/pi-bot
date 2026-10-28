@@ -19,12 +19,12 @@ def click(name,role='button'):
  ab('scrollintoview','@'+matches[0]);pause();refs=snap().get('refs',{});ref=next(ref for ref,item in refs.items() if item.get('role')==role and item.get('name')==name)
  ab('click','@'+ref);pause();snap()
 def openq(query=''):
- ab('open',BASE+('?' + query if query else ''));ab('wait','[aria-label="模型提供商"]' if not any(k in query for k in ['configured','ambient']) else '[aria-label="默认模型"]');pause();snap()
+ ab('open',BASE+('?' + query if query else ''));ab('wait','[aria-label="模型提供商"]' if not any(k in query for k in ['configured','ambient','account']) else '[aria-label="默认模型"]');pause();snap()
 def login():click('Sign in with ChatGPT');ab('wait','.pi-login-flow');time.sleep(.7);snap()
 def count(path):return js('window.__MODEL_AUTH_QA__.calls.filter(c=>c.path==='+json.dumps(path)+'&&c.method==="POST").length')
 def has(selector):return js('!!document.querySelector('+json.dumps(selector)+')')
 def text():return js('document.body.textContent')
-def fixture(action):js('window.__MODEL_AUTH_Q__.'+action) if False else js('window.__MODEL_AUTH_QA__.'+action)
+def fixture(action):js('window.__MODEL_AUTH_QA__.'+action)
 def save():
  report={'scope':'Isolated fake-auth QA only; no provider grants, real credentials, runtime or user browser access','url':BASE,'session':SESSION,'checks':checks,'passed':sum(c['pass'] for c in checks),'failed':sum(not c['pass'] for c in checks),'screenshots':shots,'limits':['Chromium viewport simulation; no real iOS/Android keyboard or native WebView execution','Native bridge is explicitly mocked; actual secure-window behavior is covered separately by Rust fixtures'],'sourceHashes':{p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in ['src/gui/PiSettingsDialog.jsx','src/gui/pi-login-presentation.ts','src/gui/brand.css','clients/tauri/test/ui/model-auth-review.jsx']}}
  (OUT/'fallback-results.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
@@ -49,7 +49,7 @@ def desktop():
  fixture('progress()');ab('wait','--text','正在确认授权结果');pause();snap();check('Token-exchange progress removes fallback and auth links',not has('.pi-login-fallback') and not has('[aria-label="授权回跳地址"]') and not has('a[href="https://example.invalid/isolated-qa-no-oauth"]') and has('.pi-spinner'));shot('03-isolated-qa-exchanging.png')
  fixture('complete()');ab('wait','[aria-label="默认模型"]');pause();snap()
  check('Success enters model selection without choosing or saving a model',js('window.__MODEL_AUTH_QA__.configuration().current.model===""&&document.querySelector("[aria-label=默认模型]").textContent.includes("请选择模型")') and count('model')==0)
- check('Refreshed catalog note does not promise per-model access', '不代表账号拥有每个模型' in text());shot('04-isolated-qa-connected-choose-model.png')
+ check('Confirmed account catalog note preserves plan and usage limits', '已读取当前 ChatGPT 账号的模型列表' in text() and '实际调用仍受方案与用量限制' in text());shot('04-isolated-qa-connected-choose-model.png')
  click('默认模型','combobox');options=[v['name'] for v in snap().get('refs',{}).values() if v.get('role')=='option']
  check('Only configured provider models appear',len(options)==2 and all('OpenAI' in o and 'Codex' not in o for o in options),options)
  click('QA fixture model OpenAI · qa-model','option');check('Model selection remains a draft until explicit save',count('model')==0 and js('window.__MODEL_AUTH_QA__.configuration().current.model===""'))
@@ -80,7 +80,15 @@ def mobile():
   ab('scrollintoview','button:has-text("取消登录")');pause();snap();geometry(f'{w} expanded',w,h)
   check(f'{w} internal scroll reaches cancel',js('(()=>{const b=[...document.querySelectorAll("button")].find(b=>b.textContent.trim()==="取消登录").getBoundingClientRect(),v=document.querySelector(".settings-body .rt-ScrollAreaViewport").getBoundingClientRect();return b.top>=v.top-1&&b.bottom<=v.bottom+1})()'));shot(f'{12+index*2:02d}-isolated-qa-expanded-{w}x{h}.png')
   click('取消登录');check(f'{w} cancel preserves zero model writes and a single login',count('login')==1 and count('model')==0 and not has('.pi-login-flow'))
-for name,fn in [('desktop',desktop),('device',device),('failure-unknown',failure_unknown),('native-remote',native_remote),('mobile',mobile)]:
+def account_catalog():
+ ab('set','viewport','1100','760');openq('account=partial')
+ check('Partial account catalog reports filtered unsupported model', '已读取当前 ChatGPT 账号的模型列表' in text() and '1 个型号需要更新模型 SDK' in text())
+ click('默认模型','combobox');options=[v['name'] for v in snap().get('refs',{}).values() if v.get('role')=='option']
+ check('Account catalog only offers its two supported fixture models',len(options)==2 and all('QA fixture' in option and 'OpenAI' in option for option in options),options);ab('press','Escape');snap();shot('17-isolated-qa-account-partial.png')
+ openq('account=failed')
+ check('Unavailable account catalog never falls back to cached SDK models',js('window.__MODEL_AUTH_QA__.configuration().providers[0].models.length===0&&document.querySelector("[aria-label=默认模型]").disabled') and '暂时无法读取当前 ChatGPT 账号的模型列表' in text() and '重新检查模型目录' in text())
+ check('Account catalog failure does not start login or save model',count('login')==0 and count('model')==0);shot('18-isolated-qa-account-unverified.png')
+for name,fn in [('desktop',desktop),('device',device),('failure-unknown',failure_unknown),('native-remote',native_remote),('mobile',mobile),('account-catalog',account_catalog)]:
  if len(sys.argv)>1 and name not in sys.argv[1:]:continue
  try:fn()
  except Exception as error:

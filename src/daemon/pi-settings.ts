@@ -43,7 +43,7 @@ export class PiSettings {
     static async create(options: {
         agentDir?: string;
         cwd?: string;
-        /** Like Pi's interactive selector; false keeps catalog reads cache-only. */
+        /** Disable directory network calls; SIWC account choices then stay unconfirmed. */
         allowModelNetwork?: boolean;
     } = {}) {
         const agentDir = options.agentDir ?? getAgentDir(), cwd = options.cwd ?? process.cwd();
@@ -88,6 +88,7 @@ export class PiSettings {
             throw new PiBotError('invalidParams', 'Unsupported Pi login method');
         if ([...this.flows.values()].some(f => f.public.status === 'pending'))
             throw new PiBotError('conflict', '已有登录正在进行，请完成或取消');
+        this.catalog.invalidate();
         while (this.flows.size >= 8)
             this.flows.delete(this.flows.keys().next().value!);
         const id = requestId ?? randomUUID(), abort = new AbortController(), createdAt = Date.now();
@@ -115,6 +116,7 @@ export class PiSettings {
         }, {
             getDeviceId: () => SettingsManager.create(this.cwd, this.agentDir).getOrCreateDeviceId(), agentName: 'pi-bot'
         }).then(async () => {
+            this.catalog.invalidate();
             if (flow.public.status === 'pending') {
                 flow.public.status = 'complete';
                 flow.finishedAt = Date.now();
@@ -213,7 +215,7 @@ export class PiSettings {
         if (!this.models.getModel(provider, id) || !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(thinkingLevel))
             throw new PiBotError('invalidParams', 'Unknown Pi model or thinking level');
         if (!await this.catalog.canSelect(provider, id))
-            throw new PiBotError('invalidParams', '该模型不在当前认证配置的 SDK 模型目录中，请重新加载或连接提供商');
+            throw new PiBotError('invalidParams', '该模型未通过当前账号与 SDK 模型目录确认，请重新加载或连接提供商');
         const settings = SettingsManager.create(this.cwd, this.agentDir), project = settings.getProjectSettings();
         if ((project.defaultProvider && project.defaultProvider !== provider) || (project.defaultModel && project.defaultModel !== id) || (project.defaultThinkingLevel && project.defaultThinkingLevel !== thinkingLevel))
             throw new PiBotError('conflict', '当前项目的 .pi/settings.json 覆盖了默认模型，请先在 Pi 中调整该项目配置');
@@ -226,9 +228,12 @@ export class PiSettings {
     async logout(provider: string) {
         if (!this.models.getProvider(provider))
             throw new PiBotError('invalidParams', 'Unknown provider');
-        await this.models.logout(provider);
+        this.catalog.invalidate();
+        try { await this.models.logout(provider); }
+        finally { this.catalog.invalidate(); }
     }
     close() {
+        this.catalog.invalidate();
         for (const id of this.flows.keys())
             this.cancel(id);
         this.flows.clear();

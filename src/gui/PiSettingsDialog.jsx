@@ -238,6 +238,7 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
     p.models.map(m => ({ id: JSON.stringify([p.id, m.id]), name: m.name,
       detail: p.name + " · " + m.id, provider: p.id, model: m.id })));
   const selected = config?.providers.find(p => p.id === provider);
+  const visibleCatalog = selected?.catalog || config?.providers.find(p => piProviderConfigured(p) || p.credential)?.catalog || config?.catalog;
   const selectedModel = selected?.models.find(m => m.id === model);
   const validModel = piProviderConfigured(selected) && !!selectedModel;
   const active = flow?.status === "pending";
@@ -414,12 +415,12 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
               </Button>
             </div>
             <Choice label="默认模型" value={validModel ? JSON.stringify([provider,model]) : ""}
-              fallback={models.length ? "请选择模型" : config.catalog?.status === "failed" ? "模型目录暂未确认" : "尚无模型目录"}
+              fallback={models.length ? "请选择模型" : visibleCatalog?.status === "failed" ? "模型目录暂未确认" : "尚无模型目录"}
               onChange={id => {const option=models.find(m => m.id===id); if(option){setProvider(option.provider);setModel(option.model);setNotice("");}}}
               disabled={busy || !models.length} searchable items={models} />
-            <Text as="p" size="1" color="gray" className="pi-catalog-note">{piCatalogNote(config.catalog)}</Text>
-            {!models.length && <Text size="2" color="gray">{config.catalog?.status === "failed" ? "暂时无法确认认证或模型目录，请重新检查。" : hasConnection ? "已连接的提供商暂未返回模型目录。" : "连接提供商后，即可选择模型。"}</Text>}
-            {config.catalog && ["failed","partial"].includes(config.catalog.status) && <Button variant="ghost" color="gray" size="1" disabled={busy} onClick={reload}><RefreshCw size={13}/>重新检查模型目录</Button>}
+            <Text as="p" size="1" color="gray" className="pi-catalog-note">{piCatalogNote(visibleCatalog)}</Text>
+            {!models.length && <Text size="2" color="gray">{visibleCatalog?.status === "failed" ? "暂时无法确认认证或模型目录，请重新检查。" : hasConnection ? "已连接的提供商暂未返回模型目录。" : "连接提供商后，即可选择模型。"}</Text>}
+            {visibleCatalog && ["failed","partial"].includes(visibleCatalog.status) && <Button variant="ghost" color="gray" size="1" disabled={busy} onClick={reload}><RefreshCw size={13}/>重新检查模型目录</Button>}
             {validModel && selectedModel.reasoning && <details className="pi-advanced"><summary>更多选项</summary><div className="pi-thinking-row">
               <div><Text as="p" size="2" weight="medium">思考强度</Text><Text as="p" size="1" color="gray">更深入的推理可能需要更长时间</Text></div>
               <Choice label="思考强度" value={thinking} onChange={setThinking} disabled={busy}

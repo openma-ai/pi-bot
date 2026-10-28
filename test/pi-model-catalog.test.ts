@@ -97,7 +97,7 @@ test('real Pi TUI renders old models in all scope; only explicit scope/search/cu
     } finally { for (const selector of [all, current, scoped, search]) selector.dispose(); }
 });
 
-test('Pibo uses the same SDK availability and exposes cache-only source with unverified account access', async t => {
+test('cache-only OAuth cannot turn the public SDK catalog into account-confirmed choices', async t => {
     let requests = 0;
     t.mock.method(globalThis, 'fetch', async () => { requests++; throw new Error('Unexpected network'); });
     const runtime = only(await sdk());
@@ -105,12 +105,12 @@ test('Pibo uses the same SDK availability and exposes cache-only source with unv
     try {
         const state = await settings.state();
         const openai = state.providers[0];
-        assert.deepEqual(ids(openai.models), ids(await runtime.getAvailable('openai')));
+        assert.deepEqual(openai.models, []);
         assert.equal(openai.configured, true);
         assert.equal(openai.credential, 'oauth');
         assert.equal(openai.catalog!.authChecked, true);
-        assert.equal(state.catalog.status, 'cached');
-        assert.equal(state.catalog.source, 'pi-sdk');
+        assert.equal(state.catalog.status, 'failed');
+        assert.equal(state.catalog.source, 'openai-account');
         assert.equal(state.catalog.accountAccess, 'unverified');
         assert.ok(!JSON.stringify(state).includes('qa-access-not-real'));
         assert.equal(requests, 0);
@@ -119,7 +119,8 @@ test('Pibo uses the same SDK availability and exposes cache-only source with unv
 
 test('real SDK refresh loads public pi.dev overlay, then SDK cache; no provider model inference request', async t => {
     const store = new MemoryCatalogs();
-    const runtime = only(await sdk(undefined, store));
+    const credentials = new MemoryCredentials({ openai: { type: 'api_key', key: 'qa-key-only' } });
+    const runtime = only(await sdk(credentials, store));
     const fixture = { ...runtime.getModel('openai', 'gpt-6.1-sol')!, id: 'qa-future-model', name: 'QA future model' };
     let requests = 0;
     t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -140,7 +141,7 @@ test('real SDK refresh loads public pi.dev overlay, then SDK cache; no provider 
     assert.equal(requests, 1);
     await catalog.refresh();
     assert.equal(requests, 1, 'SDK freshness window controls revalidation');
-    const restored = new PiModelCatalog(only(await sdk(undefined, store)), { allowNetwork: false });
+    const restored = new PiModelCatalog(only(await sdk(credentials, store)), { allowNetwork: false });
     const cached = await restored.refresh();
     assert.ok(ids(cached.models).includes('qa-future-model'));
     assert.equal(cached.catalog.status, 'cached');
@@ -192,7 +193,7 @@ function fakeRuntime(overrides: Record<string, any> = {}): any {
     return {
         refresh: async () => ({ aborted: false, errors: new Map() }),
         getAvailable: async () => [{ provider: 'qa', id: 'cached-model' }],
-        getProviders: () => [{ id: 'qa' }], hasConfiguredAuth: () => true, getError: () => undefined, ...overrides
+        getProviders: () => [{ id: 'qa' }], hasConfiguredAuth: () => true, getError: () => undefined, isUsingOAuth: () => false, ...overrides
     };
 }
 
