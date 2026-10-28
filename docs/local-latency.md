@@ -8,6 +8,10 @@ endpoint. It follows the official [OTLP JSON encoding rules](https://opentelemet
 and [trace protobuf fields](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto).
 There has been no external Collector roundtrip test.
 
+The 2026-10-28 review retained this journal label: there is no registered OTel
+TracerProvider, active Span/Context, propagator, sampler or SDK exporter. Runtime
+authorization context is independent and must never be derived from tracing.
+
 Files rotate at 1 MiB, retaining one previous file (2 MiB total), mode 0600.
 The diagnostic directory is created mode 0700. Symlink diagnostic files/directories
 are refused. An I/O failure disables further writes for that runtime instance and
@@ -21,6 +25,13 @@ content delta, tools, request waiting/resolution and outbox delivery. Full run a
 provider spans are emitted on completion with elapsed duration. Start/first-event
 markers are separate child spans, so an interrupted process still leaves evidence
 of where it reached. A crash does not synthesize a successful completion.
+Only explicit `ok`/`completed` endings have OTel OK status. Cancelled, blocked,
+interrupted, yielded and uncertain outcomes remain UNSET; explicit failures and
+tool timeouts are ERROR. A `running` tool receipt can return successfully while
+its background job is still pending: tool success does not mean job success.
+Nested SDK tool calls retain their hashed parent tool lineage. Tool/provider IDs
+are scoped by run, and frontend span IDs include a cryptographically random
+instance nonce so remounts/reloads do not reuse a prior span ID.
 
 `provider.first_event` can be the SDK's synthetic start event; it is **not** a
 measured HTTP first byte. `provider.first_content` means the first text, thinking or
@@ -59,6 +70,55 @@ providers only; no real grants, network inference or changes to a running harnes
 Tests check OTLP field/ID/number encoding, correlation, full lifecycle, privacy,
 rotation, I/O isolation, frontend commit timing, and retained provider failure
 classification. They do not claim production end-to-end latency measurements.
+
+An additional independent wire-format check loaded the four official OTLP trace
+`.proto` files using existing protobufjs 7.6.6 and parsed their descriptors with
+Python protobuf 7.35.1. Ten generated backend/frontend request envelopes passed
+Python parsing and binary serialization roundtrips; six malformed fixtures were
+rejected. The adapter restores imports, fully qualified type names and exclusive
+message reserved-range ends omitted/misrepresented by protobufjs's descriptor
+export. It separately enforces OTLP lowerCamelCase fields and numeric enums, and
+validates hex trace/span IDs before converting them to the Base64 representation
+expected by the generic Protobuf JSON parser. This checks schema compatibility,
+not Collector transport, SDK context propagation or parent causality in real use.
+The scripts, exact schema SHA-256 hashes and JSON results are retained in the
+local QA artifact directory `pibo-otlp-verify-20261028`.
+
+Reproduce with Node 24 plus the repository's existing `tsx`/`protobufjs`, and
+Python 3 with `google.protobuf` available. Supply an official schema checkout
+containing the four paths below; the script performs no download and refuses an
+existing output directory:
+
+```sh
+node --import tsx scripts/verify-local-trace.mjs \
+  --schema-dir /path/to/opentelemetry-proto \
+  --out-dir /tmp/pibo-otlp-check
+```
+
+`preparation.json` records source hashes and the synchronous-write sample;
+`validation.json` records parser/negative-case results. The repository's parameterized
+scripts were rerun successfully into `pibo-otlp-repro-20261028`. This project's
+export check deliberately rejects unknown fields; an OTLP receiver must instead
+ignore them for forward compatibility. The official schema files were not copied
+into the repository. Verified SHA-256 values, relative to `opentelemetry/proto/`:
+
+| Schema | SHA-256 |
+| --- | --- |
+| `common/v1/common.proto` | `4c8c143ac8c190544a3d31dcd5719d6fbc943b89037faa1cef6015c76cbdefc1` |
+| `resource/v1/resource.proto` | `34fe1c26b8959f09d97656348ae03b105d15a5f07ada0f8f1614ef5dff7d1569` |
+| `trace/v1/trace.proto` | `45a33961142210add67d583cc525702fb985afdbae181e6daf2143929bad0613` |
+| `collector/trace/v1/trace_service.proto` | `03c8cc4e3e101087d884392d6eda32152ad5cd696e6344f50deaa59804a75c7a` |
+
+Writes still use synchronous file operations. One isolated local 100-write sample
+(including encoding/hashing) measured p50 0.073 ms, p95 0.237 ms and max 0.567 ms.
+This is a warm-cache synthetic sample, not a production overhead bound; slow/full
+storage can distort measured time. No full I/O redesign is included here. Other
+remaining gaps are multi-input/job causal links, standard cross-process context,
+clock-jump handling and async bounded exporting. A minimal later SDK migration
+can use the official [manual Trace SDK](https://github.com/open-telemetry/opentelemetry-js/blob/v3.0.0/packages/sdk-trace/README.md),
+AsyncLocalStorage context and a local-only bounded exporter without installing
+automatic network instrumentation. No OTel dependencies were installed for this
+verification, and no real runtime, credentials or inference were accessed.
 
 ## Read-only investigation, 2026-10-28
 
@@ -100,7 +160,7 @@ provider tokenization and excludes conversation history. Codemode's own descript
 was 1,649 characters. Its internal callable-tool registry was not independently
 persisted, so 33 must not be presented as the internal codemode tool count. The
 provider-specific final wire body was not captured. New request instrumentation
-at `src/pi/latency.ts:23` uses the same SDK replay rather than assuming defaults.
+at `src/pi/latency.ts:32` uses the same SDK replay rather than assuming defaults.
 
 In the investigated 30.544-second turn, codemode took 7 ms for `context_history`
 and 10 ms for an attempted `send_message`. Both cells actually failed with the
@@ -157,3 +217,25 @@ unchanged until the user explicitly chooses a supported level. An old runtime
 without capability metadata displays an update requirement instead of guessing
 the available levels; the live model settings were not hot-swapped against that
 old runtime.
+
+## JavaScript-only development candidate
+
+An independent development app was created from the existing signed development
+bundle using native APFS `clonefile` (no full-copy fallback), then refreshed from
+the reviewed harness sources. The dependency lock hash, launcher and database
+migrations matched. No Rust compilation, credentials copy or production-app
+replacement was needed. The reused Mach-O `__TEXT,__text` hash remained unchanged;
+the development app was ad-hoc signed again and passed strict/deep verification.
+
+The candidate's real launcher passed isolated ready/missing-model, exclusive-owner,
+restart, crash recovery and parent-pipe cleanup tests. Its packaged source and
+dependencies also completed a synthetic Pi execution that produced 18 unique spans
+in one trace, including two provider attempts and message delivery, without the
+synthetic private payload in diagnostics. This was not a paid provider request.
+
+Activation stopped before quitting the old app because the native UI reported
+that the Mac was locked and automatic unlock was paused. The old app and harness
+remain running; the new backend is not active in the user's session. After manual
+unlock, recheck active turns, pending requests and visible authentication before
+switching. A scoped frontend update is prepared separately; do not replace native
+credential-window code without rebuilding and verifying its matching native API.
