@@ -24,11 +24,11 @@ const sample='中文输入：p w d 是什么？';
 function Fixture(){
  const [data,setData]=useState(initial),[draft,setDraft]=useState('');const conversation=useRef(),pinned=useRef(true);
  const missing=new URLSearchParams(location.search).has('missing');
- const activity=new URLSearchParams(location.search).get('activity');
+ const [activity,setActivity]=useState(new URLSearchParams(location.search).get('activity'));
  const longMessage=new URLSearchParams(location.search).has('long');
  const shortFeed=new URLSearchParams(location.search).has('short');
  const api={request:{resolve:async(value)=>{calls.push(value);await new Promise(resolve=>setTimeout(resolve,50));setData(old=>({...old,requests:old.requests.map(r=>r.id===value.requestId?{...r,status:'resolved',response:value.response}:r)}));}}};
- window.__REQUEST_QA__={calls,sent,sample};
+ window.__REQUEST_QA__={calls,sent,sample,setActivity};
  useLayoutEffect(()=>{conversation.current.scrollTop=conversation.current.scrollHeight;},[]);
  return <Theme className="app-theme" radius="large" appearance="light" accentColor="tomato" grayColor="sand">
   <div style={{position:'fixed',top:2,left:4,zIndex:2147483647,fontSize:10,background:'#fff2d8',padding:'2px 6px',pointerEvents:'none'}}>隔离 QA · 假审批/假消息 · 无真实操作</div>
@@ -40,8 +40,8 @@ function Fixture(){
     {Array.from({length:shortFeed?1:24},(_,i)=><div className="row" key={i}><div className="bubble"><MessageBody text={'隔离测试消息 '+(i+1)}/></div></div>)}
     <div className="row user"><div className="bubble"><MessageBody text={longMessage ? sample.repeat(40) : sample}/></div></div>
     </div>
-    <FeedStatus>
-    {activity ? <ActivityStatus id="qa-bot" name="QA bot" activity={activity}/> : <RequestAttention data={data} kind="bot" id="qa-bot" api={api}/>}
+    <FeedStatus pinnedToEnd={pinned}>
+    {activity && activity!=="attention" ? <ActivityStatus id="qa-bot" name="QA bot" activity={activity}/> : <RequestAttention data={data} kind="bot" id="qa-bot" api={api}/>}
     </FeedStatus>
    </section>
    <FloatingComposer conversationRef={conversation} pinnedToEnd={pinned}>

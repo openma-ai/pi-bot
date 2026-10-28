@@ -1074,7 +1074,7 @@ function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) 
                   </div>
                 )}
                 </div>
-                <FeedStatus>
+                <FeedStatus pinnedToEnd={pinnedToEnd}>
                   {view === "chat" && <ActivityStatus id={selected} name={bot?.name} activity={activity(selected)} />}
                   {["chat", "group"].includes(view) && <RequestAttention data={data} kind={view === "group" ? "group" : "bot"} id={view === "group" ? groupId : selected} api={api} baseUrl={activeRuntime?.baseUrl || ""} />}
                 </FeedStatus>
