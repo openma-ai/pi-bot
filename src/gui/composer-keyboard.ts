@@ -6,6 +6,6 @@ export function resizeComposerTextarea(input:HTMLTextAreaElement|null,readMax=(e
     if(!input)return;
     const limit=Math.max(44,Math.min(160,parseFloat(readMax(input))||160));
     input.style.height='auto';const needed=input.scrollHeight;
-    input.style.height=`${Math.min(needed,limit)}px`;
+    input.style.height=`${Math.max(44,Math.min(needed,limit))}px`;
     input.style.overflowY=needed>limit?'auto':'hidden';
 }

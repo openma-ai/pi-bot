@@ -15,7 +15,7 @@ const direct = {
   connecting: false,
 };
 export function useRuntime() {
-  const restoration=useRef(createRuntimeRestoration(globalThis.localStorage)),connectPending=useRef(false);
+  const restoration=useRef(createRuntimeRestoration(globalThis.localStorage)),connectPending=useRef(false), statusFailed=useRef(false);
   const [restoring,setRestoring]=useState(false);
   const beforeSwitch = useRef(new Set()),
     epoch = useRef(0);
@@ -42,12 +42,13 @@ export function useRuntime() {
         const next = await control.runtime.status({});
         if (!stopped && version === epoch.current) {
           setStatus(next);
-          if(next.active)setError("");
+          if(next.active || statusFailed.current)setError("");
+          statusFailed.current=false;
           const profile=restoration.current.candidate(next,{hidden:document.hidden,busy:connectPending.current});
           if(profile&&window.__PIBOT_NATIVE__)void lifecycle.current.connect(profile,{automatic:true}).catch(()=>{});
         }
       } catch (e) {
-        if (!stopped) setError(e.message);
+        if (!stopped) { statusFailed.current=true; setError(e.message); }
       } finally {
         inFlight = false;
       }
@@ -61,7 +62,7 @@ export function useRuntime() {
   }, []);
   const connect = async (profile,{automatic=false}={}) => {
     if(connectPending.current)throw Error("已有连接操作正在进行，请稍候");
-    connectPending.current=true;
+    connectPending.current=true;statusFailed.current=false;
     if(!automatic)restoration.current.manual();
     setRestoring(automatic);
     const version=++epoch.current;
@@ -124,7 +125,7 @@ export function useRuntime() {
         if(!current.status.active)return;
         ++epoch.current;connectPending.current=false;setBusy(false);setRestoring(false);
         void control.runtime.disconnect({}).then(next=>setStatus(next)).catch(()=>{});
-      }else{restoration.current.foreground();void refresh().catch(()=>{});}
+      }else{void refresh().catch(()=>{});}
     };
     document.addEventListener('visibilitychange',changed);
     return()=>document.removeEventListener('visibilitychange',changed);
@@ -136,12 +137,20 @@ export function useRuntime() {
     restoration.current.removed(id);
     setStatus(next);
   };
+  const stopBuiltin = async () => {
+    if (connectPending.current || busy) return;
+    if (status.active?.profile?.mode === "builtin" || status.active?.profileId === "builtin") await disconnect();
+    setBusy(true);
+    try { const next = await control.runtime.builtinStop({}); setStatus(next); }
+    finally { setBusy(false); }
+  };
   const registerBeforeSwitch = useCallback((fn) => {
     beforeSwitch.current.add(fn);
     return () => beforeSwitch.current.delete(fn);
   }, []);
   return {
     restoring,
+    stopBuiltin,
     displayRuntime:restoration.current.display(status.profiles),
     registerBeforeSwitch,
     cancelConnect,

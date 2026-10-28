@@ -119,15 +119,18 @@ export function useDaemon(baseUrl = "") {
     [error, setError] = useState(""),
     [phase, setPhase] = useState("disconnected");
   const current = useRef();
+  const [source, setSource] = useState(baseUrl);
   useEffect(() => {
+    setSource(baseUrl);
     if (baseUrl === null) {
-      setData(empty);
       setClient(undefined);
       setError("未连接 server");
       setPhase("disconnected");
       return;
     }
-    setData(empty); setClient(undefined); setError(""); setPhase("connecting");
+    // App is keyed by workspace identity. Retain its last snapshot through a
+    // transport loss/retry; a different workspace mounts a fresh store.
+    setClient(undefined); setError(""); setPhase("connecting");
     let stopped = false,
       initialized = false,
       connection,
@@ -145,7 +148,8 @@ export function useDaemon(baseUrl = "") {
           if (
             event.method === "daemon/configurationChanged" ||
             event.method === "daemon/budgetUpdated" ||
-            event.method === "daemon/triggerChanged"
+            event.method === "daemon/triggerChanged" ||
+            event.method === "desktop/capabilitiesChanged"
           )
             metadata = { ...metadata, ...event.params };
           if (event.method === "group/messageUpdated") {
@@ -207,5 +211,6 @@ export function useDaemon(baseUrl = "") {
       current.current = undefined;
     };
   }, [baseUrl]);
-  return { data, client, error, phase };
+  const matches = source === baseUrl && baseUrl !== null;
+  return { data, client: matches ? client : undefined, error, phase: matches ? phase : "disconnected" };
 }

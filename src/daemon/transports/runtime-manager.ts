@@ -4,11 +4,11 @@ import { dirname, resolve, join } from 'node:path';
 import { Value } from 'typebox/value';
 import { RuntimeProfileSchema, type RuntimeProfile as AnyRuntimeProfile, type RuntimeStatus } from '../../sdk/protocol/client-runtime.ts';
 import { ensureServer, type ServerEndpoint } from './server-start.ts';
-type RuntimeProfile=Exclude<AnyRuntimeProfile,{mode:"tailnet"|"direct"}>;
+type RuntimeProfile=Exclude<AnyRuntimeProfile,{mode:"tailnet"|"direct"|"builtin"}>;
 export function validateProfile(value: unknown): RuntimeProfile {
     if (!Value.Check(RuntimeProfileSchema, value))
         throw Error('请检查连接配置：主机、目录和端口');
-    if (["tailnet","direct"].includes((value as AnyRuntimeProfile).mode)) throw Error("此连接需要原生 Pibo 客户端");
+    if (["tailnet","direct","builtin"].includes((value as AnyRuntimeProfile).mode)) throw Error("此连接需要原生 Pibo 客户端");
     const profile = value as RuntimeProfile;
     if (profile.mode === 'ssh' && profile.embeddedTailscale)
         throw Error('此连接需要原生 Pibo 客户端');

@@ -1,6 +1,26 @@
 # Shared Pi Bot client: Tauri checkpoint
 
-The current verified deliverable is an arm64 macOS **development** app, using the existing React messenger, SDK/state reducer and a Rust HTTP/SSE/native connection boundary. It embeds frontend assets only: no Node binary, Node sidecar, or Node GUI host. Pi runtime is independently installed and managed. This checkpoint is not a finished multi-platform release.
+The current macOS arm64 development build includes a real app-owned Pi harness, the React messenger, and a Rust HTTP/SSE boundary. The harness ships its own trusted Node 24 executable, source, vendored OpenMatter runtime, and locked installed dependencies; it does not require a separately installed daemon or Node on the end user's machine. Existing external local-daemon profiles remain supported. This is a development checkpoint, not a published release.
+
+## Bundled desktop harness (2026-10-27)
+
+From `clients/tauri`, run `npm run dev` for the development app or `npm run build` for a local app bundle. Both prepare offline resources in `.harness-build` and include `tauri.harness.conf.json`. They require the existing project dependencies, Node 24, and the pinned embedded Tailscale archive; set `PIBO_TAILSCALE_LIB_DIR` to an existing platform archive directory or build it with `scripts/build-embedded-tailscale.sh macos`. Preparation never downloads Node, runs package installation hooks, or copies a user's Pi/auth directories. It provides a self-contained tsconfig and constrains the pinned Pi subagent package discovery to the bundle root; startup must not climb into the enclosing project or Documents directory. The current macOS arm64 resources add approximately 442 MiB uncompressed. Other desktop architectures require a matching trusted Node/native dependency build and are not reported available by this version.
+
+The protected **本机** connection starts/reuses the bundled harness only when the user chooses it or restores that previously selected connection. Runtime data lives below the application's own app-data `harness/data`, model configuration below `harness/pi`, and the agent workspace below `harness/workspace`. Development and production app identifiers have separate data roots. New data starts with no provider credentials: model setup is required and a send returns an explicit `setupRequired` error. The subprocess clears inherited API-key/proxy/Node-option environment variables, sets an isolated HOME, binds only a dynamic loopback port, and requires approval for agent tool actions. No OS service or network configuration is installed.
+
+The native control API supports start, stop, and restart through `runtime/builtinStart`, `runtime/builtinStop`, and `runtime/builtinRestart`; Settings currently provides start/connect and Stop. `runtime/status.builtinHarness` reports `supported`, `available`, and `state` (`unavailable`, `stopped`, `starting`, `running`, `stopping`, or `error`), with a safe error summary. Connection mode `builtin` cannot override paths or network destinations and cannot be deleted or edited. `local` continues to attach an independently managed daemon; stopping the built-in engine never signals one of those daemons. Disconnecting the client leaves the engine running; explicit Stop and application exit close its owned lifetime pipe. A crashed parent closes the same pipe; a crashed child leaves a recoverable lease. A live lease owned by a different app is refused rather than killed.
+
+Verification commands (real local harness, isolated temporary data, no model requests):
+
+```sh
+node --test clients/tauri/test/builtin-harness.test.mjs # from repository root
+cargo test --lib --features embedded-tailscale
+cargo test --lib --features embedded-tailscale real_bundled_harness_lifecycle -- --ignored
+```
+
+The native lifecycle acceptance covers repeated start, graceful stop, restart, startup cancellation, child crash/stale recovery, and survival of an independently owned test daemon. The Node acceptance additionally checks real protocol initialization and a clear missing-model send error. iOS/Android remain remote clients and never expose an app-owned local harness. A plain browser has no native tsnet bridge and cannot start this desktop engine. Android uses session-only identity restoration; the SDK still writes temporary working state in a private `0700` app-cache directory, removed on normal stop. Crash leftovers and Keystore persistence are not verified.
+
+The sections below record earlier checkpoints and their historical limitations; the bundled-harness section above supersedes the old desktop runtime/download boundary.
 
 ## Build / run
 

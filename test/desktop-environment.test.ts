@@ -4,12 +4,14 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DesktopClient, createDesktopExtension } from '../src/pi/desktop-client.ts';
+import { capability, unavailableDesktopCapabilities } from '../src/pi/desktop-capabilities.ts';
 test('native Linux desktop does not tell Pi that its shell is on a different host', async () => {
     const file = join(mkdtempSync(join(tmpdir(), 'pi-desktop-env-')), 'control.json');
     writeFileSync(file, JSON.stringify({
         url: 'http://127.0.0.1:6090', token: 'fixture', sameRuntime: true
     }));
     const desktop = DesktopClient.load(file)!;
+    desktop.capabilities = async () => ({ ...unavailableDesktopCapabilities('linux', true), browser: capability('ready', 'Isolated fixture'), availableTools: { browser: ['navigate'], computer: [] } });
     desktop.bind = async () => ({
         botId: 'mine'
     });

@@ -26,12 +26,16 @@ resize(root/'src/gui/assets/pibo-logo.png',256)
 manifest=json.loads((catalog/'Contents.json').read_text())
 for image in manifest['images']:
  size=float(image['size'].split('x')[0]);scale=float(image['scale'][:-1]);resize(catalog/image['filename'],int(size*scale))
+subprocess.run(['swift',str(root/'scripts/brand/macos-icon.swift'),str(source),str(icons/'macos-icon.png')],check=True)
 with tempfile.TemporaryDirectory(prefix='pibo-icon-') as d:
  iconset=Path(d)/'Pibo.iconset';iconset.mkdir()
  for size in [16,32,128,256,512]:
-  resize(iconset/f'icon_{size}x{size}.png',size)
-  resize(iconset/f'icon_{size}x{size}@2x.png',size*2)
+  for scale in [1,2]:
+   target=iconset/(f'icon_{size}x{size}'+('@2x' if scale==2 else '')+'.png')
+   subprocess.run(['sips','-z',str(size*scale),str(size*scale),str(icons/'macos-icon.png'),'--out',str(target)],stdout=subprocess.DEVNULL,check=True)
  subprocess.run(['iconutil','-c','icns',str(iconset),'-o',str(icons/'icon.icns')],check=True)
-metadata={'library_file_id':'libfile_cae2cb5f50888191a7232fa5b60af9e7','source':'pibo-approved-source.png','sourceSHA256':hashlib.sha256(source.read_bytes()).hexdigest(),'sourcePixels':[w,h],'operations':'proportional resizing only; opaque RGB preserved; no crop, redraw, recolor, or eye cutouts','iosCatalogSlots':len(manifest['images']),'desktopFormat':'RGBA required by Tauri; source is opaque, so alpha remains fully opaque','tools':['Apple sips','Apple iconutil','Tauri icon']}
+metadata={'library_file_id':'libfile_cae2cb5f50888191a7232fa5b60af9e7','source':'pibo-approved-source.png','sourceSHA256':hashlib.sha256(source.read_bytes()).hexdigest(),'sourcePixels':[w,h],'operations':'approved mark resized proportionally without redraw or recolor; iOS remains opaque; macOS uses a transparent inset rounded container','iosCatalogSlots':len(manifest['images']),'desktopFormat':'macOS ICNS has transparent padding and rounded corners; Tauri window PNGs remain RGBA','tools':['Apple sips','Apple iconutil','Apple AppKit','Tauri icon']}
+prior=json.loads((root/'assets/brand/provenance.json').read_text())
+if 'macOSPackaging' in prior:metadata['macOSPackaging']=prior['macOSPackaging']
 (root/'assets/brand/provenance.json').write_text(json.dumps(metadata,ensure_ascii=False,indent=2)+'\n')
 print(json.dumps(metadata,ensure_ascii=False))

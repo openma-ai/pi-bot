@@ -1,0 +1,23 @@
+{
+  "productName": "Pibo Development",
+  "identifier": "dev.pibot.desktop.development",
+  "build": {
+    "beforeDevCommand": "node scripts/dev-gui.mjs",
+    "devUrl": "http://127.0.0.1:5194"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Pibo Development",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "width": 1100,
+        "height": 760,
+        "minWidth": 360,
+        "minHeight": 420,
+        "theme": "Light"
+      }
+    ]
+  }
+}

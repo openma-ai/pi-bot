@@ -7,21 +7,30 @@ import { PiBotError } from './core/errors.ts';
 type Login = {
     id: string;
     providerId: string;
+    type: AuthType;
     status: 'pending' | 'complete' | 'failed' | 'cancelled';
+    expiresAt: number;
     prompt?: Record<string, any>;
     events: AuthEvent[];
     error?: string;
+    errorCode?: 'loginTimeout';
 };
 type Flow = {
     public: Login;
     abort: AbortController;
     timer: ReturnType<typeof setTimeout>;
+    createdAt: number;
+    finishedAt?: number;
     pending?: {
         id: string;
         answer: (value: string) => void;
         cancel: () => void;
     };
 };
+const LOGIN_WINDOW_MS = 15 * 60 * 1000 + 30000;
+const MAX_LOGIN_WINDOW_MS = 30 * 60 * 1000;
+const TERMINAL_RETENTION_MS = 15 * 60 * 1000;
+const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Native Pi owns credentials. Only secret-free metadata leaves this service. */
 export class PiSettings {
     onLogin?: () => Promise<unknown>;
@@ -45,13 +54,26 @@ export class PiSettings {
             current: {
                 provider: settings.getDefaultProvider() ?? '', model: settings.getDefaultModel() ?? '', thinkingLevel: settings.getDefaultThinkingLevel() ?? 'high'
             }, providers: this.models.getProviders().map(p => ({
-                id: p.id, name: p.name, methods: [...(p.auth.apiKey?.login ? ['api_key'] : []), ...(p.auth.oauth ? ['oauth'] : [])], credential: saved.find(c => c.providerId === p.id)?.type ?? null, models: this.models.getModels(p.id).map(m => ({
+                id: p.id, name: p.name, methods: [...(p.auth.apiKey?.login ? ['api_key'] : []), ...(p.auth.oauth ? ['oauth'] : [])],
+                methodLabels: {
+                    ...(p.auth.apiKey?.login ? { api_key: p.auth.apiKey.name } : {}),
+                    ...(p.auth.oauth ? { oauth: p.auth.oauth.loginLabel ?? p.auth.oauth.name } : {})
+                }, credential: saved.find(c => c.providerId === p.id)?.type ?? null, models: this.models.getModels(p.id).map(m => ({
                     id: m.id, name: m.name, reasoning: m.reasoning
                 }))
             })), agentDir: this.agentDir
         };
     }
-    startLogin(providerId: string, type: AuthType) {
+    startLogin(providerId: string, type: AuthType, requestId?: string) {
+        this.pruneFlows();
+        if (requestId !== undefined && (typeof requestId !== 'string' || !REQUEST_ID.test(requestId)))
+            throw new PiBotError('invalidParams', 'Invalid login request ID');
+        const existing = requestId ? this.flows.get(requestId) : undefined;
+        if (existing) {
+            if (existing.public.providerId !== providerId || existing.public.type !== type)
+                throw new PiBotError('conflict', '登录请求 ID 已用于其他登录');
+            return { id: existing.public.id };
+        }
         const provider = this.models.getProvider(providerId);
         if (!provider || !(type === 'api_key' ? provider.auth.apiKey?.login : type === 'oauth' ? provider.auth.oauth : false))
             throw new PiBotError('invalidParams', 'Unsupported Pi login method');
@@ -59,29 +81,41 @@ export class PiSettings {
             throw new PiBotError('conflict', '已有登录正在进行，请完成或取消');
         while (this.flows.size >= 8)
             this.flows.delete(this.flows.keys().next().value!);
-        const id = randomUUID(), abort = new AbortController();
+        const id = requestId ?? randomUUID(), abort = new AbortController(), createdAt = Date.now();
         const flow: Flow = {
             public: {
-                id, providerId, status: 'pending', events: []
-            }, abort, timer: setTimeout(() => this.cancel(id), 600000)
+                id, providerId, type, status: 'pending', events: [], expiresAt: createdAt + LOGIN_WINDOW_MS
+            }, abort, createdAt, timer: setTimeout(() => this.expire(id), LOGIN_WINDOW_MS)
         };
         flow.timer.unref();
         this.flows.set(id, flow);
         void this.models.login(providerId, type, {
             signal: abort.signal, prompt: p => this.prompt(flow, p), notify: event => {
-                if (flow.public.status === 'pending')
+                if (flow.public.status === 'pending') {
                     flow.public.events = [...flow.public.events.slice(-15), event];
+                    // Device flows own their polling interval and expiry. Do not cut the SDK's
+                    // fifteen-minute approval window short with an unrelated HTTP timeout.
+                    if (event.type === 'device_code' && typeof event.expiresInSeconds === 'number' && Number.isFinite(event.expiresInSeconds) && event.expiresInSeconds > 0) {
+                        clearTimeout(flow.timer);
+                        flow.public.expiresAt = Math.min(createdAt + MAX_LOGIN_WINDOW_MS, Date.now() + event.expiresInSeconds * 1000 + 30000);
+                        flow.timer = setTimeout(() => this.expire(id), Math.max(0, flow.public.expiresAt - Date.now()));
+                        flow.timer.unref();
+                    }
+                }
             }
         }, {
             getDeviceId: () => SettingsManager.create(this.cwd, this.agentDir).getOrCreateDeviceId(), agentName: 'pi-bot'
         }).then(async () => {
             if (flow.public.status === 'pending') {
                 flow.public.status = 'complete';
+                flow.finishedAt = Date.now();
+                clearTimeout(flow.timer);
                 await this.onLogin?.();
             }
         }).catch(() => {
             if (flow.public.status === 'pending') {
                 flow.public.status = 'failed';
+                flow.finishedAt = Date.now();
                 flow.public.error = 'Pi 登录未完成，请重试';
             }
         }).finally(() => {
@@ -126,6 +160,7 @@ export class PiSettings {
         });
     }
     loginState(id: string) {
+        this.pruneFlows();
         const flow = this.flows.get(id);
         if (!flow)
             throw new PiBotError('notFound', 'Login expired');
@@ -145,9 +180,24 @@ export class PiSettings {
         const flow = this.flows.get(id);
         if (flow?.public.status === 'pending') {
             flow.public.status = 'cancelled';
+            flow.finishedAt = Date.now();
             clearTimeout(flow.timer);
             flow.abort.abort();
             flow.pending?.cancel();
+        }
+    }
+    private expire(id: string) {
+        const flow = this.flows.get(id);
+        if (flow?.public.status !== 'pending') return;
+        this.cancel(id);
+        flow.public.status = 'failed';
+        flow.public.errorCode = 'loginTimeout';
+        flow.public.error = '登录已超时，请重新开始';
+    }
+    private pruneFlows() {
+        for (const [id, flow] of this.flows) {
+            if (flow.finishedAt !== undefined && Date.now() - flow.finishedAt >= TERMINAL_RETENTION_MS)
+                this.flows.delete(id);
         }
     }
     async selectModel(provider: string, id: string, thinkingLevel: ThinkingLevel) {

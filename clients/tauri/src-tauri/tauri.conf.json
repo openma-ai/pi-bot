@@ -3,10 +3,37 @@
   "productName": "Pibo Desktop",
   "version": "0.1.0",
   "identifier": "dev.pibot.desktop",
-  "build": { "frontendDist": "../dist" },
-  "app": {
-    "windows": [{ "label": "main", "title": "Pibo", "titleBarStyle": "Overlay", "hiddenTitle": true, "width": 1100, "height": 760, "minWidth": 360, "minHeight": 420 }],
-    "security": { "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost ws://127.0.0.1:*; font-src 'self' data:" }
+  "build": {
+    "frontendDist": "../dist"
   },
-  "bundle": { "active": true, "targets": ["app"], "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"] }
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Pibo",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "width": 1100,
+        "height": 760,
+        "minWidth": 360,
+        "minHeight": 420,
+        "theme": "Light"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost ws://127.0.0.1:*; font-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns"
+    ]
+  }
 }

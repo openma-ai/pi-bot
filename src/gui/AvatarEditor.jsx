@@ -35,6 +35,7 @@ export function AvatarEditor({ open, onOpenChange, bot, api }) {
   }, [open, bot?.id]);
   if (!bot) return null;
   async function save(value) {
+    if (!api) return;
     setBusy(true);
     setError("");
     try {
@@ -51,6 +52,7 @@ export function AvatarEditor({ open, onOpenChange, bot, api }) {
     }
   }
   async function upload(event) {
+    if (!api) return;
     const selected = event.target.files?.[0];
     event.target.value = "";
     if (!selected) return;
@@ -125,7 +127,7 @@ export function AvatarEditor({ open, onOpenChange, bot, api }) {
                   key={i}
                   value={String(i)}
                   aria-label={avatarShapeNames[i]}
-                  disabled={busy}
+                  disabled={!api || busy}
                 >
                   <BotAvatar
                     id="preview"
@@ -152,7 +154,7 @@ export function AvatarEditor({ open, onOpenChange, bot, api }) {
                   value={color}
                   aria-label={colorNames[i]}
                   style={{ "--swatch": color }}
-                  disabled={busy}
+                  disabled={!api || busy}
                 />
               ))}
             </RadioGroup.Root>
@@ -160,7 +162,7 @@ export function AvatarEditor({ open, onOpenChange, bot, api }) {
               variant="ghost"
               color="gray"
               size="2"
-              disabled={busy}
+              disabled={!api || busy}
               onClick={() =>
                 setAvatar({
                   shape: Math.floor(Math.random() * 13),
@@ -188,7 +190,7 @@ export function AvatarEditor({ open, onOpenChange, bot, api }) {
                 aria-label="上传头像图片"
                 accept="image/png,image/jpeg,image/webp"
                 onChange={upload}
-                disabled={busy}
+                disabled={!api || busy}
               />
             </div>
           </Tabs.Content>
@@ -202,13 +204,13 @@ export function AvatarEditor({ open, onOpenChange, bot, api }) {
           <Button
             variant="ghost"
             color="gray"
-            disabled={busy}
+            disabled={!api || busy}
             onClick={() => void save(null)}
           >
             <RotateCcw size={14} />
             重置
           </Button>
-          <Button disabled={busy} onClick={() => void save(avatar)}>
+          <Button disabled={!api || busy} onClick={() => void save(avatar)}>
             {busy ? "正在保存…" : "保存头像"}
           </Button>
         </Flex>

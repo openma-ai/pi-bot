@@ -15,18 +15,18 @@ export async function livePiFactory(dir: string, proactive: (host: BotHost) => P
 } = {}, onBudget?: (budget: Record<string, number>) => void, modelRound?: {
     maxRequests: number;
     durationMs: number;
-}) {
+}, desktop = DesktopClient.load(resolve(process.env.PI_BOT_DESKTOP_CONTROL ?? 'work/gui/desktop/control.json'))) {
     let configuration;
     try {
         configuration = await loadPiConfiguration(piOptions);
     }
     catch {
         const factory: SessionFactory = async () => {
-            throw Error('Pi 配置不可用，请在 GUI 的「Pi 登录与模型」中登录并选择模型');
+            throw Error('Pi 配置不可用，请在设置的「模型」中完成认证并选择模型');
         };
         return {
             factory, model: '未配置', configuration: {
-                auth: 'Pi native', agentDir: getAgentDir(), setupRequired: true, message: '请在 GUI 的「Pi 登录与模型」中登录并选择模型'
+                auth: 'Pi native', agentDir: piOptions.agentDir ?? getAgentDir(), setupRequired: true, message: '请在设置的「模型」中完成认证并选择模型'
             }, dispose: () => {
             }, budget: undefined
         };
@@ -61,7 +61,7 @@ export async function livePiFactory(dir: string, proactive: (host: BotHost) => P
     });
     const factory = piSessionFactory({
         sandbox,
-        credentials, desktop: DesktopClient.load(resolve('work/gui/desktop/control.json')), codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model, proactive, context: {
+        credentials, desktop, codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model, proactive, context: {
             backgroundEnabled: true, outputReserveTokens: 16384, summaryTimeoutMs: 600000
         }, backgroundTools: {}, extensions: [trace], thinkingLevel: configuration.thinkingLevel, maxOutputTokens: 16384, maxRequestsPerWake: 16, inferenceRequestTimeoutMs: 600000, inferenceSignal: lifetime,
         beforeProviderRequest: budget ? () => {

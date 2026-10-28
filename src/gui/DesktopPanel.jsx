@@ -5,6 +5,7 @@ export function DesktopPanel({
   botId,
   name,
   enabled,
+  capabilities,
   api,
   baseUrl = "",
   registerBeforeSwitch,
@@ -16,29 +17,54 @@ export function DesktopPanel({
     [control, setControl] = useState(false),
     [controlling, setControlling] = useState(false);
   const [screen,setScreen]=useState(''),[viewerEpoch,setViewerEpoch]=useState(0);
+  const [capability, setCapability] = useState(capabilities), [opening, setOpening] = useState(false);
+  const openingRef = useRef(false), generation = useRef(0);
   const retryAttempt=useRef(0);
   const canvas = useRef(null),
     rfb = useRef(null),
     apiRef = useRef(api);
   apiRef.current = api;
   useEffect(() => {
-    let stopped = false;
-    setReady(false);
-    setError("");
-    if (enabled && botId)
-      api("/api/desktop/bind", { botId })
-        .then(() => {
-          if (!stopped) setReady(true);
-        })
-        .catch(() => {
-          if (!stopped) setError("屏幕暂不可用");
-        });
-    const t = setInterval(() => setStamp(Date.now()), 3000);
-    return () => {
-      stopped = true;
-      clearInterval(t);
-    };
+    const version = ++generation.current;
+    setReady(false); setOpen(false); setScreen(""); setError("");
+    setCapability(capabilities); openingRef.current = false; setOpening(false);
+    if (enabled && botId) void apiRef.current("/api/desktop/capabilities", {botId}).then(next => {
+      if (version === generation.current) setCapability(next);
+    }).catch(e => { if(version === generation.current) setError(e.message || "无法读取电脑能力"); });
+    return () => { generation.current++; };
   }, [botId, enabled]);
+  useEffect(() => {
+    if (!enabled || !botId) return;
+    let stopped = false;
+    void apiRef.current("/api/desktop/capabilities", {botId}).then(next => {
+      if (!stopped) {
+        setCapability(next);
+        if (next.vnc?.state !== "ready") { setReady(false); setOpen(false); }
+      }
+    }).catch(() => {});
+    return () => { stopped = true; };
+  }, [capabilities, botId, enabled]);
+  useEffect(() => {
+    if (!ready) return;
+    const timer = setInterval(() => setStamp(Date.now()), 3000);
+    return () => clearInterval(timer);
+  }, [ready]);
+  async function openScreen() {
+    if (openingRef.current || !enabled || !botId) return;
+    openingRef.current = true; setOpening(true); setError("");
+    const version = generation.current;
+    try {
+      // Opening a view is an explicit user action. Merely inspecting capability
+      // state must never bind a bot or start a desktop/VNC service.
+      if (capability?.vnc?.state !== "ready") await apiRef.current("/api/desktop/bind", {botId});
+      const next = await apiRef.current("/api/desktop/capabilities", {botId, refresh:true});
+      if (version !== generation.current) return;
+      setCapability(next);
+      if (next.vnc?.state !== "ready") throw Error(next.vnc?.reason || "屏幕尚未就绪");
+      setReady(true); setOpen(true);
+    } catch(e) { if(version === generation.current) setError(e.message || "屏幕暂不可用"); }
+    finally { if(version === generation.current) { openingRef.current=false;setOpening(false); } }
+  }
   useEffect(()=>{
     if(!ready || !enabled)return;
     const abort=new AbortController();let objectUrl;
@@ -121,29 +147,18 @@ export function DesktopPanel({
   return (
     <>
       <div className="computer-preview">
-        {!enabled ? (
-          <Text color="gray">尚未连接电脑</Text>
-        ) : error ? (
-          <Text color="gray">{error}</Text>
-        ) : !ready ? (
-          <Text color="gray">正在连接屏幕…</Text>
-        ) : (
-          <button
-            className="screen-preview"
-            onClick={() => setOpen(true)}
-            aria-label={`打开 ${name} 的屏幕`}
-          >
-            <img
-              src={screen || undefined}
-              alt={`${name} 的实时屏幕`}
-              onError={() => setError("屏幕暂不可用")}
-            />
-            <span>↗ Open</span>
-          </button>
-        )}
-        <Text size="2" color="gray">
-          {name} 的屏幕
-        </Text>
+        {!enabled ? <Text color="gray">连接工作空间后查看电脑能力</Text> : <>
+          <div className="capability-list" aria-label="宿主电脑能力">
+            {[["computerUse", "电脑操作"], ["browser", "浏览器操作"], ["vnc", "屏幕查看"]].map(([key,label]) => {
+              const item=capability?.[key];
+              const labels={unsupported:"不支持",unconfigured:"未配置", "permission-required":"需要权限",unreachable:"无法连接",ready:"可用",unknown:"待确认"};
+              return <div key={key}><Text as="p" size="2" weight="medium">{label} · {labels[item?.state] || "检测中"}</Text><Text as="p" size="1" color="gray">{item?.reason || "正在读取宿主状态…"}</Text></div>;
+            })}
+          </div>
+          {error && <Text as="p" size="2" color="gray" role="status">{error}</Text>}
+          {ready && screen && <button className="screen-preview" onClick={() => void openScreen()} aria-label={`打开 ${name} 的屏幕`}><img src={screen} alt={`${name} 的屏幕预览`} onError={() => setError("屏幕暂不可用")}/></button>}
+          <Button mt="3" disabled={opening || !(capability?.canOpenView || capability?.vnc?.state === "ready")} onClick={() => void openScreen()}>{opening ? "连接屏幕…" : "打开屏幕"}</Button>
+        </>}
       </div>
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Content className="computer-fullscreen" maxWidth="95vw">
@@ -160,7 +175,7 @@ export function DesktopPanel({
           <Flex className="desktop-controls" align="center" justify="between" gap="3" mt="3" wrap="wrap">
             <Text className="desktop-status" size="2" role="status">{control ? "Controlling" : "Watching"}</Text>
             <Flex className="desktop-actions" align="center" gap="2">
-              <Button size="2" variant="soft" disabled={controlling} onClick={toggle}>
+              <Button size="2" variant="soft" disabled={controlling || (!control && capability?.computerUse?.state !== "ready")} onClick={toggle}>
                 {control ? "Return control" : "Take over"}
               </Button>
               <Dialog.Close>

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {errorText} from "./useDaemon.js";
 import { Check, X } from "lucide-react";
-export function DecisionCard({ request, onAnswer }) {
+export function DecisionCard({ request, onAnswer, disabled = false }) {
   const [answer, setAnswer] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -10,6 +10,7 @@ export function DecisionCard({ request, onAnswer }) {
   const resolved = request.status === "resolved" || Boolean(submitted);
   const selected = request.response?.text || submitted;
   const respond = async (text) => {
+    if (disabled || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -40,7 +41,7 @@ export function DecisionCard({ request, onAnswer }) {
           {request.params.choices.map((choice, i) => (
             <button
               key={choice}
-              disabled={busy || resolved}
+              disabled={disabled || busy || resolved}
               data-selected={selected === choice}
               onClick={() => respond(choice)}
             >
@@ -64,7 +65,7 @@ export function DecisionCard({ request, onAnswer }) {
           disabled={busy}
           onChange={(e) => setAnswer(e.target.value)}
         />
-        <button disabled={busy || !answer.trim()} type="submit">
+        <button disabled={disabled || busy || !answer.trim()} type="submit">
           发送
         </button>
       </form>}

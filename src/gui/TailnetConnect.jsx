@@ -64,6 +64,11 @@ export function TailnetConnect({ profile, onSave, onCancel }) {
         }
     }
     const running = status?.backendState === 'Running';
+    const networkLabel = !status ? '正在读取应用内网络状态…' : ({
+        NotPrepared: '应用内网络尚未启动', Prepared: '应用内网络尚未连接',
+        Stopped: '应用内网络已停止', NeedsLogin: '等待登录应用内网络',
+        NeedsMachineAuth: '等待网络管理员批准设备', Starting: '应用内网络连接中…'
+    }[status.backendState] || '应用内网络尚未连接');
     function choose(ip) {
         generation.current++;
         setHost(ip);
@@ -81,7 +86,12 @@ export function TailnetConnect({ profile, onSave, onCancel }) {
         });
     }
     return <div className="tailnet-connect"><Text as="p" color="gray" size="2">登录网络，选择电脑，再用服务访问密码登录 Pibo。</Text>
- {!running ? <Card><Text as="p" weight="medium">{status?.backendState === 'NeedsMachineAuth' ? '等待网络管理员批准设备' : '登录应用内网络'}</Text><Text as="p" size="2" color="gray">网络身份将仅保存在这台设备的安全存储中。不会启用系统 VPN。</Text><Flex gap="2" mt="3" wrap="wrap"><Button disabled={busy} onClick={() => void action(async () => {
+ <label>Tailscale IPv4<TextField.Root aria-label="Tailscale IPv4" value={host} disabled={busy} onChange={e => choose(e.target.value)} placeholder="100.x.x.x"/></label><label>Pibo 服务端口<TextField.Root aria-label="Pibo 服务端口" inputMode="numeric" value={port} disabled={busy} onChange={e => {
+            generation.current++;
+            setPort(e.target.value);
+            setService(null);
+        }}/></label>
+ {!running ? <Card><Text as="p" weight="medium" role="status">{networkLabel}</Text><Text as="p" size="2" color="gray">使用 Pibo 内置网络连接，无需 Mac 加入系统 VPN。登录后再检查 Pibo 服务。</Text><Flex gap="2" mt="3" wrap="wrap"><Button disabled={busy} onClick={() => void action(async () => {
             wantLogin.current = true;
             opened.current = '';
             await control('browserStart');
@@ -101,11 +111,7 @@ export function TailnetConnect({ profile, onSave, onCancel }) {
  <Text as="p" weight="medium">选择运行 Pibo 的电脑</Text><Text as="p" color="gray" size="1">在线只代表网络在线，下一步会检查 Pibo 服务。</Text><Flex direction="column" gap="2" my="3">{(status.peers || []).map(p => <Button key={p.ip} variant={host === p.ip ? 'solid' : 'soft'} disabled={busy || !p.online} onClick={() => choose(p.ip)} style={{
             justifyContent: 'space-between', height: 'auto', padding: '12px'
         }}><span>{p.name} · {p.ip}</span><span>{p.online ? '在线' : '离线'}</span></Button>)}{!status.peers?.length && <Text color="gray" size="2">暂时没有设备。确认目标电脑已加入同一网络，或填写它的 Tailscale IPv4。</Text>}</Flex>
- <label>Tailscale IPv4<TextField.Root value={host} disabled={busy} onChange={e => choose(e.target.value)} placeholder="100.x.x.x"/></label><label>Pibo 服务端口<TextField.Root inputMode="numeric" value={port} disabled={busy} onChange={e => {
-            generation.current++;
-            setPort(e.target.value);
-            setService(null);
-        }}/></label>
+
  <Button mt="3" disabled={busy || !host || !(Number(port) > 0 && Number(port) <= 65535)} onClick={() => void action(async () => {
             const version = generation.current;
             const found = await control('probe', params);

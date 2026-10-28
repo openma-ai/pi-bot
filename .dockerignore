@@ -1,5 +1,14 @@
 .git
 node_modules
+**/node_modules
+# Generated client builds and QA evidence are never harness build inputs.
+artifacts
+dist
+clients/tauri/dist
+clients/tauri/.harness-build*
+clients/tauri/.tailscale-build
+**/target
+**/.gradle
 work
 .pi-bot
 .21st

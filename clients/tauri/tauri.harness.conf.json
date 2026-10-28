@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "../.harness-build/": "harness/"
+    }
+  }
+}

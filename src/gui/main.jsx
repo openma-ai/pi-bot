@@ -1,9 +1,9 @@
+import {ConnectionLanding} from "./ConnectionLanding.jsx";
+import {restoreNativePageOrigin} from './native-viewport.ts';
 import {isComposerSubmit,resizeComposerTextarea} from './composer-keyboard.ts';
-import {RuntimeRestoring} from './RuntimeRestoring.jsx';
 import {BotRoutineStatus} from './RoutineStatus.jsx';
 import {ComposerFrame,releaseAttachmentPreview} from './ComposerAttachments.jsx';
 import {createBotAttempt} from './create-bot-attempt.ts';
-import {ConnectionLanding} from "./ConnectionLanding.jsx";
 
 import { layoutMessages, isUserMessage } from "./message-layout.ts";
 import { senderLabelColor } from "./identity-color.ts";
@@ -66,6 +66,7 @@ import {
 } from "@radix-ui/themes";
 import "@radix-ui/themes/styles.css";
 import "./style.css";
+import "./brand.css";
 import { useDaemon, errorText } from "./useDaemon.js";
 // Layer ④ GUI talks to the daemon only through the SDK client.
 
@@ -123,8 +124,10 @@ function Picker({ value, onChange, items, label }) {
     </Select.Root>
   );
 }
-function App({ runtime, setPiSettingsOpen }) {
-  const activeRuntime = runtime.status.active;
+function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) {
+  // Keep display identity and drafts while the transport is absent. Never use
+  // this retained workspace as authority to issue requests.
+  const activeRuntime = workspace;
   const phone = useIsMobile();
   const nativeMac = Boolean(window.__PIBOT_NATIVE__) && /^Mac/.test(navigator.platform) && navigator.maxTouchPoints < 2;
   const navigation = useConversationRoute();
@@ -133,7 +136,7 @@ function App({ runtime, setPiSettingsOpen }) {
     client: api,
     error: connectionError,
     phase: connectionPhase,
-  } = useDaemon(activeRuntime?.baseUrl ?? null);
+  } = useDaemon(runtime.status.active?.baseUrl ?? null);
   const [view, setView] = useState("chat"),
     [selected, setSelected] = useState(""),
     [groupId, setGroupId] = useState(""),
@@ -152,9 +155,6 @@ function App({ runtime, setPiSettingsOpen }) {
     [searchOpen, setSearchOpen] = useState(false),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (runtime.error) setNotice(runtime.error);
-  }, [runtime.error]);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     try {
       return Math.max(
@@ -214,19 +214,6 @@ function App({ runtime, setPiSettingsOpen }) {
       if (row) { setGroupId(id); setSelected(row.memberIds[0]); setView("group"); }
     } else if (data.bots.some((bot) => bot.id === id)) { setSelected(id); setView("chat"); }
   }, [navigation.route, data.bots, data.groups]);
-  useEffect(() => {
-    if (!phone) return;
-    const viewport = window.visualViewport;
-    const update = () => {
-      // A user pinch zoom must not resize the layout to the magnified viewport.
-      if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
-      const height = viewport?.height || window.innerHeight;
-      document.documentElement.style.setProperty("--phone-height", `${height}px`);
-      document.documentElement.style.setProperty("--phone-bottom-inset", height < window.innerHeight - 80 ? "0px" : "env(safe-area-inset-bottom)");
-    };
-    update(); viewport?.addEventListener("resize", update); window.addEventListener("resize", update);
-    return () => { viewport?.removeEventListener("resize", update); window.removeEventListener("resize", update); document.documentElement.style.removeProperty("--phone-height"); document.documentElement.style.removeProperty("--phone-bottom-inset"); };
-  }, [phone]);
   useLayoutEffect(() => {
     if (!searchTarget) return;
     const message = Array.from(
@@ -283,7 +270,7 @@ function App({ runtime, setPiSettingsOpen }) {
     if (conversation.current) observer.observe(conversation.current);
     return () => observer.disconnect();
   }, [view]);
-  useLayoutEffect(()=>resizeComposerTextarea(composer.current),[draft,view]);
+  useLayoutEffect(()=>resizeComposerTextarea(composer.current),[draft,view,navigation.route.page,selected,groupId]);
   useEffect(()=>{const resize=()=>resizeComposerTextarea(composer.current);window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);return()=>{window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);};},[]);
   const activity = (id) => botActivity(data, id);
   const scrollBottom = () => {
@@ -480,6 +467,14 @@ function App({ runtime, setPiSettingsOpen }) {
       setBusy(false);
     }
   }
+  const firstConnection = runtime.managed && runtime.status.profiles !== null &&
+    !runtime.status.active && !runtime.displayRuntime && !data.bots.length && !runtime.error && !runtime.busy;
+  const connectionStart = firstConnection ? <ConnectionLanding runtime={runtime} onSettings={openConnectionSettings}/> : null;
+  const connectionNotice = <ConnectionFeedback
+    phase={!runtime.status.active && (runtime.busy || (runtime.status.profiles === null && !runtime.error)) ? "connecting" : connectionPhase}
+    firstRun={runtime.managed && !runtime.status.active && !data.bots.length && !runtime.error}
+    onSettings={openConnectionSettings}
+  />;
   const title = view === "requests" ? "待处理" : view === "peers" ? "Bot 对话" : view === "group" ? group?.name : bot?.name;
   const inspector = (
     <>
@@ -550,6 +545,7 @@ function App({ runtime, setPiSettingsOpen }) {
               <Button
                 size="1"
                 variant="ghost"
+                disabled={!api}
                 onClick={async () => {
                   try {
                     if (t.status === "loaded") {
@@ -590,6 +586,7 @@ function App({ runtime, setPiSettingsOpen }) {
               <Button
                 size="1"
                 variant="ghost"
+                disabled={!api}
                 onClick={async () => {
                   try {
                     const v = await mutate(
@@ -617,6 +614,7 @@ function App({ runtime, setPiSettingsOpen }) {
             />
             <Button
               size="1"
+              disabled={!api || !answer.trim()}
               onClick={() =>
                 mutate(
                   api.request.resolve({
@@ -710,11 +708,12 @@ function App({ runtime, setPiSettingsOpen }) {
               <DesktopPanel
                 botId={selected}
                 name={bot?.name || "Bot"}
-                enabled={!!api&&data.desktop}
+                enabled={!!api}
+                capabilities={data.desktopCapabilities}
                 baseUrl={activeRuntime?.baseUrl || ""}
                 registerBeforeSwitch={runtime.registerBeforeSwitch}
                 api={(path, body) =>
-                  api ? api.desktop[path.endsWith("/bind") ? "bind" : "control"](body) : Promise.reject(Error("连接尚未恢复"))
+                  api ? api.desktop[path.endsWith("/bind") ? "bind" : path.endsWith("/capabilities") ? "capabilities" : "control"](body) : Promise.reject(Error("连接尚未恢复"))
                 }
               />
             </Tabs.Content>
@@ -728,8 +727,8 @@ function App({ runtime, setPiSettingsOpen }) {
     { value: { baseUrl: activeRuntime?.baseUrl || "", bots: data.bots } },
     <Theme
       className="app-theme"
-      appearance="dark"
-      accentColor="amber"
+      appearance="light"
+      accentColor="tomato"
       grayColor="sand"
       radius="large"
     >
@@ -766,6 +765,10 @@ function App({ runtime, setPiSettingsOpen }) {
           }}
           onSettings={() => setPiSettingsOpen(true)}
           runtime={runtime}
+          workspaceScope={workspace?.scope}
+          online={!!api}
+          connectionNotice={phone && navigation.route.page === "list" ? connectionNotice : null}
+          connectionStart={phone ? connectionStart : null}
         />
         <SearchDialog
           open={searchOpen}
@@ -792,7 +795,7 @@ function App({ runtime, setPiSettingsOpen }) {
           }}
         />
         <main className="main" style={{ "--outgoing-background": outgoingPalette.background, "--outgoing-foreground": outgoingPalette.foreground }}>
-          <header className="header">
+          <header className="header" data-tauri-drag-region={nativeMac || undefined}>
             {(phone || privateFrom) && <button className={phone ? "sidebar-toggle phone-back" : "private-return"} aria-label={privateFrom ? "返回群聊" : "返回会话列表"} onClick={() => { composer.current?.blur(); navigation.back(); }}><ChevronLeft size={22} /></button>}
             <button
               ref={conversationIdentity}
@@ -812,10 +815,10 @@ function App({ runtime, setPiSettingsOpen }) {
               ) : view === "group" ? (
                 <GroupAvatar members={groupBots} size={28} />
               ) : null}
-              <Heading size="3">{title || "Pi Bot"}</Heading>
+              <Heading size="3">{title || "Pibo"}</Heading>
             </button>
+            {(!phone || navigation.route.page === "chat") && connectionNotice}
           </header>
-          <ConnectionFeedback phase={connectionPhase} onSettings={() => setPiSettingsOpen(true)} />
           {data.configuration?.setupRequired && !connectionError && (
             <ServiceNotice
               kind="setup"
@@ -876,6 +879,7 @@ function App({ runtime, setPiSettingsOpen }) {
                         </pre>
                         <Flex gap="3">
                           <Button
+                            disabled={!api}
                             onClick={() =>
                               api.request
                                 .resolve({
@@ -890,6 +894,7 @@ function App({ runtime, setPiSettingsOpen }) {
                           <Button
                             color="red"
                             variant="soft"
+                            disabled={!api}
                             onClick={() =>
                               api.request
                                 .resolve({
@@ -912,7 +917,7 @@ function App({ runtime, setPiSettingsOpen }) {
                           onChange={(e) => setAnswer(e.target.value)}
                         />
                         <Button
-                          disabled={!answer.trim()}
+                          disabled={!api || !answer.trim()}
                           onClick={() =>
                             api.request
                               .resolve({
@@ -927,7 +932,7 @@ function App({ runtime, setPiSettingsOpen }) {
                         </Button>
                       </>
                     )}
-                    {r.kind === "credential" && r.params.formUrl && (
+                    {r.kind === "credential" && api && r.params.formUrl && (
                       <a
                         href={(activeRuntime?.baseUrl || "") + r.params.formUrl}
                         target="_blank"
@@ -1045,16 +1050,17 @@ function App({ runtime, setPiSettingsOpen }) {
                       </div>
                     </React.Fragment>
                   ))
-                ) : (
+                ) : connectionPhase !== "ready" ? (!phone ? connectionStart : null) : (
                   <div className="empty">
                     <Heading size="5">
-                      {view === "peers" ? "暂无 bot 对话" : "准备开始"}
+                      {view === "peers" ? "暂无 bot 对话" : !data.bots.length ? "工作空间已连接" : "准备开始"}
                     </Heading>
                     <Text color="gray" size="2">
                       {view === "peers"
                         ? "选择两个 bot，发起一项真实协作任务。"
-                        : "发一条消息，开始处理任务。"}
+                        : !data.bots.length ? "创建你的第一个 bot。模型可在设置中配置。" : "发一条消息，开始处理任务。"}
                     </Text>
+                    {!data.bots.length && <Button mt="3" onClick={() => { setName(""); botCreation.current.reset(); setAdding(true); }}>新建 bot</Button>}
                   </div>
                 )}
                 <div ref={end} />
@@ -1103,7 +1109,7 @@ function App({ runtime, setPiSettingsOpen }) {
                     ))}
                   </div>
                 )}
-                <ComposerFrame disabled={!api||connectionPhase!=="ready"||busy||fileBusy||!fileScope.botId} busy={fileBusy} error={fileError} files={fileAttachments} onPick={pickFiles} onCancel={()=>uploadCancel.current?.abort()} onRemove={f=>{releaseAttachmentPreview(f);setFileAttachments(old=>old.filter(x=>x.id!==f.id));void api.file.cancel({...fileScope,id:f.id}).catch(()=>{});}}>
+                <ComposerFrame disabled={!api||connectionPhase!=="ready"||busy||fileBusy||!fileScope.botId} busy={fileBusy} error={fileError} files={fileAttachments} onPick={pickFiles} onCancel={()=>uploadCancel.current?.abort()} onRemove={f=>{releaseAttachmentPreview(f);setFileAttachments(old=>old.filter(x=>x.id!==f.id));void api?.file.cancel({...fileScope,id:f.id}).catch(()=>{});}}>
                   <ComposerTextarea
                     className="message-input"
                     data-gramm="false"
@@ -1221,7 +1227,7 @@ function App({ runtime, setPiSettingsOpen }) {
                   <Button variant="soft">返回</Button>
                 </Dialog.Close>
                 <Button
-                  disabled={busy || members.length < 2 || !name.trim()}
+                  disabled={!api || busy || members.length < 2 || !name.trim()}
                   onClick={async () => {
                     setBusy(true);
                     try {
@@ -1297,15 +1303,16 @@ function App({ runtime, setPiSettingsOpen }) {
             setNotice("");
           }}
         >
-          <Dialog.Content maxWidth="380px">
+          <Dialog.Content className="create-bot-dialog" maxWidth="420px">
+            <div className="new-bot-emblem"><BotAvatar id="new-bot" name={name || "新助手"} size={56}/></div>
             <Dialog.Title>新建 bot</Dialog.Title>
             <Dialog.Description size="2" mb="4">
-              给助手取个名字。
+              给你的新伙伴取个名字，随时开始一段对话。
             </Dialog.Description>
             <TextField.Root
               aria-label="名称"
               disabled={creatingBot}
-              placeholder="名称"
+              placeholder="例如：灵感搭子"
               maxLength={60}
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -1328,7 +1335,7 @@ function App({ runtime, setPiSettingsOpen }) {
                   try {
                     const result=await attempt.submit(api,{name:name.trim()});
                     if(!result||botCreation.current!==attempt)return;
-                    navigation.list();setSelected(result.bot.id);setView("chat");setName("");setAdding(false);attempt.reset();
+                    navigation.open("bot",result.bot.id);setSelected(result.bot.id);setView("chat");setName("");setAdding(false);attempt.reset();
                   } catch(e){if(botCreation.current===attempt)setNotice(e.reason==="reviewRequired"?e.message:errorText(e));}
                   finally{if(botCreation.current===attempt)setCreatingBot(false);}
                 }}
@@ -1369,25 +1376,54 @@ function App({ runtime, setPiSettingsOpen }) {
 }
 
 function RuntimeShell() {
+  useEffect(() => {
+
+    const viewport = window.visualViewport;
+    const update = () => {
+      // A user pinch zoom must not resize the layout to the magnified viewport.
+      if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
+      restoreNativePageOrigin(document, window);
+      const height = viewport?.height || window.innerHeight;
+      document.documentElement.dataset.shortViewport = String(height < 250);
+      document.documentElement.style.setProperty("--phone-height", `${height}px`);
+      document.documentElement.style.setProperty("--phone-bottom-inset", height < window.innerHeight - 80 ? "0px" : "env(safe-area-inset-bottom)");
+    };
+    update(); viewport?.addEventListener("resize", update); viewport?.addEventListener("scroll", update); window.addEventListener("resize", update); window.addEventListener("scroll", update);
+    return () => { viewport?.removeEventListener("resize", update); viewport?.removeEventListener("scroll", update); window.removeEventListener("resize", update); window.removeEventListener("scroll", update); delete document.documentElement.dataset.shortViewport; document.documentElement.style.removeProperty("--phone-height"); document.documentElement.style.removeProperty("--phone-bottom-inset"); };
+  }, []);
+
   const runtime = useRuntime();
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false), [settingsTab, setSettingsTab] = useState();
+  const retainedWorkspace = useRef(null);
+  if (runtime.status.active) retainedWorkspace.current = runtime.status.active;
+  else if (!retainedWorkspace.current) {
+    const profile = runtime.status.profiles?.find(p => p.id === runtime.displayRuntime?.id);
+    const display = runtime.displayRuntime || runtime.status.profiles?.[0];
+    if (display) retainedWorkspace.current = { ...display, profileId: display.id, profile, label: display.name };
+  }
+  const workspace = runtime.status.active || retainedWorkspace.current;
+  const openSettings = (open) => { setSettingsTab(undefined); setSettingsOpen(open); };
+  const openConnectionSettings = () => { setSettingsTab("runtime"); setSettingsOpen(true); };
   return (
     <>
-      {runtime.managed&&!runtime.status.active?(runtime.displayRuntime?<RuntimeRestoring runtime={runtime} onSettings={()=>setSettingsOpen(true)}/>:<ConnectionLanding runtime={runtime} onSettings={()=>setSettingsOpen(true)}/>):<App
-        key={JSON.stringify([runtime.status.active?.profileId || runtime.status.active?.scope || "direct",runtime.status.active?.profile?.url,runtime.status.active?.profile?.host,runtime.status.active?.profile?.serverPort,runtime.status.active?.profile?.dataDir])}
+      <App
+        key={JSON.stringify([workspace?.profileId || workspace?.scope || "direct",workspace?.profile?.mode,workspace?.profile?.url,workspace?.profile?.host,workspace?.profile?.serverPort,workspace?.profile?.dataDir])}
         runtime={runtime}
-        setPiSettingsOpen={setSettingsOpen}
-      />}
+        workspace={workspace}
+        setPiSettingsOpen={openSettings}
+        openConnectionSettings={openConnectionSettings}
+      />
       <Theme
         className="overlay-theme"
-        appearance="dark"
-        accentColor="amber"
+        appearance="light"
+        accentColor="tomato"
         grayColor="sand"
         radius="large"
       >
 
         <SettingsPage
           open={settingsOpen}
+          initialTab={settingsTab}
           onOpenChange={setSettingsOpen}
           runtime={runtime}
         />

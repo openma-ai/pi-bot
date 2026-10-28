@@ -1,0 +1,301 @@
+/* Pibo's approved cream/coral mark is the source of the product palette. */
+:root {
+  color-scheme: light;
+  --pibo-canvas: #fffdf8;
+  --pibo-sidebar: #f6f3eb;
+  --pibo-surface: #ffffff;
+  --pibo-hover: #f1ede5;
+  --pibo-selected: #f2e5dc;
+  --pibo-line: #e8e1d7;
+  --pibo-ink: #352f2b;
+  --pibo-muted: #81766c;
+  --pibo-accent: #c74833;
+  --pibo-accent-hover: #b43d2b;
+}
+.radix-themes {
+  --default-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+  --color-background: var(--pibo-canvas);
+  --color-panel-solid: var(--pibo-surface);
+  --accent-9: var(--pibo-accent);
+  --accent-10: var(--pibo-accent-hover);
+  --accent-11: #ae402f;
+  --accent-12: #65372d;
+  --accent-3: #fae9e1;
+  --accent-a3: #da6c4120;
+  --accent-8: #c77d68;
+  --accent-contrast: #fff;
+  --focus-8: #c77d68;
+  --gray-1: var(--pibo-canvas);
+  --gray-2: #faf8f3;
+  --gray-3: #f2eee7;
+  --gray-4: #ebe5dc;
+  --gray-5: var(--pibo-line);
+  --gray-6: #ddd5c9;
+  --gray-8: #b7aa9b;
+  --gray-10: var(--pibo-muted);
+  --gray-11: #74695f;
+  --gray-12: var(--pibo-ink);
+}
+body, .app, .connection-landing { background: var(--pibo-canvas); color: var(--pibo-ink); }
+.app-theme, .app[data-slot="sidebar-wrapper"] { height: var(--phone-height,100dvh); }
+.rt-Button { min-height: 38px; font-weight: 550; cursor: pointer; }
+.rt-Button:disabled { cursor: default; }
+.rt-TextFieldRoot, .rt-SelectTrigger, .pi-choice { min-height:44px; border-radius:12px; }
+.rt-TextFieldRoot { background:var(--pibo-surface); box-shadow:inset 0 0 0 1px var(--pibo-line); }
+.rt-TextFieldRoot:focus-within { outline:none; box-shadow:inset 0 0 0 1.5px #c77d68; }
+.rt-TextFieldInput { font-size:16px; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid #bd7662; outline-offset:3px; }
+.rt-DialogContent { background:var(--pibo-canvas); border:1px solid var(--pibo-line); border-radius:24px; box-shadow:0 20px 80px #43332526; max-height:calc(var(--phone-height,100dvh) - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y:auto; overscroll-behavior:contain; }
+.rt-DialogScroll { height:var(--phone-height,100dvh); padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
+.rt-DialogOverlay { background:#40362c38; }
+.rt-DropdownMenuContent, .rt-PopoverContent, .rt-SelectContent { border:1px solid var(--pibo-line); background:var(--pibo-surface); box-shadow:0 8px 36px #4333251a; }
+/* Conversation chrome stays still; only messages scroll. */
+.header { height:76px; border-bottom:1px solid transparent; }
+.conversation-identity { border:0; background:transparent; min-height:44px; gap:10px; padding:5px 12px; }
+.conversation-identity:hover { background:var(--pibo-hover); }
+.conversation-identity h1 { font-size:15px; font-weight:600; }
+.conversation { padding-top:24px; padding-bottom:24px; }
+.bubble { background:#f3efe8; color:var(--pibo-ink); border-radius:20px 20px 20px 6px; padding:13px 17px; font-size:15px; }
+.row.user .bubble { background:#f6dfd2; color:#50372c; border-radius:20px 20px 6px 20px; }
+.row.user .message-body pre { color:var(--pibo-ink); }
+.message-body a { color:var(--pibo-accent); }
+.message-body pre { background:#eee9e0; border-color:var(--pibo-line); }
+.message-body th,.message-body td { border-color:var(--pibo-line); }
+.date-divider { color:var(--pibo-muted); margin:12px 0 28px; }
+.composer-area { padding-bottom:24px; background:var(--pibo-canvas); }
+.composer-shell { background:#fff; border-color:var(--pibo-line); border-radius:24px; backdrop-filter:none; box-shadow:0 3px 14px #43332506; }
+.composer-shell:focus-within { border-color:#c9ad9d; }
+.composer-shell .composer { min-height:56px; padding:6px!important; }
+.composer-shell .send-button { width:40px!important; height:40px!important; min-width:40px!important; margin:2px; }
+.send-button:disabled { background:#eee8df; color:#aa9c8c; }
+.composer-add { color:var(--pibo-muted); }
+.composer-add:hover { background:var(--pibo-hover); }
+.composer-add-menu { min-width:206px; border-radius:20px; padding:7px; }
+.composer-add-menu [role="menuitem"] { color:var(--pibo-ink); }
+.composer-add-menu [role="menuitem"][data-highlighted] { background:var(--pibo-hover); }
+.message-input::placeholder { color:#928477; }
+.service-notice, .service-notice.failure { background:#f5ede0; color:#76573d; }
+.service-notice { padding:9px 14px; margin-top:14px; border-radius:12px; font-size:12px; }
+.service-notice button { color:#9d4937; }
+.inspector { position:absolute; top:0; right:0; bottom:0; z-index:30; width:min(360px,100%); background:var(--pibo-canvas); border-left:1px solid var(--pibo-line); box-shadow:-16px 0 40px #4333250c; }
+/* A contact list, with an actual product identity and quieter utility controls. */
+.messenger-sidebar-header { padding:22px 18px 14px; }
+.sidebar-brand .pibo-brand { font-size:21px; letter-spacing:-.7px; gap:7px; }
+.sidebar-brand .pibo-mark { width:34px; height:34px; }
+.sidebar-toolbar button { width:40px; height:40px; background:transparent; border:0; color:#796d61; }
+.sidebar-toolbar button:hover { background:#ebe5dc; }
+.sidebar-toolbar .toolbar-profile { margin-right:0; }
+.sidebar-heading { display:flex; justify-content:space-between; align-items:baseline; padding:25px 12px 10px; }
+.sidebar-heading strong { font-size:24px; font-weight:650; letter-spacing:-.7px; }
+.sidebar-heading span { font-size:12px; color:var(--pibo-muted); }
+.messenger-sidebar:not([data-compact="true"]) .conversation-link { padding:12px 10px; min-height:78px; border-radius:17px; }
+.messenger-sidebar:not([data-compact="true"]) .contact-name { font-size:15px; font-weight:600; }
+.messenger-sidebar:not([data-compact="true"]) .conversation-link .preview { font-size:13px!important; line-height:20px; color:var(--pibo-muted)!important; margin-top:4px; }
+.conversation-link[data-active="true"] { background:var(--pibo-selected)!important; }
+.messenger-sidebar-footer { border-color:var(--pibo-line); padding:12px 18px; }
+.conversation-scroll .rt-ScrollAreaThumb { background:#8b796b40!important; }
+.empty { color:var(--pibo-muted); gap:14px; }
+.empty h1 { color:var(--pibo-ink); }
+/* Settings uses a single bounded scrolling area, including short landscape keyboards. */
+.settings-page { display:flex; flex-direction:column; height:min(680px,calc(var(--phone-height,100dvh) - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); }
+.settings-header { flex:none; padding:20px 24px; }
+.settings-header .rt-Button { width:40px; height:40px; padding:0; margin:0; }
+.settings-layout { min-height:0; flex:1; overflow:hidden; }
+.settings-body { height:100%; min-height:0; }
+.settings-pane { padding:28px; gap:24px; }
+.settings-pane-heading h2 { font-size:23px; letter-spacing:-.5px; }
+.settings-layout .rt-TabsList { background:var(--pibo-sidebar); padding:16px 12px; }
+.settings-layout .rt-TabsTrigger { min-height:44px; border-radius:11px; }
+.settings-layout .rt-TabsTrigger[data-state="active"] { background:var(--pibo-selected); color:#954b38; }
+.runtime-card { border-radius:16px; }
+.pi-settings-panel { gap:24px; }
+.pi-choice { padding:14px; background:#fff; }
+.pi-thinking-row { flex-wrap:wrap; }
+.pi-settings-footer { flex-wrap:wrap; }
+.pi-settings-footer .rt-Button { min-height:44px; }
+.create-bot-dialog { padding:28px; }
+.new-bot-emblem { margin:0 0 20px; }
+.create-bot-dialog .rt-DialogTitle { font-size:25px; letter-spacing:-.5px; }
+.create-bot-dialog .rt-DialogDescription { line-height:1.7; }
+.create-bot-dialog .rt-TextFieldRoot { margin-top:24px; min-height:48px; }
+.create-bot-dialog .rt-Button { min-height:44px; padding-inline:22px; }
+/* Startup shares the same quiet, personable space as the messenger. */
+.connection-landing { height:var(--phone-height,100dvh); }
+.landing-top { max-width:1040px; min-height:88px; margin:auto; }
+.landing-panel { max-width:480px; margin:4vh auto 36px; }
+.landing-symbol { margin:18px 0 22px; }
+.landing-symbol .pibo-mark { border-radius:20px; }
+.landing-heading { font-size:32px; line-height:1.25; letter-spacing:-1px; }
+.landing-step { gap:18px; font-size:11px; margin-bottom:24px; }
+.landing-step [data-current=true] { color:#a64e3a; }
+.landing-choices { margin-top:28px; gap:10px; }
+.landing-choice { background:#fff; border-color:var(--pibo-line); padding:17px; border-radius:16px; }
+.landing-choice[data-selected=true] { border-color:#d9b3a2; background:#fbefe7; }
+.landing-choice input { width:16px; height:16px; }
+.landing-choice:focus-within { outline:none; }
+.landing-choice:has(:focus-visible) { outline:2px solid #bd7662; outline-offset:3px; }
+.landing-footnote { color:var(--pibo-muted); }
+.direct-connect { display:flex; flex-direction:column; gap:16px; }
+.direct-connect>p { margin:0; line-height:1.7; font-size:14px; }
+.direct-connect>label { display:grid; gap:9px; font-size:13px; font-weight:550; }
+.direct-connect>.rt-Button { align-self:flex-start; margin:0; }
+@media(max-width:767px), (pointer:coarse) and (max-height:767px) {
+  .app[data-phone="true"] .header { height:64px; min-height:64px; }
+  .app[data-phone="true"] .conversation { padding:18px 18px 20px; }
+  .app[data-phone="true"] .composer-area { padding:8px 12px 12px; }
+  .app[data-phone="true"] .messenger-sidebar-header { padding:16px 20px 6px; }
+  .app[data-phone="true"] .sidebar-brand { margin-right:auto; }
+  .app[data-phone="true"] .sidebar-heading { padding:22px 2px 14px; }
+  .app[data-phone="true"] .messenger-sidebar-footer { display:none; }
+  .rt-DialogContent { border-radius:22px; max-height:calc(var(--phone-height,100dvh) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+  .settings-page { height:calc(var(--phone-height,100dvh) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+  .settings-header { padding:12px 18px; }
+  .settings-layout { display:flex; flex-direction:column; }
+  .settings-layout .rt-TabsList { flex-direction:row; flex:none; padding:8px 14px; border-right:0; border-bottom:1px solid var(--pibo-line); }
+  .settings-body { flex:1; height:0; min-height:0; }
+  .settings-pane { padding:22px; }
+  .settings-fields { grid-template-columns:1fr; }
+  .landing-top { min-height:70px; }
+  .landing-panel { margin:18px auto 24px; }
+  .landing-symbol { margin:22px 0; }
+  .landing-heading { font-size:29px!important; }
+  .landing-step { gap:16px; }
+  .rt-TextFieldInput, .pi-choice-search input { font-size:16px; }
+}
+@media(max-height:500px) {
+  .landing-symbol { display:none; }
+  .landing-panel { margin-top:8px; }
+  .app[data-phone="true"] .header { height:48px; min-height:48px; }
+  .new-bot-emblem { display:none; }
+}
+/* Override Radix's 32px + 6vh padding: it must fit the visual viewport too. */
+.rt-DialogScrollPadding { padding:24px!important; }
+@media(max-width:767px), (pointer:coarse) and (max-height:767px) {
+  .rt-DialogScrollPadding { padding:16px!important; }
+  .pi-field-heading { flex-direction:row; align-items:center; }
+}
+.search-command-input input { color:var(--pibo-ink); }
+[cmdk-item][data-selected="true"] { background:var(--pibo-hover); color:var(--pibo-ink); }
+.mention-menu { background:var(--pibo-surface); border-color:var(--pibo-line); box-shadow:0 8px 28px #4333251a; }
+.mention-menu button { color:var(--pibo-ink); }
+.mention-menu button:hover,.mention-menu button.active { background:var(--pibo-hover); }
+.operation-toast { color:var(--pibo-ink); background:var(--pibo-surface); border-color:var(--pibo-line); box-shadow:0 8px 28px #4333251a; }
+.service-notice.connection { background:#f5ede0; color:#76573d; }
+.send-failure,.row.user .task-failure { background:#fbede6; color:#8a4936; border-color:#e8cbbb; }
+.send-failure p,.task-failure-title,.connection-error { color:#8a4936; }
+.app[data-native-titlebar="true"][data-phone="false"] .sidebar-heading { display:none; }
+.app[data-native-titlebar="true"][data-phone="false"] { padding-top:52px; }
+.app[data-native-titlebar="true"][data-phone="false"] .native-titlebar { height:52px; }
+/* Native phones remain a phone in landscape, including a connected trackpad. */
+.app[data-phone="true"] { padding:env(safe-area-inset-top) env(safe-area-inset-right) var(--phone-bottom-inset,env(safe-area-inset-bottom)) env(safe-area-inset-left); }
+.app[data-phone="true"][data-phone-page="list"]>.main { display:none; }
+.app[data-phone="true"][data-phone-page="chat"]>.messenger-sidebar { display:none; }
+.app[data-phone="true"][data-phone-page="list"]>.messenger-sidebar { width:100%; border:0; }
+.app[data-phone="true"] .sidebar-resize-handle,.app[data-phone="true"] .messenger-sidebar-footer { display:none; }
+.app[data-phone="true"] .phone-back { min-width:44px; min-height:44px; }
+.app[data-phone="true"] .composer-area { padding:8px 12px 12px; }
+html[data-native-ios="true"] .rt-DialogScrollPadding { padding:16px!important; }
+html[data-native-ios="true"] .rt-DialogContent { max-height:calc(var(--phone-height,100dvh) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+html[data-native-ios="true"] .settings-page { height:calc(var(--phone-height,100dvh) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+html[data-native-ios="true"] .settings-header { padding:12px 18px; }
+html[data-native-ios="true"] .settings-layout { display:flex; flex-direction:column; }
+html[data-native-ios="true"] .settings-layout .rt-TabsList { flex-direction:row; flex:none; padding:8px 14px; border-right:0; border-bottom:1px solid var(--pibo-line); }
+html[data-native-ios="true"] .settings-body { flex:1; height:0; min-height:0; }
+
+/* Use the actual visible height, not layout-viewport media queries, when the
+   landscape software keyboard leaves only one input row. */
+html[data-short-viewport="true"] .app[data-phone="true"] .composer-area { padding:4px 12px 0; }
+html[data-short-viewport="true"] .app[data-phone="true"] .message-input { max-height:44px!important; }
+html[data-native-ios="true"] .app, html[data-native-ios="true"] .main { overflow:clip; }
+html[data-short-viewport="true"] .app[data-phone="true"] .conversation { padding-block:0; }
+/* Keep navigation and input side by side when the iOS keyboard leaves less
+   than 250px. Both retain their touch targets and the header's vertical origin. */
+html[data-short-viewport="true"] .app[data-phone="true"] .header { position:absolute; top:0; left:0; width:112px; padding:0; }
+html[data-short-viewport="true"] .app[data-phone="true"] .conversation-identity { width:44px; max-width:44px; padding:0; margin-left:48px; }
+html[data-short-viewport="true"] .app[data-phone="true"] .conversation-identity h1 { display:none; }
+html[data-short-viewport="true"] .app[data-phone="true"] .conversation { visibility:hidden; }
+html[data-short-viewport="true"] .app[data-phone="true"] .composer-area { position:absolute; top:0; left:112px; right:0; padding:4px 12px 0 0; }
+
+/* Connection state shares the title row, without reserving another strip. */
+.header:has(.connection-feedback) { gap:12px; }
+.header:has(.connection-feedback) .conversation-identity { min-width:0; max-width:calc(100% - 140px); }
+.connection-feedback { position:relative; isolation:isolate; flex:none; align-self:center; justify-content:flex-start; flex-wrap:nowrap; gap:4px; max-width:none; margin:0; padding:0 6px; min-height:44px; border-radius:0; background:transparent; color:var(--pibo-muted); font-size:12px; white-space:nowrap; }
+.connection-feedback::before { content:""; position:absolute; z-index:-1; inset:6px 0; border-radius:10px; background:var(--pibo-hover); pointer-events:none; }
+.connection-feedback button { min-height:44px; min-width:44px; padding:0 5px; text-decoration:none; font-weight:500; border-radius:8px; }
+.connection-feedback button:hover { background:var(--pibo-hover); }
+.connection-feedback button:focus-visible { outline:2px solid var(--pibo-accent); outline-offset:-3px; }
+.connection-feedback button:disabled { opacity:.5; cursor:default; }
+.app[data-phone="true"] .header:has(.connection-feedback) { padding-left:50px; padding-right:10px; gap:8px; }
+.app[data-phone="true"] .sidebar-heading { padding:8px 2px 2px; align-items:center; }
+html[data-short-viewport="true"] .app[data-phone="true"] .header:has(.connection-feedback) { padding:0 0 0 44px; gap:0; }
+html[data-short-viewport="true"] .header .connection-feedback { padding:0; }
+html[data-short-viewport="true"] .app[data-phone="true"] .header:has(.connection-feedback) .conversation-identity { display:none; }
+html[data-short-viewport="true"] .header .connection-label,html[data-short-viewport="true"] .header .connection-separator { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+
+.connection-spinner { animation:connection-spin 1s linear infinite; flex:none; }
+@keyframes connection-spin { to { transform:rotate(360deg); } }
+@media(prefers-reduced-motion:reduce) { .connection-spinner { animation:none; } }
+
+html[data-short-viewport="true"] .app[data-phone="true"] .messenger-sidebar-header { padding:4px 16px; gap:0; }
+html[data-short-viewport="true"] .app[data-phone="true"] .sidebar-heading { display:none; }
+html[data-short-viewport="true"] .app[data-phone="true"] .sidebar-heading:has(.connection-feedback) { display:flex; padding:0 2px; }
+html[data-short-viewport="true"] .app[data-phone="true"] .sidebar-toolbar { padding:0; min-height:44px; }
+
+.messenger-sidebar:not([data-compact="true"]) .pinned-conversations { padding-top:4px; margin-top:0; }
+
+/* Connection targets are a list. Installation is optional secondary detail. */
+.runtime-cards { display:flex; flex-direction:column; gap:0; }
+.runtime-card,.runtime-card[data-active="true"] { display:grid; grid-template-columns:1fr auto; gap:10px 12px; padding:14px 0!important; background:transparent!important; border:0; border-bottom:1px solid var(--pibo-line); border-radius:0; }
+.runtime-card-header { grid-column:2; grid-row:1; }
+.runtime-card-icon { display:none; }
+.runtime-card-copy { grid-column:1; grid-row:1; margin:0; gap:5px; min-width:0; }
+.runtime-card-copy>.rt-Text:first-child { font-weight:600; }
+.runtime-card-copy>.rt-Text:last-child { color:var(--pibo-muted); font-size:12px; }
+.runtime-card-footer { grid-column:1 / -1; justify-content:flex-end; }
+.runtime-card-footer .rt-Button { min-height:40px; }
+.runtime-enabled { font-size:12px; }
+.runtime-install-details { color:var(--pibo-muted); font-size:12px; }
+.runtime-install-details>summary { min-height:36px; cursor:pointer; }
+.runtime-install-details .native-runtime-download { margin:0; padding:12px; box-shadow:none; border-radius:10px; }
+
+/* The Mac conversation heading occupies the existing native toolbar row. */
+.app[data-native-titlebar="true"][data-phone="false"] .main>.header { position:fixed; top:0; left:var(--sidebar-width); right:0; height:52px; min-height:52px; z-index:21; background:var(--pibo-canvas); border-bottom:1px solid transparent; }
+.app[data-native-titlebar="true"][data-phone="false"] .messenger-sidebar:not([data-compact="true"]) .conversation-navigation { padding-top:4px; }
+
+.runtime-card,.runtime-card[data-active="true"] { grid-template-columns:minmax(0,1fr) auto auto; align-items:center; }
+.runtime-card-header { grid-column:3; grid-row:1; }
+.runtime-card-footer { grid-column:2; grid-row:1; }
+
+/* First connection stays a compact part of the conversation, with no hero overlay. */
+.connection-start { width:min(100%, 420px); margin:clamp(20px, 8vh, 64px) auto; padding:24px; box-sizing:border-box; }
+.connection-start p { margin:8px 0 16px; line-height:1.6; }
+.connection-start-actions { display:flex; gap:10px; flex-wrap:wrap; }
+.connection-start-actions button { min-height:44px; }
+@media(max-width:767px) { .connection-start { margin:20px auto; padding:20px 16px; } }
+@media(max-height:400px) { .connection-start { margin:4px auto; padding:12px 16px; } }
+
+.capability-list { display:grid; gap:16px; text-align:left; width:100%; }
+.capability-list p { margin:0; line-height:1.55; }
+/* Sidebar toolbar resets must not erase first-run action contrast. */
+.connection-start-actions .rt-variant-solid { background:var(--pibo-accent); color:var(--accent-contrast); }
+.connection-start-actions .rt-variant-solid:hover { background:var(--pibo-accent-hover); }
+.connection-start-actions .rt-variant-solid:disabled { background:var(--pibo-hover); color:var(--pibo-muted); }
+.contact-empty button { min-height:44px; background:var(--pibo-selected); color:var(--pibo-accent); }
+
+/* Model selection stays compact; long OAuth events scroll inside the same pane. */
+@media(min-width:768px) and (min-height:501px) {
+  html:not([data-native-ios="true"]) .settings-page[data-settings-tab="pi"] { height:min(470px,calc(var(--phone-height,100dvh) - 48px)); }
+}
+.pi-auth-methods { display:flex; flex-wrap:wrap; gap:10px; }
+.pi-auth-methods .rt-Button { min-height:40px; white-space:normal; height:auto; padding-block:10px; }
+.pi-auth-note { margin:0; line-height:1.6; }
+.pi-mode-content>.pi-field-heading { gap:12px; }
+.pi-login-flow { overflow-wrap:anywhere; }
+.pi-login-flow .rt-Button { max-width:100%; white-space:normal; min-height:36px; height:auto; }
+.pi-device-code { letter-spacing:.08em; }
+.pi-field-heading p { margin:0; }
+.pi-field-heading p+p { margin-top:4px; }
+
+.pi-advanced summary { cursor:pointer; font-size:13px; color:var(--pibo-muted); padding:8px 0; }
+.pi-advanced[open] summary { margin-bottom:12px; }
+.pi-advanced summary:focus-visible { outline:2px solid var(--pibo-accent); outline-offset:3px; border-radius:4px; }

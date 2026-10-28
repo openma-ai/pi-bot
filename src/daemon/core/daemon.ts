@@ -11,6 +11,7 @@ import { OpenMatterTrigger } from '../runtime/openmatter-trigger.ts';
 import { livePiFactory } from '../live-pi.ts';
 import { createFileChangeDetector } from '../runtime/proactive-detectors.ts';
 import { DesktopClient } from '../../pi/desktop-client.ts';
+import { unconfiguredDesktopCapabilities } from '../../pi/desktop-capabilities.ts';
 import { Router } from './router.ts';
 import { DaemonConnection } from './connection.ts';
 import { PiBotError } from './errors.ts';
@@ -38,6 +39,8 @@ export class PiBotDaemon {
     broker!: RequestBroker;
     live?: Awaited<ReturnType<typeof livePiFactory>>;
     desktop?: DesktopClient;
+    private absentDesktopCapabilities = unconfiguredDesktopCapabilities();
+    get desktopCapabilities() { return this.desktop?.capabilitySnapshot ?? this.absentDesktopCapabilities; }
     private timer?: ReturnType<typeof setInterval>;
     private closePromise?: Promise<void>;
     private detectors: Record<string, ReturnType<typeof createFileChangeDetector>> = {};
@@ -104,15 +107,15 @@ export class PiBotDaemon {
             }
         });
         d.detectors.file = createFileChangeDetector(resolve(process.env.PI_BOT_WATCH_FILE ?? 'README.md'));
+        d.desktop = DesktopClient.load(resolve(process.env.PI_BOT_DESKTOP_CONTROL ?? 'work/gui/desktop/control.json'));
         if (!options.factory)
-            d.live = await livePiFactory(d.dataDir, () => d.proactive, d.credentials, options.piOptions, budget => d.budgetChanged(budget), options.modelRound);
+            d.live = await livePiFactory(d.dataDir, () => d.proactive, d.credentials, options.piOptions, budget => d.budgetChanged(budget), options.modelRound, d.desktop);
         try {
             d.piSettings = await PiSettings.create(options.piOptions);
             d.piSettings.onLogin = () => d.requestPiReload();
         }
         catch { /* GUI reports unavailable without leaking native auth errors. */
         }
-        d.desktop = DesktopClient.load(resolve('work/gui/desktop/control.json'));
         d.trigger = new OpenMatterTrigger(join(d.dataDir, 'triggers.db'));
         d.runtime = new BotRuntime(join(d.dataDir, 'runtime.db'), options.factory ?? d.live!.factory, {
             isolateConversations: true, activation: d.trigger
@@ -140,6 +143,9 @@ export class PiBotDaemon {
                 request: input => d.broker.approval(input)
             };
         d.setStatus('ready');
+        d.desktop?.startMonitoring(desktopCapabilities => {
+            if (d.status !== 'stopped' && d.status !== 'draining') d.runtime.store.transaction(() => d.log.append('desktop/capabilitiesChanged', { desktopCapabilities }));
+        });
         if (d.live)
             d.runtime.store.transaction(() => d.log.append('daemon/configurationChanged', {
                 mode: `真实 Pi · ${d.live!.model}`, configuration: d.live!.configuration, ...(d.live?.budget ? {
@@ -204,7 +210,7 @@ export class PiBotDaemon {
         this.piReloading = true;
         let next: Awaited<ReturnType<typeof livePiFactory>> | undefined;
         try {
-            next = await livePiFactory(this.dataDir, () => this.proactive, this.credentials, this.options.piOptions, budget => this.budgetChanged(budget), this.options.modelRound);
+            next = await livePiFactory(this.dataDir, () => this.proactive, this.credentials, this.options.piOptions, budget => this.budgetChanged(budget), this.options.modelRound, this.desktop);
             if (await this.runtime.reconfigure(next.factory)) {
                 const previous = this.live;
                 this.live = next;
@@ -258,7 +264,7 @@ export class PiBotDaemon {
                 seq: this.log.seq, status: this.status, bots, groups: this.runtime.listGroups(), threads, turns, activeTurns: turns.filter(t => t.status === 'running'), items, requests, pendingRequests: requests.filter(r => r.status === 'pending'), routines: [...all.list<any>('schedules').filter(own).map(r => routineView('schedules', r)), ...all.list<any>('monitors').filter(own).map(r => routineView('monitors', r))], jobs: all.list<any>('jobs').filter(own).map(jobView), ...(this.live?.budget ? {
                     budget: this.live.budget
                 } : {}), usage,
-                mode: this.live ? `真实 Pi · ${this.live.model}` : '测试 runtime', configuration: this.live?.configuration, desktop: !!this.desktop, watchFile: resolve(process.env.PI_BOT_WATCH_FILE ?? 'README.md'), trigger: {
+                mode: this.live ? `真实 Pi · ${this.live.model}` : '测试 runtime', configuration: this.live?.configuration, desktop: !!this.desktop, desktopCapabilities: this.desktopCapabilities, watchFile: resolve(process.env.PI_BOT_WATCH_FILE ?? 'README.md'), trigger: {
                     implementation: 'OpenMatter SQLite DurableInbox', halted: this.trigger.halted, queued: this.trigger.inspect().filter(r => r.state !== 'completed').length
                 },
                 messages: items.map(i => i.message).filter(Boolean), groupMessages: all.list('group_messages'), errors: [], states: Object.fromEntries(bots.map(b => [b.id, {
@@ -311,7 +317,7 @@ export class PiBotDaemon {
             } : {})
         };
         if ((this.live?.configuration as any)?.setupRequired)
-            throw new PiBotError('setupRequired', 'Configure native Pi first');
+            throw new PiBotError('setupRequired', '当前 runtime 尚未配置可用模型。请在设置的「模型」中完成认证并选择模型后再发送。', { action: 'configureModel' });
         if (this.live?.budget && (this.live.budget.requests >= this.live.budget.maxRequests || this.live.budget.expiresAt <= Date.now()))
             throw new PiBotError('budgetExhausted', 'Model budget exhausted');
         let e: any;
@@ -458,6 +464,7 @@ export class PiBotDaemon {
             this.setStatus('draining');
             this.runtime.beginDrain();
             clearInterval(this.timer);
+            this.desktop?.close();
             await this.proactive.close();
             let deadline: ReturnType<typeof setTimeout> | undefined;
             const finished = await Promise.race([this.runtime.idle().then(() => true), new Promise<boolean>(resolve => {

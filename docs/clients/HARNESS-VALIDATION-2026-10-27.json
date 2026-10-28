@@ -1,0 +1,123 @@
+{
+  "generatedAt": "2026-10-27T16:35:11.169166+00:00",
+  "scope": "Local development; real isolated harness; no provider/model calls, authentication, app install, push or publish",
+  "candidateApp": "artifacts/development-harness-ready/Pibo Development.app",
+  "candidateBinarySha256": "ae77d7a8913cd85fdee93f274e86ef2def28969d5537272a995fbf4d3eec0e11",
+  "bundle": {
+    "packages": 522,
+    "bytes": 463163699,
+    "node": "v24.18.0",
+    "sourceCommit": "abcb2733e6736cb65e0ff0c84cbe2468263b819a",
+    "sourceDirty": true,
+    "sourceCommitMeaning": "base commit; sourceDirty indicates uncommitted build inputs",
+    "externalSymlinks": 0,
+    "codeSignature": "ad-hoc; codesign --verify --deep --strict passed"
+  },
+  "native": {
+    "passed": 18,
+    "failed": 0,
+    "ignored": 0,
+    "embeddedTailscaleLinked": true,
+    "executor": "Tokio multi_thread, lifecycle body on worker thread",
+    "resourcePathContainsSpaces": true,
+    "isolatedHomeContainsSpaces": true,
+    "log": "artifacts/harness-validation/native-tests.log"
+  },
+  "nodeAcceptance": {
+    "passed": 1,
+    "failed": 0,
+    "realBundle": true,
+    "startupOutsideRootReadAttempts": 0,
+    "checks": [
+      "ready",
+      "protocol initialization",
+      "fresh model setupRequired",
+      "send returns setupRequired",
+      "duplicate lease refused",
+      "graceful parent pipe cleanup",
+      "repeat stop",
+      "restart",
+      "SIGKILL stale recovery",
+      "unrelated test daemon survives"
+    ],
+    "log": "artifacts/harness-validation/node-bundle-tests.log"
+  },
+  "guiFailureEvidence": {
+    "appPid": 10568,
+    "nodePids": [
+      10782,
+      10995
+    ],
+    "service": "kTCCServiceSystemPolicyDocumentsFolder",
+    "requestId": "415.387",
+    "state": "AUTHREQ_PROMPTING; no AUTHREQ_RESULT or REPLY observed",
+    "fullDiskPreflight": "415.386/415.388 authValue=0; not evidence that a user denied the Documents prompt",
+    "sourceReadIssue": "pi-subagents walked from launcher outside bundle to Documents/package.json; tsx looked above config for TypeScript metadata",
+    "fix": "Pin packaged tsconfig/TypeScript and Pi roots; bound generated pi-subagents package search at bundle root",
+    "currentRunningApp": "artifacts/development-harness-next/Pibo Development.app",
+    "currentRunningBinarySha256": "397515b2bc1d531d452b6ef67584c79ecb10e2986ae1c91f2c7c6f08fe5caace",
+    "candidateReplacesRunningApp": false
+  },
+  "android": {
+    "sdkLibraryBuilt": true,
+    "rustCheck": {
+      "command": "cargo check --offline --locked --target aarch64-linux-android --features embedded-tailscale --lib",
+      "exitCode": 0,
+      "elapsedSeconds": 49.28,
+      "warnings": 15,
+      "log": "/tmp/pibo-android-cargo-check.log",
+      "targetDir": "<user-home>/Documents/Codex/2026-10-25/task/pibo-main-integration/clients/tauri/src-tauri/target",
+      "NDK": "28.2.13676358",
+      "postAppCacheFix": {
+        "exitCode": 0,
+        "elapsedSeconds": 3.85,
+        "warnings": 15,
+        "log": "/tmp/pibo-android-cargo-check-post-cache-fix.log",
+        "sameOfflineCommand": true,
+        "sourceSha256": {
+          "tailscale.rs": "b2e03c4ab9acc7f4e88cda6382b5744ba3e0ba3725fba20bd50c6d08c21b9e0b",
+          "lib.rs": "dc6a49cd5319fc9e0fa583ed196bd9d5fcdba1473456f4a1444d8df007900667"
+        }
+      },
+      "environment": {
+        "CARGO_TARGET_DIR": "<user-home>/Documents/Codex/2026-10-25/task/pibo-main-integration/clients/tauri/src-tauri/target",
+        "CARGO_BUILD_JOBS": "2",
+        "CARGO_INCREMENTAL": "0",
+        "ANDROID_HOME": "<user-home>/Library/Android/sdk",
+        "NDK_HOME": "<user-home>/Library/Android/sdk/ndk/28.2.13676358",
+        "CC_aarch64_linux_android": "<user-home>/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang",
+        "AR_aarch64_linux_android": "<user-home>/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar",
+        "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER": "<user-home>/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang",
+        "PIBO_TAILSCALE_LIB_DIR": "<user-home>/Documents/Codex/2026-10-27/task/pibo-astra/clients/tauri/.tailscale-build/android/aarch64"
+      }
+    },
+    "kotlin": {
+      "exitCode": 0,
+      "compiler": "2.2.10",
+      "androidAPI": 36,
+      "java": "21.0.2",
+      "realSources": [
+        "MainActivity.kt",
+        "TauriActivity.kt (Tauri 2.12.3)",
+        "Wry Android Kotlin (0.57.0)"
+      ],
+      "output": "/tmp/pibo-android-kotlin-s64e3m2b",
+      "jniSignature": "openPiboLogin(Ljava/lang/String;)Z",
+      "mainActivitySha256": "755599a89661deab26f93f48116843dbd88c0f45f1d1244496b628206d68be05",
+      "note": "Independent source compilation with cached dependencies and generated BuildConfig.DEBUG constant; not a full Gradle build"
+    },
+    "runtimeVerified": false
+  },
+  "remaining": [
+    "Mac is locked: final native UI click on the ready app remains unverified",
+    "Android complete APK/emulator/login/lifecycle not run; source/Rust/JNI/Kotlin/link-only checks only",
+    "Windows/Linux and other desktop architectures not verified",
+    "No real model request or user credential configuration tested"
+  ],
+  "nextNativeCheck": [
+    "Quit the currently running old Development app after UI is available",
+    "Open the candidate ready app; leave production app untouched",
+    "Choose 本机, verify ready without Documents prompt, then inspect missing-model message and Desktop capability state",
+    "Use Stop/connect and verify clean exit; retain existing auth/network settings"
+  ]
+}

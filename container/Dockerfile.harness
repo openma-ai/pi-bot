@@ -1,0 +1,30 @@
+# Headless harness; the existing Dockerfile remains the optional Linux desktop/VNC image.
+# Use the same locked Node version. Bookworm suffices because no computer-use binary is added.
+ARG NODE_IMAGE=node:24.18.0-bookworm
+FROM ${NODE_IMAGE} AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+COPY scripts/apply-pi-background-bridge.mjs scripts/
+RUN node scripts/apply-pi-background-bridge.mjs
+COPY src src
+COPY vendor vendor
+RUN npm run gui:build
+
+FROM ${NODE_IMAGE}
+WORKDIR /app
+COPY --from=build /app/package.json /app/package-lock.json ./
+# tsx is required by the source daemon, so do not prune devDependencies blindly.
+COPY --from=build /app/node_modules node_modules
+COPY --from=build /app/src src
+COPY --from=build /app/vendor vendor
+COPY --from=build /app/dist dist
+COPY deploy/launch-harness.mjs deploy/launch-harness.mjs
+COPY container/harness-health.mjs container/harness-health.mjs
+RUN mkdir -p /data && chown node:node /data
+USER node
+ENV HOME=/data/home
+STOPSIGNAL SIGTERM
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["node", "/app/container/harness-health.mjs"]
+# No unauthenticated host port is published. Compose uses the private gateway sidecar.
+ENTRYPOINT ["node", "/app/deploy/launch-harness.mjs", "/data"]

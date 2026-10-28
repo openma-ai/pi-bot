@@ -1,0 +1,43 @@
+# Run with an explicit unique -p PROJECT. Nothing joins a tailnet until the operator logs in.
+services:
+  tailnet:
+    image: ghcr.io/tailscale/tailscale:v1.104.1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "umask 077; mkdir -p /var/lib/tailscale/private; exec /usr/local/bin/tailscaled --tun=userspace-networking --state=/var/lib/tailscale/private/tailscaled.state --socket=/tmp/tailscale.sock --no-logs-no-support"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes: [tailnet-state:/var/lib/tailscale]
+    tmpfs: ["/tmp:size=32m,mode=1777", "/var/run:size=8m,mode=755"]
+    pids_limit: 128
+    mem_limit: 256m
+    restart: "no"
+    logging: {driver: json-file, options: {max-size: 4m, max-file: '2'}}
+  harness:
+    image: ${PIBO_HARNESS_IMAGE:-pibo-harness:local}
+    build:
+      context: ..
+      dockerfile: container/Dockerfile.harness
+    network_mode: service:tailnet
+    depends_on: [tailnet]
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["/config/harness.json"]
+    volumes:
+      - harness-data:/data
+      - type: bind
+        source: ${PIBO_HARNESS_CONFIG:?Set the absolute path to your non-secret harness.json}
+        target: /config/harness.json
+        read_only: true
+    tmpfs: ["/tmp:size=128m,mode=1777"]
+    pids_limit: 512
+    mem_limit: 1536m
+    stop_grace_period: 45s
+    restart: "no"
+    logging: {driver: json-file, options: {max-size: 4m, max-file: '2'}}
+volumes:
+  harness-data:
+  tailnet-state:

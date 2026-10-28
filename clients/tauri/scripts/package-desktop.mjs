@@ -30,8 +30,9 @@ env.APPLE_SIGNING_IDENTITY=identity;
 const config=join(client,`src-tauri/tauri.${channel}.conf.json`);
 const override=JSON.stringify({version,bundle:{macOS:{bundleVersion:build,signingIdentity:identity}}});
 try{
+ run(process.execPath,['scripts/prepare-desktop-harness.mjs'],{stdio:'inherit',env});
  run('npm',['run','build:gui'],{stdio:'inherit',env});
- run('npm',['run','tauri','--','build','--bundles','app','--config',config,'--config',override],{stdio:'inherit',env});
+ run('npm',['run','tauri','--','build','--features','embedded-tailscale','--bundles','app','--config',config,'--config','tauri.harness.conf.json','--config',override],{stdio:'inherit',env});
  const name=channel==='preview'?'Pibo Preview':'Pibo';const app=join(client,`src-tauri/target/release/bundle/macos/${name}.app`);
  if(!existsSync(app))throw Error('Expected app bundle missing');
  const expectedId=channel==='preview'?'dev.pibot.desktop.preview':'dev.pibot.desktop';

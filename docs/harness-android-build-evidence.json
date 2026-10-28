@@ -1,0 +1,67 @@
+{
+  "scope": "Android compile and link only; no app/SDK launch, login, install, or source modification",
+  "rust": {
+    "command": "cargo check --offline --locked --target aarch64-linux-android --features embedded-tailscale --lib",
+    "exitCode": 0,
+    "elapsedSeconds": 49.28,
+    "warnings": 15,
+    "log": "/tmp/pibo-android-cargo-check.log",
+    "targetDir": "<user-home>/Documents/Codex/2026-10-25/task/pibo-main-integration/clients/tauri/src-tauri/target",
+    "NDK": "28.2.13676358",
+    "postAppCacheFix": {
+      "exitCode": 0,
+      "elapsedSeconds": 3.85,
+      "warnings": 15,
+      "log": "/tmp/pibo-android-cargo-check-post-cache-fix.log",
+      "sameOfflineCommand": true,
+      "sourceSha256": {
+        "tailscale.rs": "b2e03c4ab9acc7f4e88cda6382b5744ba3e0ba3725fba20bd50c6d08c21b9e0b",
+        "lib.rs": "dc6a49cd5319fc9e0fa583ed196bd9d5fcdba1473456f4a1444d8df007900667"
+      }
+    },
+    "environment": {
+      "CARGO_TARGET_DIR": "<user-home>/Documents/Codex/2026-10-25/task/pibo-main-integration/clients/tauri/src-tauri/target",
+      "CARGO_BUILD_JOBS": "2",
+      "CARGO_INCREMENTAL": "0",
+      "ANDROID_HOME": "<user-home>/Library/Android/sdk",
+      "NDK_HOME": "<user-home>/Library/Android/sdk/ndk/28.2.13676358",
+      "CC_aarch64_linux_android": "<user-home>/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang",
+      "AR_aarch64_linux_android": "<user-home>/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar",
+      "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER": "<user-home>/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang",
+      "PIBO_TAILSCALE_LIB_DIR": "<user-home>/Documents/Codex/2026-10-27/task/pibo-astra/clients/tauri/.tailscale-build/android/aarch64"
+    }
+  },
+  "kotlin": {
+    "exitCode": 0,
+    "compiler": "2.2.10",
+    "androidAPI": 36,
+    "java": "21.0.2",
+    "realSources": [
+      "MainActivity.kt",
+      "TauriActivity.kt (Tauri 2.12.3)",
+      "Wry Android Kotlin (0.57.0)"
+    ],
+    "output": "/tmp/pibo-android-kotlin-s64e3m2b",
+    "jniSignature": "openPiboLogin(Ljava/lang/String;)Z",
+    "mainActivitySha256": "755599a89661deab26f93f48116843dbd88c0f45f1d1244496b628206d68be05",
+    "note": "Independent source compilation with cached dependencies and generated BuildConfig.DEBUG constant; not a full Gradle build"
+  },
+  "sdk": {
+    "path": "<user-home>/Documents/Codex/2026-10-27/task/pibo-astra/clients/tauri/.tailscale-build/android/aarch64/libtailscale.so",
+    "sha256": "353111549295eda8a770363871b8b343112bb3698dfc78827e20ab8d2d9c8309",
+    "packagedCopyMatches": true,
+    "format": "ELF64 AArch64 shared library",
+    "linkProbe": "/tmp/libpibo-sdk-linkcheck.so",
+    "strictLinkFlags": [
+      "--no-undefined",
+      "--no-allow-shlib-undefined"
+    ],
+    "sdkWasExecuted": false
+  },
+  "notValidated": [
+    "Full Rust cdylib/APK build (Android target codegen cache absent; preserve limited disk)",
+    "Full Gradle pipeline (tauri.settings.gradle, app/tauri.build.gradle.kts and generated Tauri/Wry Kotlin sources absent; buildSrc exists, confirmed in follow-up preflight)",
+    "Actual Android launch/JNI execution/Tailscale login (not authorized)",
+    "Android runtime app-cache directory creation/permissions and SDK launch are untested; source now passes app_cache_dir and only explicit configure creates its0700 node directory"
+  ]
+}

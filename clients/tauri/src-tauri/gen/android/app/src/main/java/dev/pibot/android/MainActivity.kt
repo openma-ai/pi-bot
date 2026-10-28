@@ -9,6 +9,30 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
+  // Only invoked after Rust validates the official Tailscale authorization URL.
+  // ACTION_VIEW delegates login to the user's browser; it does not start a VPN.
+  @androidx.annotation.Keep
+  fun openPiboLogin(url: String): Boolean = try {
+    val uri = android.net.Uri.parse(url)
+    if (uri.scheme != "https" || uri.host != "login.tailscale.com" || uri.userInfo != null) false
+    else {
+      startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri).addCategory(android.content.Intent.CATEGORY_BROWSABLE))
+      true
+    }
+  } catch (_: Exception) { false }
+
+  // No JavaScript interface: native Rust first matches this exact HTTPS URL to
+  // a pending Pi SDK login event. Keep this separate from Tailscale login.
+  @androidx.annotation.Keep
+  fun openPiboModelLogin(url: String): Boolean = try {
+    val uri = android.net.Uri.parse(url)
+    if (uri.scheme != "https" || uri.host == null || uri.userInfo != null) false
+    else {
+      startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri).addCategory(android.content.Intent.CATEGORY_BROWSABLE))
+      true
+    }
+  } catch (_: Exception) { false }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge(
       statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),

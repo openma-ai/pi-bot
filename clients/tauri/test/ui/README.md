@@ -6,13 +6,19 @@ Run from the repository root:
 node --import tsx clients/tauri/test/ui/serve.mjs
 ```
 
+This is **not a usable model-chat development app**. It contains no model executor.
+Use `npm run dev` in `clients/tauri` for the real native frontend and connect an existing runtime in Settings.
+For the optional embedded network, use `npm run dev -- --features embedded-tailscale`
+with `PIBO_TAILSCALE_LIB_DIR` pointing to the prepared platform archive. This
+build option does not log in or start a system VPN.
+
 Open localhost port 5189 (override with `PIBO_UI_PORT`):
 
-- `/clients/tauri/test/ui/index.html`: first-run desktop.
+- `/clients/tauri/test/ui/index.html`: first-run desktop Settings entry.
 - Add `?phone=1`: remote-only / phone first run.
 - Add `?returning=1`: a synthetic saved profile.
-- Add `?returning=1&success=1`: Continue connects to a disposable real local
-  runtime containing a synthetic bot, never to the profile's example host.
+- Add `?returning=1&success=1`: Settings connects to a disposable local
+  UI fixture containing a synthetic bot, never to the profile's example host.
 - Add `?phone=1&returning=1&tailnet=1&key-error=1`: application authorization error.
 - `/clients/tauri/test/ui/images.html?unsupported=1`: generated 64×48 PNG with
   a text-only-model warning; preview and original Blob download work.
@@ -53,3 +59,37 @@ width respects the Radix padding; max-height includes its 32px/6vh margins and
 safe-area insets. Only this desktop dialog overlay uses the App's existing
 VisualViewport height variable. No networking, lease or authentication behavior
 changes. Evidence is in ignored `artifacts/desktop-toolbar`.
+
+## Formal cream/coral visual refresh QA
+
+See `docs/astra-visual-refresh.md` for scope and limits. On loopback port 5193,
+`astra-check.py` covers mobile routes, model configuration and failure/cancel
+flows; `astra-extra-check.py` covers restore cancellation and simulated native
+Mac titlebar geometry. Both use a dedicated `pibo-astra` browser session.
+Additional query flags: `connected=1`, `models=1`, `story=1`, `restore=1`,
+`slow=1`, `model-error=1`, `create-error=1`, and `mac=1`.
+Model data and story messages are explicitly synthetic. No real credentials
+or model calls are involved. Keyboard and native flags remain browser
+simulations, not device certification.
+
+`python3 clients/tauri/test/ui/disconnect-check.py` uses the independent
+`pibo-disconnect-final` browser session on loopback 5193. It verifies title-inline
+connection feedback, preserved offline conversations/drafts, disabled writes,
+stable failure/cancellation, Settings reconnect/switch, first configuration,
+44px actions and narrow/landscape geometry. Evidence is in
+`artifacts/disconnect-review`; native acceptance and remaining limits are in
+`docs/astra-disconnect-followup.md`.
+
+## Built-in harness landing QA
+
+`python3 clients/tauri/test/ui/harness-landing-check.py` uses the existing loopback
+5193 server and a dedicated `pibo-harness-qa` browser session. The `builtin=1`
+flag models only the native lifecycle status, never starts a harness, and is
+explicitly UI-only. `unavailable=1` exercises missing packaged resources.
+The script covers desktop local/remote choices, protected builtin profile,
+failed/duplicate starts, cancel, mobile remote-only entry, narrow/landscape,
+and a synthetic successful connection. Real harness lifecycle evidence comes
+from the Rust and packaged-Node integration tests, not this fixture.
+
+Native dev and UI QA Vite caches are separate (`.vite-native-dev` and
+`.vite-ui-qa`) so concurrent QA cannot remove the native Tauri import bundle.

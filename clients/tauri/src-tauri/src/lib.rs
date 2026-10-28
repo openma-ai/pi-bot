@@ -1,3 +1,5 @@
+mod builtin_harness;
+mod pi_settings_security;
 mod direct_transport;
 mod desktop_transport;
 #[cfg(all(debug_assertions, target_os = "ios", feature = "embedded-tailscale"))]
@@ -29,24 +31,41 @@ use transport::{Endpoint, Profile};
 
 fn valid_saved_profiles(profiles: &[Profile], remote_only: bool) -> bool {
     (remote_only || !profiles.is_empty())
-        && profiles.len() <= 32
+        && profiles.len() <= 33
         && profiles
             .iter()
-            .all(|p| (p.mode == "ssh" || p.validate().is_ok()) && (!remote_only || p.mode != "local"))
+            .all(|p| (p.mode == "ssh" || p.validate().is_ok()) && (!remote_only || (p.mode != "local" && p.mode != "builtin")))
+}
+
+#[derive(Clone)]
+enum FormTarget {
+    Credential(String),
+    PiPrompt { flow: String, prompt: String },
+}
+#[derive(Clone)]
+struct SecureForm { endpoint: Arc<Endpoint>, target: FormTarget, claimed: bool }
+impl SecureForm {
+    fn belongs_to(&self, endpoint: &Arc<Endpoint>, flow: &str) -> bool {
+        Arc::ptr_eq(&self.endpoint, endpoint) && matches!(&self.target, FormTarget::PiPrompt { flow: id, .. } if id == flow)
+    }
 }
 
 struct State {
     profiles: Vec<Profile>,
     active: Option<(String, Profile, Arc<Endpoint>)>,
     file: PathBuf,
+    builtin: Arc<builtin_harness::Harness>,
     connection_epoch: Arc<std::sync::atomic::AtomicU64>,
     login_epoch: Arc<std::sync::atomic::AtomicU64>,
     streams: HashMap<String, tauri::async_runtime::JoinHandle<()>>,
-    forms: HashMap<String, (Arc<Endpoint>, String)>,
+    forms: HashMap<String, SecureForm>,
 }
 impl State {
+    fn invalidate_pi_forms(&mut self, endpoint: &Arc<Endpoint>, flow: &str) {
+        self.forms.retain(|_, form| !form.belongs_to(endpoint, flow));
+    }
     fn status(&self) -> Value {
-        json!({"tailscaleNodeState":tailscale::state(),"embeddedTailscaleAvailable":cfg!(feature="embedded-tailscale"),"remoteOnly":cfg!(any(target_os = "ios", target_os = "android")),"credentialStorage":if cfg!(target_os="android") {"session"} else if cfg!(target_os="ios") {"keychain"} else {"system"},"profiles":self.profiles,"connecting":false,"active":self.active.as_ref().map(|(id,p,_)|json!({"id":id,"profileId":p.id,"mode":p.mode,"baseUrl":format!("/runtime/{id}"),"scope":p.id,"label":p.name,"profile":p}))})
+        json!({"builtinHarness":self.builtin.status(),"tailscaleNodeState":tailscale::state(),"embeddedTailscaleAvailable":cfg!(feature="embedded-tailscale"),"remoteOnly":cfg!(any(target_os = "ios", target_os = "android")),"credentialStorage":if cfg!(target_os="android") {"session"} else if cfg!(target_os="ios") {"keychain"} else {"system"},"profiles":self.profiles,"connecting":false,"active":self.active.as_ref().map(|(id,p,_)|json!({"id":id,"profileId":p.id,"mode":p.mode,"baseUrl":format!("/runtime/{id}"),"scope":p.id,"label":p.name,"profile":p}))})
     }
     fn retire(&mut self) {
         self.connection_epoch
@@ -181,7 +200,7 @@ async fn runtime_control(
             let url = status["authURL"]
                 .as_str()
                 .ok_or("授权页面尚未就绪，请稍后重试")?;
-            file_export::open_tailscale_login(url).await?;
+            file_export::open_tailscale_login(&app, url).await?;
             Ok(json!({"opened":true}))
         }
         "tailscale/start" => {
@@ -212,9 +231,20 @@ async fn runtime_control(
             s.retire();
             Ok(s.status())
         }
+        "runtime/builtinStop" => {
+            let builtin = {
+                let mut s = state.lock().await;
+                if s.active.as_ref().is_some_and(|(_, p, _)| p.mode == "builtin") { s.retire(); }
+                else { s.connection_epoch.fetch_add(1, std::sync::atomic::Ordering::SeqCst); }
+                s.builtin.clone()
+            };
+            builtin.stop().await?;
+            Ok(state.lock().await.status())
+        }
         "runtime/remove" => {
             let mut s = state.lock().await;
             let id = params["id"].as_str().ok_or("Invalid profile")?;
+            if id == builtin_harness::PROFILE_ID { return Err("本机引擎由应用管理，不能删除".into()); }
             if s.active.as_ref().is_some_and(|(_, p, _)| p.id == id) {
                 return Err("请先断开此 runtime".into());
             }
@@ -227,11 +257,17 @@ async fn runtime_control(
             s.persist()?;
             Ok(s.status())
         }
-        "runtime/configure" | "runtime/connect" => {
-            let mut p: Profile = serde_json::from_value(params["profile"].clone())
-                .map_err(|_| "请检查 runtime 配置")?;
+        "runtime/configure" | "runtime/connect" | "runtime/builtinStart" | "runtime/builtinRestart" => {
+            let mut p: Profile = if method.starts_with("runtime/builtin") { builtin_harness::profile() } else {
+                serde_json::from_value(params["profile"].clone()).map_err(|_| "请检查 runtime 配置")?
+            };
             p.validate()?;
-            if cfg!(any(target_os = "ios", target_os = "android")) && p.mode == "local" {
+            if p.id == builtin_harness::PROFILE_ID && p.mode != "builtin" { return Err("本机引擎配置不可替换".into()); }
+            if p.mode == "builtin" {
+                if method == "runtime/configure" { return Err("本机引擎由应用管理，无需编辑配置".into()); }
+                p = builtin_harness::profile();
+            }
+            if cfg!(any(target_os = "ios", target_os = "android")) && (p.mode == "local" || p.mode == "builtin") {
                 return Err("移动客户端仅支持远程 runtime".into());
             }
             if p.id.is_empty() {
@@ -249,7 +285,22 @@ async fn runtime_control(
             // configure or connect invalidates this attempt before installation.
             let epoch = state.lock().await.connection_epoch.clone();
             let version = epoch.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-            let endpoint = if method == "runtime/connect" {
+            let builtin = state.lock().await.builtin.clone();
+            if method == "runtime/builtinRestart" {
+                let mut s = state.lock().await;
+                if s.active.as_ref().is_some_and(|(_, p, _)| p.mode == "builtin") {
+                    for (_, stream) in s.streams.drain() { stream.abort(); }
+                    s.active = None;
+                    s.forms.clear();
+                }
+                drop(s);
+                builtin.stop().await?;
+            }
+            let endpoint = if p.mode == "builtin" {
+                // The manager checks cancellation while holding its operation
+                // lease; dropping an in-flight future cannot orphan the child.
+                Some(Arc::new(builtin.connect(epoch.clone(), version).await?))
+            } else if method == "runtime/connect" {
                 let cancelled = async {
                     loop {
                         if epoch.load(std::sync::atomic::Ordering::SeqCst) != version {
@@ -286,7 +337,7 @@ async fn runtime_control(
             if let Some(old) = s.profiles.iter_mut().find(|old| old.id == p.id) {
                 *old = p.clone();
             } else {
-                if s.profiles.len() >= 32 {
+                if s.profiles.len() >= 33 {
                     return Err("最多配置 32 个 runtime".into());
                 }
                 s.profiles.push(p.clone());
@@ -355,19 +406,37 @@ async fn runtime_request(
     method: String,
     body: String,
     connection: String,
-) -> Result<Reply, String> {
-    main_window(&window)?;
+) -> Result<Reply, pi_settings_security::RequestError> {
+    use pi_settings_security::{Action, RequestError};
+    main_window(&window).map_err(|e| RequestError::new("nativePolicyDenied", e))?;
     if body.len() > 1024 * 1024 {
-        return Err("Request too large".into());
+        return Err(RequestError::new("nativePolicyDenied", "Request too large"));
     }
-    let (endpoint, suffix) = state.lock().await.route(&path)?;
-    // Authentication/credential setup remains with the independently managed runtime.
-    if suffix.starts_with("/pi/") && method != "GET" && suffix != "/pi/model" {
-        return Err("请在独立 runtime 管理认证，桌面客户端不接收凭据".into());
+    let (endpoint, suffix) = state.lock().await.route(&path)
+        .map_err(|e| RequestError::new("runtimeChanged", e))?;
+    match pi_settings_security::classify(&suffix, &method, &body)? {
+        Action::Select { flow, prompt, value } => {
+            let current = pi_settings_security::read_login(&endpoint, &flow).await?;
+            pi_settings_security::validate_select(&current, &flow, &prompt, &value)?;
+        }
+        Action::Cancel { flow } => {
+            // Invalidate just this flow's secure windows before sending cancel.
+            state.lock().await.invalidate_pi_forms(&endpoint, &flow);
+        }
+        Action::Forward => {}
     }
-    let response = endpoint
-        .request(&suffix, &method, &body, &connection)
-        .await?;
+    if !state.lock().await.active.as_ref().is_some_and(|(_, _, active)| Arc::ptr_eq(active, &endpoint)) {
+        return Err(RequestError::new("runtimeChanged", "运行环境已切换，请重新打开设置"));
+    }
+    request_reply(&endpoint, &suffix, &method, &body, &connection, std::time::Duration::from_secs(30)).await
+}
+async fn request_reply(
+    endpoint: &Endpoint, path: &str, method: &str, body: &str, connection: &str, pi_timeout: std::time::Duration,
+) -> Result<Reply, pi_settings_security::RequestError> {
+    use pi_settings_security::RequestError;
+    let request = async {
+    let response = endpoint.request(path, method, body, connection).await
+        .map_err(|e| RequestError::transport(e, method == "POST"))?;
     let status = response.status().as_u16();
     let content_type = response
         .headers()
@@ -378,9 +447,9 @@ async fn runtime_request(
     let bytes = response
         .bytes()
         .await
-        .map_err(|_| "无法读取 runtime 响应")?;
+        .map_err(|_| RequestError::transport("无法读取 runtime 响应", method == "POST"))?;
     if bytes.len() > 8 * 1024 * 1024 {
-        return Err("Runtime response too large".into());
+        return Err(RequestError::transport("Runtime response too large", method == "POST"));
     }
     let binary =
         !content_type.starts_with("application/json") && !content_type.starts_with("text/");
@@ -395,7 +464,16 @@ async fn runtime_request(
         content_type,
         binary,
     })
+
+    };
+    if path.starts_with("/pi/") {
+        tokio::time::timeout(pi_timeout, request).await
+            .map_err(|_| RequestError::transport("模型设置请求超时，请检查登录状态；不会自动重试", method == "POST"))?
+    } else {
+        request.await
+    }
 }
+
 #[tauri::command]
 async fn stream_open(
     window: tauri::Window,
@@ -519,7 +597,66 @@ async fn credential_window(
     .resizable(false)
     .build()
     .map_err(|_| "Cannot open secure input window")?;
-    s.forms.insert(label, (endpoint, path));
+    s.forms.insert(label, SecureForm { endpoint, target: FormTarget::Credential(path), claimed: false });
+    Ok(())
+}
+#[tauri::command]
+async fn pi_settings_open_login(
+    window: tauri::Window, app: tauri::AppHandle, state: tauri::State<'_, Shared>, path: String, url: String,
+) -> Result<(), pi_settings_security::RequestError> {
+    use pi_settings_security::RequestError;
+    main_window(&window).map_err(|e| RequestError::new("nativePolicyDenied", e))?;
+    let (endpoint, suffix) = state.lock().await.route(&path).map_err(|e| RequestError::new("runtimeChanged", e))?;
+    let flow = pi_settings_security::flow_path(&suffix).ok_or_else(|| RequestError::new("nativePolicyDenied", "Invalid Pi login path"))?;
+    let current = pi_settings_security::read_login(&endpoint, flow).await?;
+    pi_settings_security::validate_login_url(&current, flow, &url)?;
+    let s = state.lock().await;
+    if !s.active.as_ref().is_some_and(|(_, _, active)| Arc::ptr_eq(active, &endpoint)) {
+        return Err(RequestError::new("runtimeChanged", "运行环境已切换，请重新打开设置"));
+    }
+    // Only an explicit user action reaches this command. No general URL opener
+    // is exposed to the WebView, and the Tailscale login session is untouched.
+    file_export::open_model_login(&app, &url).await
+        .map_err(|e| RequestError::new("browserOpenFailed", e))
+}
+#[tauri::command]
+async fn pi_settings_credential_window(
+    window: tauri::Window,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Shared>,
+    path: String,
+    prompt_id: String,
+) -> Result<(), pi_settings_security::RequestError> {
+    use pi_settings_security::RequestError;
+    main_window(&window).map_err(|e| RequestError::new("nativePolicyDenied", e))?;
+    let (endpoint, suffix) = state.lock().await.route(&path)
+        .map_err(|e| RequestError::new("runtimeChanged", e))?;
+    let flow = pi_settings_security::flow_path(&suffix)
+        .ok_or_else(|| RequestError::new("nativePolicyDenied", "Invalid Pi login path"))?.to_owned();
+    let current = pi_settings_security::read_login(&endpoint, &flow).await?;
+    pi_settings_security::validate_secure(&current, &flow, &prompt_id)?;
+    let mut s = state.lock().await;
+    if !s.active.as_ref().is_some_and(|(_, _, active)| Arc::ptr_eq(active, &endpoint)) {
+        return Err(RequestError::new("runtimeChanged", "运行环境已切换，请重新打开设置"));
+    }
+    s.forms.retain(|label, _| app.get_webview_window(label).is_some());
+    // Double-clicking focuses the already-bound window rather than issuing a second form.
+    for (label, form) in &s.forms {
+        if form.belongs_to(&endpoint, &flow) {
+            if let FormTarget::PiPrompt { prompt, .. } = &form.target {
+                if prompt == &prompt_id {
+                    if let Some(existing) = app.get_webview_window(label) { let _ = existing.set_focus(); }
+                    return Ok(());
+                }
+            }
+        }
+    }
+    if s.forms.len() >= 8 { return Err(RequestError::new("nativePolicyDenied", "请先关闭已有安全窗口")); }
+    let label = format!("credential-{}", uuid::Uuid::new_v4());
+    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("credential.html".into()))
+        .title("模型登录 · 安全输入").inner_size(420.0, 300.0).resizable(false).build()
+        .map_err(|_| RequestError::new("nativePolicyDenied", "无法打开安全输入窗口"))?;
+    s.forms.insert(label, SecureForm { endpoint, target: FormTarget::PiPrompt { flow, prompt: prompt_id }, claimed: false });
     Ok(())
 }
 #[tauri::command]
@@ -528,27 +665,60 @@ async fn credential_submit(
     state: tauri::State<'_, Shared>,
     secret: String,
 ) -> Result<(), String> {
-    if !window.label().starts_with("credential-") || secret.is_empty() || secret.len() > 16000 {
+    submit_credential(window.label(), state.inner(), secret).await
+}
+async fn submit_credential(label: &str, state: &Shared, secret: String) -> Result<(), String> {
+    let secret = zeroize::Zeroizing::new(secret);
+    if !label.starts_with("credential-") || secret.trim().is_empty() || secret.len() > 16000 {
         return Err("Invalid secure form submission".into());
     }
-    let (endpoint, path) = state
-        .lock()
-        .await
-        .forms
-        .remove(window.label())
-        .ok_or("Form is no longer active; reopen it from the conversation")?;
-    let body = json!({"secret":secret}).to_string();
-    let response = endpoint.request(&path, "POST", &body, "").await?;
-    if !response.status().is_success() {
-        return Err("Credential submission not confirmed".into());
-    }
+    let form = {
+        let mut s = state.lock().await;
+        let form = s.forms.get_mut(label).ok_or("Form is no longer active; reopen it from settings")?;
+        if form.claimed { return Err("Submission already attempted; check login status".into()); }
+        form.claimed = true;
+        form.clone()
+    };
+    let prepared: Result<_, String> = async {
+        match &form.target {
+            FormTarget::Credential(path) => Ok((path.clone(), zeroize::Zeroizing::new(json!({"secret":secret.as_str()}).to_string()))),
+            FormTarget::PiPrompt { flow, prompt } => {
+                let current = pi_settings_security::read_login(&form.endpoint, flow).await.map_err(|e| e.message)?;
+                pi_settings_security::validate_secure(&current, flow, prompt).map_err(|e| e.message)?;
+                Ok((format!("/pi/login/{flow}/input"), pi_settings_security::secure_body(prompt, &secret).map_err(|e| e.message)?))
+            }
+        }
+    }.await;
+    let mut s = state.lock().await;
+    let still_valid = s.forms.remove(label).is_some()
+        && s.active.as_ref().is_some_and(|(_, _, active)| Arc::ptr_eq(active, &form.endpoint));
+    if !still_valid { return Err("登录已取消或运行环境已切换，请重新打开安全输入窗口".into()); }
+    let (path, body) = prepared?;
+    // Serialize the final bounded POST against cancel/runtime switching. A cancel
+    // that already invalidated the form can never be followed by a late answer.
+    let response = tokio::time::timeout(std::time::Duration::from_secs(30), form.endpoint.request(&path, "POST", &body, ""))
+        .await.map_err(|_| "提交结果尚未确认，请检查登录状态；不会自动重试")??;
+    drop(s);
+    if !response.status().is_success() { return Err("Credential submission not confirmed; check login status".into()); }
+
     Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .on_page_load(|_webview, _payload| {
+            #[cfg(target_os = "ios")]
+            if _webview.label() == "main" && matches!(_payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                let _ = _webview.with_webview(|native| unsafe {
+                    extern "C" { fn pibo_configure_ios_viewport(webview: *mut std::ffi::c_void); }
+                    pibo_configure_ios_viewport(native.inner());
+                });
+            }
+        })
         .setup(|app| {
+            #[cfg(all(feature="embedded-tailscale", target_os="android"))]
+            tailscale::set_android_cache(app.path().app_cache_dir()?);
             #[cfg(all(debug_assertions, feature = "embedded-tailscale", target_os = "ios"))]
             if std::env::var("PIBOT_TAILSCALE_LOCAL_PROBE").as_deref() == Ok("1") {
                 let result = tailscale::local_probe();
@@ -600,22 +770,20 @@ pub fn run() {
                     tailscale::stop();
                 });
             }
-            let file = app.path().app_data_dir()?.join("profiles.json");
-            let profiles = std::fs::read(&file)
+            let app_data = app.path().app_data_dir()?;
+            let file = app_data.join("profiles.json");
+            let builtin = builtin_harness::Harness::new(app.path().resource_dir()?, app_data);
+            let mut profiles = std::fs::read(&file)
                 .ok()
                 .and_then(|b| serde_json::from_slice::<Vec<Profile>>(&b).ok())
                 .filter(|p|valid_saved_profiles(p,cfg!(any(target_os="ios",target_os="android"))))
-                .unwrap_or_else(|| {
-                    if cfg!(any(target_os = "ios", target_os = "android")) {
-                        Vec::new()
-                    } else {
-                        vec![Profile::local(
-                            "local",
-                            "本机",
-                            "/path/to/existing/pi-bot/data",
-                        )]
-                    }
-                });
+                .unwrap_or_default();
+            if !cfg!(any(target_os="ios", target_os="android")) {
+                // Remove only the old, never-usable default. Real local daemon
+                // profiles and all saved remote connections remain untouched.
+                profiles.retain(|p| p.id != builtin_harness::PROFILE_ID && !(p.id == "local" && p.mode == "local" && p.data_dir == "/path/to/existing/pi-bot/data"));
+                profiles.insert(0, builtin_harness::profile());
+            }
             #[cfg(all(debug_assertions, target_os = "ios", feature="client-fixtures"))]
             let fixture = ios_probe::profile();
             #[cfg(all(debug_assertions, target_os = "ios", feature="client-fixtures"))]
@@ -624,6 +792,7 @@ pub fn run() {
                 profiles,
                 active: None,
                 file,
+                builtin,
                 connection_epoch: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 login_epoch: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 streams: HashMap::new(),
@@ -685,6 +854,8 @@ pub fn run() {
             stream_open,
             stream_close,
             credential_window,
+            pi_settings_credential_window,
+            pi_settings_open_login,
             credential_submit,
             file_export::file_export
         ])
@@ -696,7 +867,13 @@ pub fn run() {
                     api.prevent_exit();
                     let handle = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        handle.state::<Shared>().lock().await.retire();
+                        let builtin = {
+                            let shared = handle.state::<Shared>();
+                            let mut state = shared.lock().await;
+                            state.retire();
+                            state.builtin.clone()
+                        };
+                        let _ = builtin.stop().await;
                         tailscale::stop();
                         handle.exit(0);
                     });
@@ -719,5 +896,117 @@ mod saved_profile_tests {
         assert!(super::valid_saved_profiles(&[local], false));
         assert!(super::valid_saved_profiles(&[], true));
         assert!(!super::valid_saved_profiles(&[], false));
+    }
+}
+
+#[cfg(test)]
+mod secure_form_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::{io::{AsyncReadExt, AsyncWriteExt}, sync::Notify};
+    struct Fixture {
+        endpoint: Arc<Endpoint>,
+        state: Arc<Shared>,
+        seen: Arc<Notify>,
+        release: Arc<Notify>,
+        posts: Arc<AtomicUsize>,
+        server: tokio::task::JoinHandle<()>,
+    }
+    impl Drop for Fixture { fn drop(&mut self) { self.server.abort(); } }
+    async fn fixture(status: &str, prompt: &str) -> Fixture {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let endpoint = Arc::new(Endpoint { base: reqwest::Url::parse(&format!("http://{address}")).unwrap(), remote_host: address.to_string(), token: "synthetic-test-token".into(), desktop_origin: None, client: transport::client().unwrap(), #[cfg(not(any(target_os="ios",target_os="android")))] _tunnel: None, _embedded: None });
+        let seen = Arc::new(Notify::new()); let release = Arc::new(Notify::new()); let posts = Arc::new(AtomicUsize::new(0));
+        let (server_seen, server_release, server_posts) = (seen.clone(), release.clone(), posts.clone());
+        let public = json!({"id":"flow-1","status":status,"prompt":{"id":prompt,"type":"secret"}}).to_string();
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut data=Vec::new(); let header_end;
+                loop { let mut bytes=[0;1024]; let n=stream.read(&mut bytes).await.unwrap(); if n==0 {return;} data.extend_from_slice(&bytes[..n]); if let Some(i)=data.windows(4).position(|w| w==b"\r\n\r\n") {header_end=i+4;break;} }
+                let header=String::from_utf8_lossy(&data[..header_end]);
+                let post=header.starts_with("POST /pi/login/flow-1/input ");
+                let length=header.lines().find_map(|line| line.to_ascii_lowercase().strip_prefix("content-length:").and_then(|v|v.trim().parse::<usize>().ok())).unwrap_or(0);
+                while data.len()<header_end+length { let mut bytes=[0;1024]; let n=stream.read(&mut bytes).await.unwrap();if n==0 {return;} data.extend_from_slice(&bytes[..n]); }
+                let response = if post {
+                    assert_eq!(serde_json::from_slice::<Value>(&data[header_end..]).unwrap(),json!({"promptId":"prompt-1","value":"synthetic-only"}));
+                    server_posts.fetch_add(1,Ordering::SeqCst); "{\"submitted\":true}"
+                } else { server_seen.notify_one(); server_release.notified().await; &public };
+                stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(),response).as_bytes()).await.unwrap();
+            }
+        });
+        let unused=std::env::temp_dir().join(format!("pibo-policy-test-{}",uuid::Uuid::new_v4()));
+        let mut forms=HashMap::new();
+        for (label, flow) in [("credential-test","flow-1"),("credential-other","flow-2")] {
+            forms.insert(label.into(), SecureForm {endpoint:endpoint.clone(),target:FormTarget::PiPrompt {flow:flow.into(),prompt:"prompt-1".into()},claimed:false});
+        }
+        let state=Arc::new(Mutex::new(State { profiles:vec![],active:Some(("test".into(),Profile::local("test","Test","/synthetic-unused"),endpoint.clone())),file:unused.join("profiles.json"),builtin:builtin_harness::Harness::new(unused.join("resources"),unused),connection_epoch:Arc::new(std::sync::atomic::AtomicU64::new(0)),login_epoch:Arc::new(std::sync::atomic::AtomicU64::new(0)),streams:HashMap::new(),forms }));
+        Fixture { endpoint,state,seen,release,posts,server }
+    }
+    fn submit(state: Arc<Shared>) -> tokio::task::JoinHandle<Result<(), String>> {
+        tokio::spawn(async move {submit_credential("credential-test",&state,"synthetic-only".into()).await})
+    }
+    async fn result(task: tokio::task::JoinHandle<Result<(), String>>) -> Result<(), String> {
+        tokio::time::timeout(std::time::Duration::from_secs(5),task).await.unwrap().unwrap()
+    }
+    #[tokio::test]
+    async fn cancel_during_prompt_check_prevents_late_secret_post_and_preserves_other_flow() {
+        let f=fixture("pending","prompt-1").await;let task=submit(f.state.clone()); f.seen.notified().await;
+        f.state.lock().await.invalidate_pi_forms(&f.endpoint,"flow-1"); f.release.notify_one();
+        assert!(result(task).await.is_err());assert_eq!(f.posts.load(Ordering::SeqCst),0);
+        assert!(f.state.lock().await.forms.contains_key("credential-other"));
+    }
+    #[tokio::test]
+    async fn runtime_switch_during_prompt_check_prevents_late_secret_post() {
+        let f=fixture("pending","prompt-1").await;let task=submit(f.state.clone());f.seen.notified().await;
+        f.state.lock().await.retire();f.release.notify_one();
+        assert!(result(task).await.is_err());assert_eq!(f.posts.load(Ordering::SeqCst),0);
+    }
+    #[tokio::test]
+    async fn repeated_submission_is_not_replayed_and_one_bound_post_succeeds() {
+        let f=fixture("pending","prompt-1").await;let first=submit(f.state.clone());f.seen.notified().await;
+        assert!(result(submit(f.state.clone())).await.is_err());f.release.notify_one();assert!(result(first).await.is_ok());
+        assert!(result(submit(f.state.clone())).await.is_err());assert_eq!(f.posts.load(Ordering::SeqCst),1);
+    }
+    #[tokio::test]
+    async fn server_cancelled_or_replaced_prompt_is_never_submitted() {
+        for (status,prompt) in [("cancelled","prompt-1"),("pending","new-prompt")] {
+            let f=fixture(status,prompt).await;let task=submit(f.state.clone());f.seen.notified().await;f.release.notify_one();
+            assert!(result(task).await.is_err());assert_eq!(f.posts.load(Ordering::SeqCst),0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod pi_request_timeout_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    async fn endpoint(partial_body: bool, eventually_reply: bool) -> (Endpoint, tokio::task::JoinHandle<()>) {
+        let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let address=listener.local_addr().unwrap();
+        let server=tokio::spawn(async move {
+            let (mut stream,_)=listener.accept().await.unwrap();let mut bytes=[0;4096];let _=stream.read(&mut bytes).await.unwrap();
+            if partial_body {stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 10\r\n\r\n{").await.unwrap();}
+            if eventually_reply {
+                tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}").await.unwrap();
+            } else {std::future::pending::<()>().await;}
+        });
+        (Endpoint {base:reqwest::Url::parse(&format!("http://{address}")).unwrap(),remote_host:address.to_string(),token:"synthetic-test-token".into(),desktop_origin:None,client:transport::client().unwrap(),#[cfg(not(any(target_os="ios",target_os="android")))] _tunnel:None,_embedded:None},server)
+    }
+    #[tokio::test]
+    async fn pi_header_and_body_stalls_return_bounded_uncertainty_without_replay() {
+        for partial in [false,true] { for method in ["GET","POST"] {
+            let (ep,server)=endpoint(partial,false).await;
+            let result=request_reply(&ep,"/pi/login",method,"{}","",std::time::Duration::from_millis(40)).await;
+            let error=match result {Err(error)=>error,Ok(_)=>panic!("stalled Pi response unexpectedly succeeded")};
+            assert_eq!(error.code,"connectionLost");assert_eq!(error.submitted,method=="POST");server.abort();
+        }}
+    }
+    #[tokio::test]
+    async fn pi_deadline_does_not_change_ordinary_rpc_transport() {
+        let (ep,server)=endpoint(false,true).await;
+        let result=request_reply(&ep,"/rpc","POST","{}","",std::time::Duration::from_millis(1)).await.unwrap();
+        assert_eq!(result.status,200);assert_eq!(result.body,"{}");server.await.unwrap();
     }
 }

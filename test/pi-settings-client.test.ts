@@ -3,6 +3,28 @@ import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {createPiSettingsClient} from '../src/sdk/pi-settings-client.ts';
 
+test('native auth policy rejection is precise and cannot start CSRF recovery or replay', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalWindow = (globalThis as any).window;
+    let attempts = 0;
+    (globalThis as any).window = {__PIBOT_NATIVE__: {}};
+    globalThis.fetch = async () => {
+        attempts++;
+        throw {code:'secureInputRequired',message:'请在安全输入窗口提交',submitted:false};
+    };
+    try {
+        await assert.rejects(createPiSettingsClient('/runtime/qa')('login/id/input', {value:'synthetic'}),
+            (e:any) => e.code === 'secureInputRequired' && e.submitted === false && !e.message.includes('连接中断'));
+        assert.equal(attempts, 1);
+        globalThis.fetch = async () => { attempts++; return Response.json({error:'Authentication required'}, {status:401}); };
+        await assert.rejects(createPiSettingsClient('/runtime/qa')('config'), (e:any) => e.status === 401);
+        assert.equal(attempts, 2, 'native 401 must not bootstrap or replay a browser session');
+    } finally {
+        globalThis.fetch = originalFetch;
+        if (originalWindow === undefined) delete (globalThis as any).window; else (globalThis as any).window = originalWindow;
+    }
+});
+
 test('Pi settings marks unreachable reads as recoverable and never replays interrupted writes', async () => {
     let attempts = 0;
     const server = createServer(req => { attempts++; req.socket.destroy(); });

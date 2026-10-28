@@ -7,6 +7,16 @@ export const Time = Type.Integer({
 });
 export const Json = Type.Record(Type.String(), Type.Unknown());
 import { literals } from './literals.ts';
+export const DesktopCapabilitySchema = Type.Object({
+    state: literals(['unsupported', 'unconfigured', 'permission-required', 'unreachable', 'ready', 'unknown']),
+    reason: Type.String({ maxLength: 1000 }), checkedAt: Time
+}, { additionalProperties: false });
+export const DesktopCapabilitiesSchema = Type.Object({
+    configured: Type.Boolean(), canOpenView: Type.Boolean(), platform: Type.String(),
+    browser: DesktopCapabilitySchema, computerUse: DesktopCapabilitySchema, screenCapture: DesktopCapabilitySchema, vnc: DesktopCapabilitySchema,
+    availableTools: Type.Object({ browser: Type.Array(Type.String()), computer: Type.Array(Type.String()) }, { additionalProperties: false })
+}, { additionalProperties: false });
+export type DesktopCapabilities = Static<typeof DesktopCapabilitiesSchema>;
 export const DaemonStatusSchema = literals(['starting', 'recovering', 'ready', 'draining', 'stopped']);
 export type DaemonStatus = Static<typeof DaemonStatusSchema>;
 export const RequestKindSchema = literals(['approval', 'question', 'credential']);
@@ -72,6 +82,7 @@ export const TriggerStatusSchema = Type.Object({
     })
 });
 export const SnapshotSchema = Type.Object({
+    desktopCapabilities: Type.Optional(DesktopCapabilitiesSchema),
     trigger: Type.Optional(TriggerStatusSchema), seq: Time, bots: Type.Array(BotSchema), groups: Type.Array(GroupSchema), threads: Type.Array(ThreadSchema), turns: Type.Array(TurnSchema), activeTurns: Type.Array(TurnSchema), items: Type.Array(ItemSchema), pendingRequests: Type.Array(PendingRequestSchema), requests: Type.Array(PendingRequestSchema), routines: Type.Array(RoutineSchema), jobs: Type.Array(JobSummarySchema), budget: Type.Optional(Json), usage: UsageSchema, status: DaemonStatusSchema
 }, {
     additionalProperties: true

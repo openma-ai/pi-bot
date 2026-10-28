@@ -8,6 +8,7 @@ import { fauxProvider, fauxAssistantMessage, fauxToolCall, InMemoryCredentialSto
 import { BotRuntime } from '../src/daemon/runtime/runtime.ts';
 import { RequestBroker } from '../src/daemon/requests/request-broker.ts';
 import { DesktopClient } from '../src/pi/desktop-client.ts';
+import { capability, unavailableDesktopCapabilities } from '../src/pi/desktop-capabilities.ts';
 import { piSessionFactory } from '../src/pi/session-factory.ts';
 import type { Envelope, Job } from '../src/daemon/runtime/store.ts';
 async function until(check: () => boolean) {
@@ -27,6 +28,7 @@ for (const variant of ['approve', 'deny', 'cancel', 'cancel-after-bind', 'restar
         const contexts: string[] = [];
         const results: any[] = [];
         const desktop = new DesktopClient('http://127.0.0.1:1', 'DUMMY-NOT-A-CREDENTIAL');
+        desktop.capabilities = async () => ({ ...unavailableDesktopCapabilities('linux', true), browser: capability('ready', 'Isolated fixture'), availableTools: { browser: ['fixture-no-side-effect'], computer: [] } });
         // Every transport call is replaced; no socket or real desktop is used.
         desktop.request = async path => {
             if (path === '/bind') {

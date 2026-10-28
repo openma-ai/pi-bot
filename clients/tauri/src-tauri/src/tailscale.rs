@@ -1,5 +1,7 @@
 //! Official libtailscale C ABI: private userspace node, no TUN or system proxy.
 //! Authentication is explicit; no node starts when the application launches.
+#[cfg(all(feature="embedded-tailscale", target_os="android"))]
+pub use native::set_android_cache;
 #[cfg(feature = "embedded-tailscale")]
 mod native {
     use std::{
@@ -26,6 +28,12 @@ mod native {
             out: *mut i32,
         ) -> i32;
         fn tailscale_close(sd: i32) -> i32;
+    }
+    #[cfg(target_os="android")]
+    static ANDROID_CACHE: OnceLock<PathBuf> = OnceLock::new();
+    #[cfg(target_os="android")]
+    pub fn set_android_cache(path: PathBuf) {
+        let _ = ANDROID_CACHE.set(path.join("embedded-tailscale"));
     }
     pub struct Node {
         sd: i32,
@@ -72,9 +80,19 @@ mod native {
         }
         let key = CString::new(key).map_err(|_| "Invalid auth key")?;
         let existing = reuse.is_some();
-        let dir = reuse.unwrap_or_else(|| {
-            std::env::temp_dir().join(format!("pibo-tailnet-{}", uuid::Uuid::new_v4()))
-        });
+        #[cfg(target_os="android")]
+        let cache = {
+            use std::os::unix::fs::PermissionsExt;
+            let path = ANDROID_CACHE.get().ok_or("应用网络缓存目录尚未初始化")?.clone();
+            // Android's generic /tmp is not app-writable. Use the app cache only
+            // after the explicit network-start action, without changing OS env.
+            std::fs::create_dir_all(&path).map_err(|_| "无法准备应用网络缓存")?;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).map_err(|_| "无法保护应用网络缓存")?;
+            path
+        };
+        #[cfg(not(target_os="android"))]
+        let cache = std::env::temp_dir();
+        let dir = reuse.unwrap_or_else(|| cache.join(format!("pibo-tailnet-{}", uuid::Uuid::new_v4())));
         use std::os::unix::fs::DirBuilderExt;
         if existing {
             let metadata =

@@ -13,5 +13,15 @@
     "Apple iconutil",
     "Tauri icon"
   ],
-  "desktopFormat": "RGBA required by Tauri; source is opaque, so alpha remains fully opaque"
+  "desktopFormat": "RGBA required by Tauri; source is opaque, so alpha remains fully opaque",
+  "macOSPackaging": {
+    "source": "pibo-approved-source.png",
+    "script": "scripts/brand/macos-icon.swift",
+    "geometry": "approved raster scaled into 824px rounded rectangle at (100,100), radius 184, on transparent 1024px canvas; subtle shadow",
+    "mark": "unchanged source pixels, proportional resampling only; no redrawing or recoloring",
+    "outputs": [
+      "clients/tauri/src-tauri/icons/macos-icon.png",
+      "clients/tauri/src-tauri/icons/icon.icns"
+    ]
+  }
 }

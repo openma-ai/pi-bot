@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "build:gui": "node scripts/build-gui.mjs",
-    "build": "npm run build:gui && tauri build --bundles app",
-    "dev": "tauri dev",
+    "prepare:harness": "node scripts/prepare-desktop-harness.mjs",
+    "build": "npm run prepare:harness && npm run build:gui && tauri build --features embedded-tailscale --bundles app --config tauri.harness.conf.json",
+    "dev": "npm run prepare:harness && tauri dev --features embedded-tailscale --config tauri.dev.conf.json --config tauri.harness.conf.json",
     "tauri": "tauri",
+    "android:dev:build": "sh scripts/build-android-development.sh",
     "package:preview": "node scripts/package-desktop.mjs preview",
     "package:prod": "node scripts/package-desktop.mjs production"
   },

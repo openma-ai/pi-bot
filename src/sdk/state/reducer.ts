@@ -1,5 +1,6 @@
-import type { Snapshot, EventEnvelope } from '../protocol/index.ts';
+import type { Snapshot, EventEnvelope, DesktopCapabilities } from '../protocol/index.ts';
 export type DaemonState = {
+    desktopCapabilities?: DesktopCapabilities;
     seq: number;
     status: string;
     bots: Record<string, any>;
@@ -17,6 +18,7 @@ export type DaemonState = {
 const index = (values: any[]) => Object.fromEntries(values.map(v => [v.id, v]));
 export function stateFromSnapshot(s: Snapshot): DaemonState {
     return {
+        desktopCapabilities: s.desktopCapabilities,
         seq: s.seq, status: s.status, bots: index(s.bots), groups: index(s.groups), threads: index(s.threads), turns: index(s.turns), items: index(s.items), requests: index(s.requests), routines: index(s.routines), jobs: index(s.jobs), streaming: {}, streamingScopes: {}, streamingTurns: {}
     };
 }
@@ -32,6 +34,7 @@ export function applyEvent(state: DaemonState, e: EventEnvelope): DaemonState {
         };
     if (e.method === 'daemon/statusChanged')
         next.status = p.to;
+    if (e.method === 'desktop/capabilitiesChanged') next.desktopCapabilities = p.desktopCapabilities;
     const map: Record<string, keyof DaemonState> = {
         bot: 'bots', group: 'groups', thread: 'threads', turn: 'turns', item: 'items', request: 'requests', routine: 'routines', job: 'jobs'
     };

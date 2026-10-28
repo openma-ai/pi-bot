@@ -1,0 +1,210 @@
+{
+  "date": "2026-10-27",
+  "environment": {
+    "platform": "Linux arm64 Docker on macOS",
+    "image": "pibo-tailnet-direct:phone-0950971",
+    "imageId": "sha256:cea45f6d5add35beabbc774ad7b8fedd5cf1197677203b326288fc32088c7012",
+    "network": "none",
+    "publishedPorts": [],
+    "sourceMount": "read-only",
+    "data": "ephemeral tmpfs",
+    "memoryLimit": "1 GiB"
+  },
+  "checks": {
+    "typecheck": "passed",
+    "scopedTests": {
+      "passed": 45,
+      "failed": 0
+    },
+    "desktopSmoke": {
+      "assertions": [
+        "Detection does not bind a window or start VNC",
+        "Agent window binding does not start VNC",
+        "Tool schemas match verified capabilities",
+        "Real Pi browser tool dispatch returned 42 without a model call",
+        "Explicit open reaches RFB ready without taking control",
+        "Stopped viewer becomes unreachable independently of CDP",
+        "A second explicit open recovers VNC; probes did not restart it"
+      ],
+      "states": {
+        "before": {
+          "configured": true,
+          "canOpenView": true,
+          "platform": "linux",
+          "browser": {
+            "state": "ready",
+            "reason": "Chromium answered the CDP Browser.getVersion command",
+            "checkedAt": 1793116985223
+          },
+          "computerUse": {
+            "state": "ready",
+            "reason": "Computer Use window targeting and coordinate input are ready; accessibility selectors and semantic tools are unavailable",
+            "checkedAt": 1793116985223
+          },
+          "screenCapture": {
+            "state": "ready",
+            "reason": "A read-only one-pixel X11 capture succeeded; no image is retained",
+            "checkedAt": 1793116985223
+          },
+          "vnc": {
+            "state": "unconfigured",
+            "reason": "No viewer has been opened; checking capabilities does not start VNC",
+            "checkedAt": 1793116985223
+          },
+          "availableTools": {
+            "browser": [
+              "navigate",
+              "evaluate",
+              "screenshot"
+            ],
+            "computer": [
+              "doctor",
+              "list_windows",
+              "activate_window",
+              "click",
+              "drag",
+              "press_key",
+              "scroll",
+              "type_text",
+              "screenshot"
+            ]
+          }
+        },
+        "opened": {
+          "configured": true,
+          "canOpenView": true,
+          "platform": "linux",
+          "browser": {
+            "state": "ready",
+            "reason": "Chromium answered the CDP Browser.getVersion command",
+            "checkedAt": 1793116986799
+          },
+          "computerUse": {
+            "state": "ready",
+            "reason": "Computer Use window targeting and coordinate input are ready; accessibility selectors and semantic tools are unavailable",
+            "checkedAt": 1793116986799
+          },
+          "screenCapture": {
+            "state": "ready",
+            "reason": "A read-only one-pixel X11 capture succeeded; no image is retained",
+            "checkedAt": 1793116986799
+          },
+          "vnc": {
+            "state": "ready",
+            "reason": "Existing VNC servers completed a shared, view-only RFB handshake",
+            "checkedAt": 1793116986799
+          },
+          "availableTools": {
+            "browser": [
+              "navigate",
+              "evaluate",
+              "screenshot"
+            ],
+            "computer": [
+              "doctor",
+              "list_windows",
+              "activate_window",
+              "click",
+              "drag",
+              "press_key",
+              "scroll",
+              "type_text",
+              "screenshot"
+            ]
+          }
+        },
+        "failed": {
+          "configured": true,
+          "canOpenView": true,
+          "platform": "linux",
+          "browser": {
+            "state": "ready",
+            "reason": "Chromium answered the CDP Browser.getVersion command",
+            "checkedAt": 1793116987190
+          },
+          "computerUse": {
+            "state": "ready",
+            "reason": "Computer Use window targeting and coordinate input are ready; accessibility selectors and semantic tools are unavailable",
+            "checkedAt": 1793116987190
+          },
+          "screenCapture": {
+            "state": "ready",
+            "reason": "A read-only one-pixel X11 capture succeeded; no image is retained",
+            "checkedAt": 1793116987190
+          },
+          "vnc": {
+            "state": "unreachable",
+            "reason": "The existing VNC viewer is unreachable",
+            "checkedAt": 1793116986818
+          },
+          "availableTools": {
+            "browser": [
+              "navigate",
+              "evaluate",
+              "screenshot"
+            ],
+            "computer": [
+              "doctor",
+              "list_windows",
+              "activate_window",
+              "click",
+              "drag",
+              "press_key",
+              "scroll",
+              "type_text",
+              "screenshot"
+            ]
+          }
+        },
+        "recovered": {
+          "configured": true,
+          "canOpenView": true,
+          "platform": "linux",
+          "browser": {
+            "state": "ready",
+            "reason": "Chromium answered the CDP Browser.getVersion command",
+            "checkedAt": 1793116988080
+          },
+          "computerUse": {
+            "state": "ready",
+            "reason": "Computer Use window targeting and coordinate input are ready; accessibility selectors and semantic tools are unavailable",
+            "checkedAt": 1793116988080
+          },
+          "screenCapture": {
+            "state": "ready",
+            "reason": "A read-only one-pixel X11 capture succeeded; no image is retained",
+            "checkedAt": 1793116988080
+          },
+          "vnc": {
+            "state": "ready",
+            "reason": "Existing VNC servers completed a shared, view-only RFB handshake",
+            "checkedAt": 1793116988080
+          },
+          "availableTools": {
+            "browser": [
+              "navigate",
+              "evaluate",
+              "screenshot"
+            ],
+            "computer": [
+              "doctor",
+              "list_windows",
+              "activate_window",
+              "click",
+              "drag",
+              "press_key",
+              "scroll",
+              "type_text",
+              "screenshot"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "limitations": [
+    "Existing image AT-SPI unavailable; semantic accessibility tools are withheld",
+    "No native macOS/Windows Computer Use adapter or permission validation",
+    "No paid model invocation or network authorization performed"
+  ]
+}

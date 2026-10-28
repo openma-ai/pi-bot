@@ -82,3 +82,18 @@ int pibo_protect_node_directory(const char *value) {
 }
 
 bool pibo_is_direct_test_bundle(void) {return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"dev.pibot.direct-simulator"];}
+
+// Model OAuth links are already matched to a live SDK event in Rust. Use the
+// system browser without sharing or cancelling the Tailscale auth session.
+void pibo_open_model_login(const char *value,PiboExportDone done,void *context) {
+ NSString *string=[NSString stringWithUTF8String:value];
+ dispatch_async(dispatch_get_main_queue(), ^{
+  NSURL *url=[NSURL URLWithString:string];
+  if(!url || ![url.scheme isEqualToString:@"https"] || url.user || url.password){done(-1,context);return;}
+#if TARGET_OS_IPHONE
+  [UIApplication.sharedApplication openURL:url options:@{} completionHandler:^(BOOL success){done(success?1:-1,context);}];
+#else
+  done([NSWorkspace.sharedWorkspace openURL:url]?1:-1,context);
+#endif
+ });
+}

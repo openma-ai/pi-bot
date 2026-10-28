@@ -16,6 +16,9 @@ artifacts/
 # Pinned, locally compiled embedded userspace networking library.
 clients/tauri/.tailscale-build/
 
+# Generated desktop harness resources (Node + copied locked dependencies).
+clients/tauri/.harness-build*/
+
 # Local Organizer handoff project, generated from the verified Release archive.
 clients/tauri/src-tauri/gen/apple/pibo-testflight.xcodeproj/
 

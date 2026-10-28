@@ -50,7 +50,7 @@ mod apple {
 pub use apple::*;
 #[cfg(any(
     pibo_tailscale_offline_test,
-    not(any(target_os = "macos", target_os = "ios"))
+    not(any(target_os = "macos", target_os = "ios", target_os = "android"))
 ))]
 mod temporary {
     pub fn load(_: &str) -> Result<Option<Vec<u8>>, String> {
@@ -65,6 +65,37 @@ mod temporary {
 }
 #[cfg(any(
     pibo_tailscale_offline_test,
-    not(any(target_os = "macos", target_os = "ios"))
+    not(any(target_os = "macos", target_os = "ios", target_os = "android"))
 ))]
 pub use temporary::*;
+
+// Android has no verified Keystore bridge yet. Credentials and node identity are
+// session-only, with explicit zeroization on replacement/removal. The OS releases
+// process memory on exit; static storage has no explicit teardown wipe.
+// This store never writes plaintext app storage. The SDK separately uses a
+// private temporary working-state directory, cleaned on normal stop.
+#[cfg(all(target_os="android", not(pibo_tailscale_offline_test)))]
+mod session {
+    use std::{collections::HashMap, sync::{Mutex, OnceLock}};
+    use zeroize::Zeroizing;
+    fn values() -> &'static Mutex<HashMap<String, Zeroizing<Vec<u8>>>> {
+        static VALUES: OnceLock<Mutex<HashMap<String, Zeroizing<Vec<u8>>>>> = OnceLock::new();
+        VALUES.get_or_init(Default::default)
+    }
+    pub fn load(account: &str) -> Result<Option<Vec<u8>>, String> {
+        Ok(values().lock().map_err(|_| "会话身份暂不可用")?.get(account).map(|v| v.to_vec()))
+    }
+    pub fn save(account: &str, value: &[u8]) -> Result<(), String> {
+        if account.len() > 512 || value.len() > 1024*1024 { return Err("会话身份超出大小限制".into()); }
+        let mut values = values().lock().map_err(|_| "会话身份暂不可用")?;
+        if values.len() >= 64 && !values.contains_key(account) { return Err("会话身份数量已达上限".into()); }
+        values.insert(account.into(), Zeroizing::new(value.to_vec()));
+        Ok(())
+    }
+    pub fn remove(account: &str) -> Result<(), String> {
+        values().lock().map_err(|_| "会话身份暂不可用")?.remove(account);
+        Ok(())
+    }
+}
+#[cfg(all(target_os="android", not(pibo_tailscale_offline_test)))]
+pub use session::*;

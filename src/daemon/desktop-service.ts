@@ -9,6 +9,8 @@ import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager
 import { InMemoryCredentialStore, fauxProvider, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { DesktopOwnership } from './desktop-ownership.ts';
+import { linuxDoctor, probeDesktopCapabilities, probeViewerExecutable, probeVnc, probeX11Capture, probeX11Input } from './desktop-capabilities.ts';
+import { capability, type DesktopCapabilities, type DesktopCapabilityKind } from '../pi/desktop-capabilities.ts';
 const option = (name: string) => {
     const i = process.argv.indexOf(name);
     return i < 0 ? undefined : process.argv[i + 1];
@@ -27,6 +29,8 @@ writeFileSync(tokenFile, JSON.stringify({
     mode: 0o600
 });
 const owners = new DesktopOwnership(4);
+const viewers = new Set<string>();
+const requestedViewers = new Set<string>();
 const cdpModule = await import('../../node_modules/pi-chrome-use/src/cdp/session.ts');
 const storeModule = await import('../../node_modules/pi-chrome-use/src/session-store.ts');
 const browserModule = await import('../../node_modules/pi-chrome-use/extensions/browser-execute.ts');
@@ -36,7 +40,7 @@ let ready = false;
 for (let i = 0; i < 100; i++) {
     try {
         await admin.connect({
-            wsUrl: (await (await fetch('http://127.0.0.1:9222/json/version')).json() as any).webSocketDebuggerUrl
+            wsUrl: (await (await fetch('http://127.0.0.1:9222/json/version', { signal: AbortSignal.timeout(1500) })).json() as any).webSocketDebuggerUrl
         });
         ready = true;
         break;
@@ -137,6 +141,41 @@ const serial = <T>(fn: () => Promise<T>) => {
     });
     return next;
 };
+// Dedicated read-only processes avoid queuing doctor behind a long agent action.
+// Never bind a window, open a VNC listener or prompt for permission in a probe.
+const capabilityCache = new Map<string, { at: number; value: DesktopCapabilities }>();
+const capabilityChecks = new Map<string, Promise<DesktopCapabilities>>();
+let capabilityGeneration = 0;
+const invalidateCapabilities = () => { capabilityGeneration++; capabilityCache.clear(); };
+async function desktopCapabilities(botId?: string, refresh = false): Promise<DesktopCapabilities> {
+    const key = botId ?? '', previous = capabilityCache.get(key);
+    if (!refresh && previous && Date.now() - previous.at < 2000) return previous.value;
+    const pending = capabilityChecks.get(key);
+    if (pending) return pending;
+    const generation = capabilityGeneration;
+    const checked = probeDesktopCapabilities({
+        platform: process.platform, doctor: linuxDoctor, cdp: () => admin._call('Browser.getVersion'), capture: probeX11Capture, viewer: probeViewerExecutable, input: probeX11Input,
+        vncPorts: () => [...owners.bindings.values()].filter(b => requestedViewers.has(b.botId) && (!botId || b.botId === botId)).map(b => 5901 + b.screen)
+    }).then(value => {
+        if (generation !== capabilityGeneration) {
+            if (capabilityChecks.get(key) === checked) capabilityChecks.delete(key);
+            return desktopCapabilities(botId, true);
+        }
+        value.availableTools.computer = value.availableTools.computer.filter(name => !!session.getToolDefinition('computer_use_linux_' + name));
+        capabilityCache.set(key, { at: Date.now(), value }); return value;
+    }).finally(() => { if (capabilityChecks.get(key) === checked) capabilityChecks.delete(key); });
+    capabilityChecks.set(key, checked);
+    return checked;
+}
+function failedOperation(kind: DesktopCapabilityKind) {
+    capabilityGeneration++;
+    for (const [key, previous] of capabilityCache) {
+        const value = { ...previous.value, [kind]: capability('unknown', 'The last operation failed; waiting for a fresh read-only probe'), availableTools: { ...previous.value.availableTools } };
+        if (kind === 'browser') value.availableTools.browser = [];
+        if (kind === 'computerUse') value.availableTools.computer = [];
+        capabilityCache.set(key, { at: 0, value });
+    }
+}
 async function confine(b: ReturnType<DesktopOwnership['require']>) {
     const w = await admin._call('Browser.getWindowForTarget', {
         targetId: b.targetId
@@ -197,13 +236,6 @@ async function binding(botId: string) {
     if (!xid)
         throw Error('Browser X11 window not found');
     const b = owners.bind(botId, targetId, xid);
-    const p = 5901 + screen;
-    writeFileSync(join(root, `vnc-${screen}.cmd`), '', {
-        mode: 0o600
-    });
-    spawn('x11vnc', ['-display', ':99', '-clip', `1280x900+${b.x}+0`, '-rfbport', String(p), '-localhost', '-nopw', '-forever', '-shared', '-viewonly', '-connect', join(root, `vnc-${screen}.cmd`)], {
-        stdio: 'ignore'
-    });
     const s = storeModule.SessionStore.get(botId);
     await s.connect({
         wsUrl: (await (await fetch('http://127.0.0.1:9222/json/version')).json() as any).webSocketDebuggerUrl
@@ -237,7 +269,29 @@ async function binding(botId: string) {
     writeFileSync(join(root, 'bindings.json'), JSON.stringify([...owners.bindings.values()], null, 2));
     return b;
 }
+async function openViewer(b: ReturnType<DesktopOwnership['require']>) {
+    if (!viewers.has(b.botId)) {
+        writeFileSync(join(root, `vnc-${b.screen}.cmd`), '', { mode: 0o600 });
+        const child = spawn('x11vnc', ['-display', ':99', '-clip', `1280x900+${b.x}+0`, '-rfbport', String(5901 + b.screen), '-localhost', '-nopw', '-forever', '-shared', '-viewonly', '-connect', join(root, `vnc-${b.screen}.cmd`)], { stdio: 'ignore' });
+        viewers.add(b.botId);
+        requestedViewers.add(b.botId);
+        const unavailable = () => { viewers.delete(b.botId); failedOperation('vnc'); };
+        child.once('error', unavailable); child.once('exit', unavailable);
+    }
+    // A successful bind is not a ready viewer. Wait for its actual handshake so
+    // the user's single open action does not race the x11vnc startup.
+    const deadline = Date.now() + 2500;
+    while (Date.now() < deadline) {
+        const state = await probeVnc(5901 + b.screen, 400);
+        if (state.state === 'ready') { invalidateCapabilities(); return; }
+        if (state.state === 'permission-required' || state.state === 'unknown') break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    invalidateCapabilities();
+    throw Error('VNC viewer did not complete its handshake');
+}
 const api = createServer(async (req, res) => {
+    let operationKind: DesktopCapabilityKind | undefined;
     try {
         const url = new URL(req.url ?? '/', 'http://localhost');
         if (url.pathname === '/fixture') {
@@ -253,15 +307,21 @@ const api = createServer(async (req, res) => {
         }
         const json = (v: unknown) => {
             res.setHeader('content-type', 'application/json');
+            res.setHeader('cache-control', 'no-store');
             res.end(JSON.stringify(v));
         };
+        if (url.pathname === '/capabilities' && req.method === 'GET') {
+            json(await desktopCapabilities(url.searchParams.get('botId') ?? undefined));
+            return;
+        }
         if (url.pathname === '/tools') {
+            const capabilities = await desktopCapabilities();
             json({
                 browser: {
-                    actions: ['navigate', 'evaluate', 'screenshot'], engine: 'pi-chrome-use@1.1.1'
-                }, computer: allowedComputer.map(name => ({
+                    actions: capabilities.availableTools.browser, engine: 'pi-chrome-use@1.1.1'
+                }, computer: capabilities.availableTools.computer.map(name => ({
                     name, parameters: session.getToolDefinition('computer_use_linux_' + name)?.parameters
-                }))
+                })), capabilities
             });
             return;
         }
@@ -282,7 +342,17 @@ const api = createServer(async (req, res) => {
             data = JSON.parse(body);
         }
         if (url.pathname === '/bind') {
-            json(await serial(() => binding(data.botId)));
+            const report = await desktopCapabilities(data.botId);
+            if (report.browser.state !== 'ready' || (data.openView === true && !report.canOpenView)) {
+                res.statusCode = 409; json({ error: 'Desktop is not ready to open an owned window', capabilities: report }); return;
+            }
+            json(await serial(async () => {
+                const owned = await binding(data.botId);
+                // Only the explicit client action opens the existing viewer service.
+                // Agent discovery and read-only health probes never start VNC.
+                if (data.openView === true) await openViewer(owned);
+                return owned;
+            }));
             return;
         }
         if (url.pathname.startsWith('/screen/')) {
@@ -319,7 +389,16 @@ const api = createServer(async (req, res) => {
             return;
         }
         if (url.pathname === '/call') {
-            json(await serial(async () => {
+            operationKind = data.kind === 'browser' ? 'browser' : 'computerUse';
+            const report = await desktopCapabilities();
+            const tool = data.kind === 'browser' ? data.args?.action : data.tool;
+            if (report[operationKind].state !== 'ready' || !(data.kind === 'browser' ? report.availableTools.browser : report.availableTools.computer).includes(tool)) {
+                res.statusCode = 409; json({ error: `${operationKind} is unavailable: ${report[operationKind].reason}`, capabilities: report }); return;
+            }
+            if (data.kind === 'computer' && ['click', 'scroll'].includes(data.tool) && !report.availableTools.computer.includes('perform_action') && ['element_index', 'element_identifier', 'name', 'role', 'text', 'states'].some(key => data.args?.[key] !== undefined)) {
+                res.statusCode = 409; json({ error: 'Accessibility selectors are unavailable; only verified coordinate input is supported', capabilities: report }); return;
+            }
+            const result = await serial(async () => {
                 const b = owners.requireAgent(data.botId);
                 await binding(data.botId);
                 if (data.windowId !== undefined)
@@ -390,13 +469,16 @@ const api = createServer(async (req, res) => {
                 if (schema?.properties?.window_id)
                     args.window_id = b.windowId;
                 return dispatch(`computer_use_linux_${data.tool}`, args);
-            }));
+            });
+            if ((result as any).isError) failedOperation(operationKind);
+            json(result);
             return;
         }
         res.writeHead(404);
         res.end();
     }
     catch {
+        if (operationKind) failedOperation(operationKind);
         res.writeHead(409);
         res.end(JSON.stringify({
             error: 'Desktop operation rejected; check ownership, window state or takeover'
@@ -413,6 +495,7 @@ api.on('upgrade', (req, socket, head) => {
             throw Error();
         const id = new URL(req.url ?? '/', 'http://localhost').pathname.slice('/ws/'.length);
         const b = owners.require(id);
+        if (!viewers.has(id)) throw Error('Open the viewer explicitly before connecting');
         const viewer = randomUUID();
         owners.claimViewer(id, viewer);
         claimed = { id, viewer };

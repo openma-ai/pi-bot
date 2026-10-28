@@ -63,12 +63,15 @@ impl Profile {
     }
     pub fn validate(&self) -> Result<(), String> {
         if self.mode == "ssh" { return Err("SSH 连接已停用；请新建 Tailscale 或 HTTPS 服务连接并使用服务访问密码登录，旧配置不会自动迁移".into()); }
-        if !["local", "direct", "tailnet"].contains(&self.mode.as_str())
+        if !["local", "builtin", "direct", "tailnet"].contains(&self.mode.as_str())
             || (self.mode == "local" && self.data_dir.is_empty())
             || self.data_dir.len() > 2048
             || self.data_dir.chars().any(|c| c.is_control())
         {
             return Err("请检查 runtime 目录".into());
+        }
+        if self.mode == "builtin" && (!self.data_dir.is_empty() || self.url.is_some() || self.host.is_some() || self.project_dir.is_some() || self.ssh_port.is_some() || self.config_file.is_some() || self.server_port.is_some() || self.node.is_some() || self.agent_dir.is_some() || self.host_key.is_some() || self.embedded_tailscale || (!self.id.is_empty() && self.id != crate::builtin_harness::PROFILE_ID)) {
+            return Err("本机引擎路径和连接由应用管理".into());
         }
         if self.embedded_tailscale && self.mode != "tailnet" { return Err("内嵌 Tailscale 仅用于设备选择连接".into()); }
         if self.name.len() > 300 || self.name.chars().any(|c| c.is_control()) {

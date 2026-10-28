@@ -1,5 +1,38 @@
 # Android arm64 development APK
 
+## Current connection build (2026-10-27)
+
+The current source uses HTTP(S) service connections and an embedded userspace
+Tailscale SDK. Android remains remote-only: there is no local bundled harness,
+system VPN/TUN service, or OS route/proxy change. The default development entry
+below explicitly enables the SDK feature and includes its shared library, so a
+plain featureless Tauri build must not be represented as SDK-enabled.
+
+```sh
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+# Optional: reuse an existing checkout of the exact pinned libtailscale revision.
+export PIBO_LIBTAILSCALE_SOURCE='<existing pinned libtailscale checkout>'
+npm --prefix clients/tauri run android:dev:build
+```
+
+`build-embedded-tailscale.sh android` uses the existing NDK API24 arm64 compiler
+and the pinned Go source to produce `libtailscale.so`. Go does not support
+`c-archive` for Android; the `c-shared` output is copied into the generated
+`app/src/main/jniLibs/arm64-v8a` directory and linked by Rust. The script neither
+installs the APK nor starts/logs into the SDK. The system-browser login action
+only opens a Rust-validated official Tailscale HTTPS URL. Network identity and
+service credentials are session-only on Android, with no verified Keystore
+persistence yet; process exit requires signing in again. Session-only means no
+automatic persistent-identity restoration, not that the SDK never writes to disk.
+Its temporary working identity uses a private `0700` app-cache directory and is
+removed on normal stop; crash leftovers and Keystore persistence are not verified.
+
+The new arm64 SDK library and Rust/JNI source have passed local compilation.
+This is not a new APK/emulator or real-device acceptance result: the full
+Android login, lifecycle, and network path remain untested in this iteration.
+The older APK/SSH results below are historical and do not validate this route.
+
 This is a native Tauri Android client, **remote-only**. It embeds the same pinned
 SSH transport as iOS; it never uses desktop subprocess/OpenSSH/local-runtime code.
 The first Android build deliberately supports **session-only native credentials**:

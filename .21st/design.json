@@ -11,6 +11,7 @@
   },
   "sources": {
     "tokens": [
+      "src/gui/brand.css",
       "src/gui/style.css"
     ],
     "components": [
@@ -19,13 +20,20 @@
       "src/gui/MessageBody.jsx"
     ],
     "assets": [
+      "src/gui/assets/pibo-logo.png",
       "Original inline SVG bot characters"
     ],
     "instructions": []
   },
   "design": {
-    "colorMode": "dark",
-    "colors": {},
+    "colorMode": "light",
+    "colors": {
+      "canvas": "#fffdf8",
+      "sidebar": "#f6f3eb",
+      "ink": "#352f2b",
+      "coral": "#c74833",
+      "line": "#e8e1d7"
+    },
     "typography": {},
     "spacing": {},
     "radius": {},
@@ -116,6 +124,32 @@
       "source": "libfile_cae2cb5f50888191a7232fa5b60af9e7; source SHA256 4b2bdb034b7c0c013300a0b995f3837b69d51e71212653591f8135ad4a014235",
       "usage": "Product logo, iOS/macOS app icons, connection/recovery pages, settings and navigation; bot avatars stay independent",
       "processing": "Resize only; preserve approved contour/colors; opaque RGB iOS catalog; native ICNS generated with iconutil"
+    },
+    {
+      "date": "2026-10-27",
+      "direction": "Approved cream/coral pi identity across a calm, light messenger; keep the original logo pixels.",
+      "layout": "Overlay conversation details without resizing messages; bounded form scrolling follows VisualViewport; native iOS stays a phone in landscape with a fine pointer.",
+      "behavior": "One automatic restore attempt then stable configure/retry; creation enters chat; model save guards duplicate clicks.",
+      "source": "User request for formal visual reconstruction after rejected Ionic experiment. Tauri retained."
+    },
+    {
+      "date": "2026-10-27",
+      "direction": "Connection state is small text and spinner beside the conversation/list title; no colored status strip, recovery hero or duplicate empty-state instructions.",
+      "behavior": "Keep chat and navigation while offline; first configuration and connection failures lead to Settings. Use a compact runtime target list with installation disclosure secondary.",
+      "source": "User correction of actual Pibo Development screenshots; Mac toolbar shares the title row and preserves window controls."
+    },
+    {
+      "date": "2026-10-28",
+      "direction": "One provider connection entry at the default-model heading upper right; no duplicate action beneath the empty model picker.",
+      "behavior": "No dirty/save/reasoning controls without an authenticated usable model. Authentication renders SDK method labels and keeps ChatGPT OAuth separate from API key; official provider names remain unchanged.",
+      "layout": "Compact desktop model settings with one bounded scroll area, no repeated model title; preserve phone keyboard/safe-area scrolling.",
+      "source": "User explicitly chose removal of the lower Connect provider position and requested SDK correctness before visual changes."
+    },
+    {
+      "date": "2026-10-28",
+      "direction": "Provider-first initial setup: choose provider and its actual SDK login method, confirm authentication, explicitly select an available model, finish into chat.",
+      "behavior": "No empty model landing or redundant back layer for an unconfigured workspace. Existing model opens directly with one upper-right Manage connection entry. Advanced reasoning is disclosed only after a usable reasoning model is selected. Never auto-select a model or treat unknown auth completion as confirmed.",
+      "source": "User: 好好设计配置流程啊喂; preserve the earlier preference for one upper-right management entry."
     }
   ],
   "evidence": [

@@ -116,7 +116,7 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
                 }
                 const value = JSON.parse(body || '{}');
                 if (url.pathname === '/pi/login')
-                    return json(settings.startLogin(value.provider, value.type));
+                    return json(settings.startLogin(value.provider, value.type, value.requestId));
                 if (url.pathname === '/pi/model') {
                     await settings.selectModel(value.provider, value.model, value.thinkingLevel);
                     return json(await daemon.requestPiReload());
@@ -147,10 +147,11 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
                 const known = error as {
                     name?: string;
                     message?: string;
+                    reason?: string;
                 };
                 return json({
                     error: known.name === 'PiBotError' ? known.message : 'Pi 操作失败，请重试'
-                }, 400);
+                }, known.name === 'PiBotError' && known.reason === 'notFound' ? 404 : known.name === 'PiBotError' && known.reason === 'conflict' ? 409 : 400);
             }
         }
         if (url.pathname === '/rpc' && req.method === 'POST') {
@@ -383,6 +384,7 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
                 res.end(Buffer.from(await r.arrayBuffer()));
             }
             catch {
+                daemon.desktop.operationFailed('screenCapture');
                 return json({
                     error: 'Desktop unavailable'
                 }, 503);
@@ -446,7 +448,7 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
             client.on('close', () => remote.close());
             remote.on('close', () => client.close());
             client.on('error', () => remote.close());
-            remote.on('error', () => client.close());
+            remote.on('error', () => { daemon.desktop?.operationFailed('vnc'); client.close(); });
         });
     });
     await new Promise<void>(done => server.listen(options.port ?? Number(process.env.PI_BOT_GUI_PORT ?? 4317), '127.0.0.1', done));

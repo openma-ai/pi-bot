@@ -40,6 +40,8 @@ npm start
 
 详见 [服务密码与直连](docs/clients/DIRECT-PASSWORD.md)、[Tailscale 连接](docs/clients/TAILNET-DIRECT.md)。
 
+Harness 的[独立安装、Docker 部署与升级回滚](docs/harness-deployment.md)、[Computer Use / VNC 能力契约](docs/harness-capabilities.md)和[本轮集成验收状态](docs/harness-integration-checkpoint.md)分别记录可复现流程与未通过的原生环节。桌面随包引擎使用应用自己的数据目录，手机继续连接远端；健康检查不代表已配置模型。
+
 原生客户端开发与 Preview 打包另需 Rust、Xcode 命令行工具和对应平台 SDK：
 
 ```sh

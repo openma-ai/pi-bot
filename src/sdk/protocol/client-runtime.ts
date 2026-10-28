@@ -13,6 +13,7 @@ const identity = {
     }))
 };
 export const RuntimeProfileSchema = Type.Union([
+    Type.Object({...identity, mode: Type.Literal('builtin'), dataDir: Type.Optional(Type.String({maxLength: 0}))}, {additionalProperties: false}),
     Type.Object({...identity, mode:Type.Literal("direct"),url:Type.String({maxLength:2048}),dataDir:Type.Optional(Type.String({maxLength:0}))},{additionalProperties:false}),
     Type.Object({
         ...identity, mode: Type.Literal('tailnet'), host: Type.String({
@@ -43,13 +44,18 @@ export const RuntimeProfileSchema = Type.Union([
 export type RuntimeProfile = Static<typeof RuntimeProfileSchema>;
 export const RuntimeStatusSchema = Type.Object({
     profiles: Type.Array(RuntimeProfileSchema, {
-        minItems: 0, maxItems: 32
+        minItems: 0, maxItems: 33
     }),
     active: Type.Union([Type.Object({
-            id: Type.String(), profileId: Type.String(), mode: Type.Union([Type.Literal('local'), Type.Literal('ssh'), Type.Literal('tailnet'),Type.Literal('direct')]), baseUrl: Type.String(), profile: Type.Optional(RuntimeProfileSchema), scope: Type.String(), label: Type.String()
+            id: Type.String(), profileId: Type.String(), mode: Type.Union([Type.Literal('builtin'), Type.Literal('local'), Type.Literal('ssh'), Type.Literal('tailnet'),Type.Literal('direct')]), baseUrl: Type.String(), profile: Type.Optional(RuntimeProfileSchema), scope: Type.String(), label: Type.String()
         }), Type.Null()]),
     tailscaleNodeState: Type.Optional(Type.Union([Type.Literal("unavailable"), Type.Literal("notPrepared"), Type.Literal("prepared"), Type.Literal("dialed"), Type.Literal("stopped")])),
     embeddedTailscaleAvailable: Type.Optional(Type.Boolean()),
+    builtinHarness: Type.Optional(Type.Object({
+        supported: Type.Boolean(), available: Type.Boolean(),
+        state: Type.Union(['unavailable','stopped','starting','running','stopping','error'].map(state => Type.Literal(state))),
+        error: Type.Optional(Type.Union([Type.String(), Type.Null()]))
+    })),
     remoteOnly: Type.Optional(Type.Boolean()),
     credentialStorage: Type.Optional(Type.Union([Type.Literal("session"), Type.Literal("keychain"), Type.Literal("system")])),
     connecting: Type.Boolean()
@@ -57,6 +63,9 @@ export const RuntimeStatusSchema = Type.Object({
 export type RuntimeStatus = Static<typeof RuntimeStatusSchema>;
 /** Local connection control; bot operations always use the ordinary PiBotClient. */
 export const clientRuntimeMethods = {
+    'runtime/builtinStart': {params: Type.Object({}, {additionalProperties: false}), result: RuntimeStatusSchema},
+    'runtime/builtinStop': {params: Type.Object({}, {additionalProperties: false}), result: RuntimeStatusSchema},
+    'runtime/builtinRestart': {params: Type.Object({}, {additionalProperties: false}), result: RuntimeStatusSchema},
     'runtime/status': {
         params: Type.Object({}, {
             additionalProperties: false

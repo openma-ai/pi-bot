@@ -98,7 +98,7 @@ mod tests {
     }
 }
 
-pub async fn open_tailscale_login(url: &str) -> Result<(), String> {
+pub async fn open_tailscale_login(_app: &tauri::AppHandle, url: &str) -> Result<(), String> {
     if !crate::tailscale::official_login_url(url) {
         return Err("Invalid authorization URL".into());
     }
@@ -126,9 +126,30 @@ pub async fn open_tailscale_login(url: &str) -> Result<(), String> {
             Err("无法打开系统浏览器，请重试".into())
         }
     }
-    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    #[cfg(target_os = "android")]
     {
-        Err("Browser authorization requires an Apple client".into())
+        use tauri::Manager;
+        use jni::objects::JValue;
+        let webview = _app.get_webview_window("main").ok_or("主窗口不可用")?;
+        let url = url.to_owned();
+        let (send, receive) = tokio::sync::oneshot::channel();
+        webview.with_webview(move |webview| {
+            webview.jni_handle().exec(move |env, activity, _| {
+                let opened = (|| {
+                    let value = env.new_string(url)?;
+                    env.call_method(activity, "openPiboLogin", "(Ljava/lang/String;)Z", &[JValue::Object(&value)])?.z()
+                })().unwrap_or(false);
+                if env.exception_check().unwrap_or(false) { let _ = env.exception_clear(); }
+                let _ = send.send(opened);
+            });
+        }).map_err(|_| "无法打开系统浏览器")?;
+        if tokio::time::timeout(std::time::Duration::from_secs(10), receive).await.map_err(|_| "打开浏览器超时")?.map_err(|_| "打开浏览器被中断")? {
+            Ok(())
+        } else { Err("无法打开系统浏览器，请重试".into()) }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "android")))]
+    {
+        Err("此平台尚未提供系统授权浏览器".into())
     }
 }
 
@@ -142,4 +163,33 @@ pub fn close_tailscale_login() {
             pibo_close_login();
         }
     }
+}
+
+/// Called only after the native Pi settings policy matches an active SDK event.
+/// This is not a Tauri command or a general-purpose URL API.
+pub(crate) async fn open_model_login(_app: &tauri::AppHandle, url: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid authorization URL")?;
+    if parsed.scheme() != "https" || !parsed.username().is_empty() || parsed.password().is_some() { return Err("Invalid authorization URL".into()); }
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        unsafe extern "C" { fn pibo_open_model_login(url: *const std::ffi::c_char, done: unsafe extern "C" fn(i32, *mut std::ffi::c_void), context: *mut std::ffi::c_void); }
+        let url=std::ffi::CString::new(url).map_err(|_| "Invalid authorization URL")?;
+        let (sender, receiver)=tokio::sync::oneshot::channel::<i32>();
+        unsafe {pibo_open_model_login(url.as_ptr(), exported, Box::into_raw(Box::new(sender)) as *mut std::ffi::c_void);}
+        if tokio::time::timeout(std::time::Duration::from_secs(10),receiver).await.map_err(|_| "打开浏览器超时")?.map_err(|_| "打开浏览器被中断")? == 1 {Ok(())} else {Err("无法打开系统浏览器".into())}
+    }
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        use jni::objects::JValue;
+        let webview=_app.get_webview_window("main").ok_or("主窗口不可用")?;
+        let url=url.to_owned();let (send, receive)=tokio::sync::oneshot::channel();
+        webview.with_webview(move |webview| {webview.jni_handle().exec(move |env,activity,_| {
+            let opened=(||{let value=env.new_string(url)?;env.call_method(activity,"openPiboModelLogin","(Ljava/lang/String;)Z",&[JValue::Object(&value)])?.z()})().unwrap_or(false);
+            if env.exception_check().unwrap_or(false) {let _=env.exception_clear();} let _=send.send(opened);
+        });}).map_err(|_| "无法打开系统浏览器")?;
+        if tokio::time::timeout(std::time::Duration::from_secs(10),receive).await.map_err(|_| "打开浏览器超时")?.map_err(|_| "打开浏览器被中断")? {Ok(())} else {Err("无法打开系统浏览器".into())}
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "android")))]
+    { Err("此平台尚未提供系统授权浏览器".into()) }
 }

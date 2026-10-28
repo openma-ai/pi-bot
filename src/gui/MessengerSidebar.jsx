@@ -1,5 +1,5 @@
 import React from "react";
-import {PiboMark,PiboBrand} from "./PiboBrand.jsx";
+import {PiboBrand} from "./PiboBrand.jsx";
 import { Plus, Search, Settings2 } from "lucide-react";
 import { DropdownMenu, ScrollArea, HoverCard, ContextMenu } from "@radix-ui/themes";
 import {
@@ -58,11 +58,15 @@ export function MessengerSidebar({
   onNewGroup,
   onSettings,
   runtime,
+  workspaceScope,
+  online = true,
+  connectionNotice,
+  connectionStart,
 }) {
   const { setOpenMobile } = useSidebar();
   const rows = conversationList(data).map((row) => ({ ...row, pending: requestsForConversation(data, row.kind, row.id).length }));
   const compact = !phone && width < 156;
-  const pins = usePinnedConversations(runtime?.status?.active?.scope || "disconnected");
+  const pins = usePinnedConversations(workspaceScope || runtime?.status?.active?.scope || "disconnected");
   const pinned = rows.filter((row) => pins.keys.includes(conversationKey(row)));
   return (
     <Sidebar
@@ -74,11 +78,12 @@ export function MessengerSidebar({
       {!compact && <>
       <SidebarHeader className="messenger-sidebar-header">
         <div className="sidebar-toolbar">
-          {!phone&&<span className="sidebar-brand"><PiboBrand/></span>}
-          {phone && <button className="toolbar-profile" aria-label="设置" title="设置" onClick={onSettings}><PiboMark size={24}/></button>}
+          <span className="sidebar-brand"><PiboBrand/></span>
+          {phone && <button className="toolbar-profile" aria-label="设置" title="设置" onClick={onSettings}><Settings2 size={20}/></button>}
           <button className="toolbar-search" aria-label="搜索全部（⌘K）" title="搜索全部（⌘K）" onClick={onSearch}><Search size={20} /></button>
           <DropdownMenu.Root><DropdownMenu.Trigger><Button size="icon" variant="ghost" aria-label="新建会话" title="新建会话"><Plus size={21} /></Button></DropdownMenu.Trigger><DropdownMenu.Content><DropdownMenu.Item onSelect={onNewBot}>新建 bot</DropdownMenu.Item><DropdownMenu.Item onSelect={onNewGroup}>新建群聊</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Root>
         </div>
+        <div className="sidebar-heading"><strong>会话</strong>{connectionNotice || <span>{rows.length} 个伙伴</span>}</div>
       </SidebarHeader>
       </>}
       <SidebarContent className="conversation-navigation">
@@ -91,7 +96,8 @@ export function MessengerSidebar({
           tabIndex={0}
           aria-label="滚动会话列表"
         >
-          {pinned.length > 0 && <><span className="pinned-heading">置顶</span><div className="pinned-conversations" aria-label="置顶会话">
+          {connectionStart}
+          {pinned.length > 0 && <><div className="pinned-conversations" aria-label="置顶会话">
             {pinned.map((row) => <div className="pinned-item" key={conversationKey(row)}>
               <ConversationHint compact={compact} row={row} pinned onToggle={() => pins.toggle(row)}><button className="pinned-conversation" aria-label={`置顶 ${row.name}${row.pending ? ` · 需处理 ${row.pending}` : ""}`} aria-current={(row.kind === "bot" ? selected === row.id && view === "chat" : groupId === row.id && view === "group") ? "page" : undefined} onClick={() => { onSelect(row); setOpenMobile(false); }}>
                 {row.kind === "bot" ? <BotAvatar id={row.id} name={row.name} size={compact ? 36 : 88} activity={botActivity(data, row.id)} /> : <GroupAvatar size={compact ? 36 : phone ? 76 : 88} members={data.bots.filter((bot) => row.group.memberIds.includes(bot.id))} />}
@@ -153,15 +159,15 @@ export function MessengerSidebar({
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
-          {!rows.length && !compact && (
-            <p className="contact-empty">创建一个 bot，开始聊天</p>
+          {!rows.length && !compact && online && (
+            <div className="contact-empty"><p>创建一个 bot，开始聊天</p><Button onClick={onNewBot}>新建 bot</Button></div>
           )}
         </ScrollArea>
       </SidebarContent>
       <SidebarFooter className="messenger-sidebar-footer">
         {compact && <>
         <div className="sidebar-toolbar">
-          {phone && <button className="toolbar-profile" aria-label="设置" title="设置" onClick={onSettings}><PiboMark size={24}/></button>}
+          {phone && <button className="toolbar-profile" aria-label="设置" title="设置" onClick={onSettings}><Settings2 size={20}/></button>}
           <button className="toolbar-search" aria-label="搜索全部（⌘K）" title="搜索全部（⌘K）" onClick={onSearch}><Search size={20} /></button>
           <DropdownMenu.Root><DropdownMenu.Trigger><Button size="icon" variant="ghost" aria-label="新建会话" title="新建会话"><Plus size={21} /></Button></DropdownMenu.Trigger><DropdownMenu.Content><DropdownMenu.Item onSelect={onNewBot}>新建 bot</DropdownMenu.Item><DropdownMenu.Item onSelect={onNewGroup}>新建群聊</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Root>
         </div>

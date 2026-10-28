@@ -8,6 +8,9 @@ export class RuntimeClient {
     private id = 0;
     private csrf?: string;
     readonly runtime: {
+        builtinStart: Call<'runtime/builtinStart'>;
+        builtinStop: Call<'runtime/builtinStop'>;
+        builtinRestart: Call<'runtime/builtinRestart'>;
         status: Call<'runtime/status'>;
         connect: Call<'runtime/connect'>;
         configure: Call<'runtime/configure'>;
@@ -18,6 +21,7 @@ export class RuntimeClient {
         'X-PiBot-CSRF': browserCsrf(baseUrl)
     }), private fetchImpl = globalThis.fetch.bind(globalThis)) {
         this.runtime = {
+            builtinStart: p => this.call('runtime/builtinStart', p), builtinStop: p => this.call('runtime/builtinStop', p), builtinRestart: p => this.call('runtime/builtinRestart', p),
             status: p => this.call('runtime/status', p), connect: p => this.call('runtime/connect', p), configure: p => this.call('runtime/configure', p), disconnect: p => this.call('runtime/disconnect', p), remove: p => this.call('runtime/remove', p)
         };
     }
@@ -39,7 +43,9 @@ export class RuntimeClient {
         try {
             response = await send();
         }
-        catch {
+        catch (error) {
+            if (typeof window !== 'undefined' && (window as any).__PIBOT_NATIVE__)
+                throw Error('原生连接接口尚未就绪，请重新打开开发版窗口', {cause: error});
             // A restarted host can reset an HTTP keep-alive socket before returning
             // 401. Only the read-only status call may be retried after that ambiguity.
             if (method !== 'runtime/status')
