@@ -61,9 +61,13 @@ export class Store {
     }
     put<T extends {
         id: string;
-    }>(table: string, v: T) {
+    }>(table: string, v: T, options?: { replaceReactions?: boolean }) {
         const write = () => {
             const before = this.get<any>(table, v.id);
+            // Runtime state transitions can write an older envelope while the
+            // user reacts. Only the reaction transaction replaces this field.
+            if (!options?.replaceReactions && before?.reactions && ['inbox', 'outbox', 'group_messages'].includes(table))
+                v = { ...v, reactions: before.reactions };
             const value = ['inbox', 'outbox'].includes(table) && typeof (v as any).text === 'string' ? {
                 ...v, text: redactChannelText((v as any).text), ...(typeof (v as any).error === 'string' ? {
                     error: redactChannelText((v as any).error)
@@ -75,6 +79,10 @@ export class Store {
             if (table === 'inbox')
                 this.ensureThread(value as unknown as Envelope);
             for (const event of derive(table, before, value, this.recordContext(table, value))) {
+                // A reaction is a display update, not a repeated failure/review
+                // transition of the underlying execution.
+                if (options?.replaceReactions && !['item/updated', 'group/messageUpdated'].includes(event.method))
+                    continue;
                 if (event.params.item)
                     this.db.prepare('INSERT INTO items(id,data)VALUES(?,?) ON CONFLICT(id)DO UPDATE SET data=excluded.data').run(event.params.item.id, JSON.stringify(event.params.item));
                 this.events.append(event.method, event.params, this.recordContext(table, value));

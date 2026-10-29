@@ -1,0 +1,14 @@
+.message-reactions { display:flex; flex-wrap:wrap; align-items:center; gap:5px; min-width:0; margin-top:5px; }
+.message-reaction,.message-reaction-add,.message-reaction-picker button { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:28px; border:1px solid transparent; border-radius:10px; padding:3px 7px; color:var(--pibo-muted); background:transparent; font:inherit; font-size:14px; cursor:pointer; }
+.message-reaction { background:var(--pibo-hover); }
+.message-reaction span { font-size:11px; }
+.message-reaction[aria-pressed="true"] { background:var(--pibo-selected); border-color:var(--pibo-line); }
+.message-reaction-add { opacity:.55; }
+.message-reaction-add:hover,.message-reaction-add:focus-visible { opacity:1; }
+.message-reactions button:focus-visible { outline:2px solid #c9ad9d; outline-offset:2px; }
+.message-reactions button:disabled { cursor:default; opacity:.5; }
+.message-reaction-picker { display:flex; flex-wrap:wrap; gap:3px; padding:4px; border:1px solid var(--pibo-line); border-radius:12px; background:var(--pibo-surface); }
+.message-reaction-picker button { min-width:34px; min-height:34px; font-size:18px; }
+.message-reaction-picker button:hover { background:var(--pibo-hover); }
+.message-reaction-error { font-size:12px; color:var(--pibo-muted); }
+@media(pointer:coarse) { .message-reaction,.message-reaction-add,.message-reaction-picker button { min-width:44px; min-height:44px; } }

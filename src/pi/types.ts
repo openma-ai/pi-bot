@@ -44,7 +44,9 @@ export type FileAttachment = {
     sha256: string;
     scope: string;
 };
+export type MessageReaction = { actorId: string; emoji: string; createdAt: number };
 export type Envelope = {
+    reactions?: MessageReaction[];
     imageInputStatus?: "attached" | "unsupported";
     attachments?: FileAttachment[];
     fileOwner?: string;
@@ -110,6 +112,7 @@ export type Question = {
     createdAt: number;
 };
 export type Outbound = {
+    reactions?: MessageReaction[];
     attachments?: FileAttachment[];
     toolCallId?: string;
     id: string;

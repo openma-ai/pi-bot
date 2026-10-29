@@ -1,6 +1,117 @@
 {
   "version": "2026-10-13",
   "methods": {
+    "message/setReaction": {
+      "params": {
+        "type": "object",
+        "required": [
+          "messageId",
+          "direction",
+          "channelId",
+          "conversationId",
+          "threadId",
+          "emoji",
+          "present"
+        ],
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "inbound"
+              },
+              {
+                "type": "string",
+                "const": "outbound"
+              }
+            ]
+          },
+          "channelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "conversationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "threadId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "emoji": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "present": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "changed",
+          "actorId",
+          "reactions"
+        ],
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "actorId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "reactions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "actorId",
+                "emoji",
+                "createdAt"
+              ],
+              "properties": {
+                "actorId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "emoji": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "file/begin": {
       "params": {
         "type": "object",
@@ -681,6 +792,11 @@
           "status"
         ],
         "properties": {
+          "viewerReactionActorId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
           "desktopCapabilities": {
             "type": "object",
             "required": [

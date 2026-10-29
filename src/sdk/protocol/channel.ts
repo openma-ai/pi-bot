@@ -1,6 +1,7 @@
-import type { FileAttachment } from '../../pi/types.ts';
+import type { FileAttachment, MessageReaction } from '../../pi/types.ts';
 export type { FileAttachment } from '../../pi/types.ts';
 export type ChannelMessage = {
+    reactions?: MessageReaction[];
     imageInputStatus?: "attached" | "unsupported";
     attachments?: FileAttachment[];
     messageId: string;

@@ -50,7 +50,7 @@ export interface HostStore {
     find<T>(table: string, owner: string, key: string): T | undefined;
     put<T extends {
         id: string;
-    }>(table: string, value: T): void;
+    }>(table: string, value: T, options?: { replaceReactions?: boolean }): void;
     transaction<T>(f: () => T): T;
     state(botId: string): BotStateSnapshot;
 }

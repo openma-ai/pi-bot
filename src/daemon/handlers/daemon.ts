@@ -1,3 +1,4 @@
+import { reactionUserActor } from '../../pi/message-reactions.ts';
 import type { PiBotDaemon } from '../core/daemon.ts';
 import type { DaemonConnection } from '../core/connection.ts';
 import { PiBotError } from '../core/errors.ts';
@@ -10,7 +11,7 @@ export async function daemonHandler(d: PiBotDaemon, c: DaemonConnection, method:
                 id: d.live?.model ?? 'test', setupRequired: !!(d.live?.configuration as any)?.setupRequired
             }, budget: d.live?.budget
         };
-        case 'daemon/snapshot': return d.snapshot(p.botIds);
+        case 'daemon/snapshot': return { ...d.snapshot(p.botIds), viewerReactionActorId: reactionUserActor(c.fileOwner) };
         case 'daemon/shutdown':
             if (c.transport === 'browser')
                 throw new PiBotError('forbidden', 'Shutdown requires a host connection');

@@ -82,6 +82,7 @@ export const TriggerStatusSchema = Type.Object({
     })
 });
 export const SnapshotSchema = Type.Object({
+    viewerReactionActorId: Type.Optional(Id),
     desktopCapabilities: Type.Optional(DesktopCapabilitiesSchema),
     trigger: Type.Optional(TriggerStatusSchema), seq: Time, bots: Type.Array(BotSchema), groups: Type.Array(GroupSchema), threads: Type.Array(ThreadSchema), turns: Type.Array(TurnSchema), activeTurns: Type.Array(TurnSchema), items: Type.Array(ItemSchema), pendingRequests: Type.Array(PendingRequestSchema), requests: Type.Array(PendingRequestSchema), routines: Type.Array(RoutineSchema), jobs: Type.Array(JobSummarySchema), budget: Type.Optional(Json), usage: UsageSchema, status: DaemonStatusSchema
 }, {

@@ -10,6 +10,7 @@ export function projectChannelMessage(table: 'inbox' | 'outbox', value: Envelope
     const botId = incoming ? e.to : o.botId;
     const channelId = value.route?.channelId ?? `local:${botId}`;
     return {
+        ...(value.reactions ? { reactions: value.reactions } : {}),
         ...(incoming && e.imageInputStatus ? {
             imageInputStatus: e.imageInputStatus
         } : {}), ...(value.attachments?.length ? {
