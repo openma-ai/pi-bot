@@ -1,13 +1,16 @@
+import { trace, ROOT_CONTEXT, SpanStatusCode } from '@opentelemetry/api';
+import { W3CTraceContextPropagator } from '@opentelemetry/core';
+import { localProvider, BoundedMemoryExporter } from './local-otel.ts';
 /** Optional local browser trace. No message text, provider data or network export. */
 export type DeliveryTiming = { primaryInputId: string; turnId: string; itemId: string; serverAt: number };
 type Pending = DeliveryTiming & { receivedAt: number; monotonic: number };
 const digest = async (value: string, length = 32) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))), b => b.toString(16).padStart(2, '0')).join('').slice(0, length);
 export class FrontendLatency {
     private pending = new Map<string, Pending>();
-    private records: unknown[] = [];
-    private sequence = 0;
+    private exporter = new BoundedMemoryExporter();
+    private provider = localProvider('pibo-client', this.exporter);
+    private tracer = this.provider.getTracer('pibo.frontend-latency','2');
     private generation = 0;
-    private instanceId?: string;
     received(value: DeliveryTiming) {
         if (this.pending.has(value.itemId)) return;
         if (this.pending.size >= 256) this.pending.delete(this.pending.keys().next().value!);
@@ -19,26 +22,28 @@ export class FrontendLatency {
         if (!p) return;
         this.pending.delete(itemId);
         const elapsed = Math.max(0, performance.now() - p.monotonic), endedAt = p.receivedAt + elapsed;
-        const sequence = this.sequence++;
         const generation = this.generation;
         try {
             // A reload/remount must not reuse a previously exported span ID.
             // If secure randomness is unavailable, diagnostics fail closed below.
-            const instanceId = this.instanceId ??= Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
-            const [traceId, spanId, parentSpanId, itemHash] = await Promise.all([digest('message:' + p.primaryInputId), digest('frontend:' + instanceId + ':' + p.turnId + ':' + itemId + ':' + sequence, 16), digest('run:' + p.turnId, 16), digest(itemId)]);
+            const [traceId, parentSpanId, itemHash] = await Promise.all([digest('message:' + p.primaryInputId), digest('run:' + p.turnId, 16), digest(itemId)]);
             if (generation !== this.generation) return;
-            const attr = (key: string, value: string | number) => ({ key: 'pibo.' + key, value: typeof value === 'number' ? { doubleValue: value } : { stringValue: value } });
-            const ns = (n: number) => (BigInt(Math.round(n * 1000)) * 1000n).toString();
-            const attributes = [attr('itemIdHash',itemHash),attr('receiveToCommitMs',elapsed)];
-            if (/^trn_[a-f0-9-]{36}$/.test(p.turnId)) attributes.push(attr('turnId',p.turnId));
-            // A cross-clock observation, not a measured one-way network latency.
-            if (Number.isFinite(p.serverAt)) attributes.push(attr('serverToReceiveClockDeltaMs',p.receivedAt-p.serverAt));
-            this.records.push({ resourceSpans: [{ resource: { attributes: [{ key:'service.name',value:{stringValue:'pibo-client'} }] }, scopeSpans: [{ scope:{name:'pibo.frontend-latency',version:'1'},spans:[{
-                traceId,spanId,parentSpanId,name:'frontend.receive_to_commit',kind:1,startTimeUnixNano:ns(p.receivedAt),endTimeUnixNano:ns(endedAt),attributes,status:{code:1}
-            }] }] }] });
-            if (this.records.length > 256) this.records.shift();
+            // The legacy host IDs deterministically identify its real SDK run span.
+            // W3C extraction validates the carrier; it never grants runtime access.
+            const carrier = {traceparent:`00-${traceId}-${parentSpanId}-01`};
+            const ctx = new W3CTraceContextPropagator().extract(ROOT_CONTEXT,carrier,{get:(c,k)=>c[k as keyof typeof c],keys:c=>Object.keys(c)});
+            if(!trace.getSpanContext(ctx))return;
+            const span=this.tracer.startSpan('frontend.receive_to_commit',{startTime:p.receivedAt},ctx);
+            span.setAttribute('pibo.itemIdHash',itemHash);
+            span.setAttribute('pibo.receiveToCommitMs',elapsed);
+            if(/^trn_[a-f0-9-]{36}$/.test(p.turnId))span.setAttribute('pibo.turnId',p.turnId);
+            if(Number.isFinite(p.serverAt))span.setAttribute('pibo.serverToReceiveClockDeltaMs',p.receivedAt-p.serverAt);
+            span.setStatus({code:SpanStatusCode.OK});span.end(endedAt);
+
         } catch { /* Missing WebCrypto/diagnostics cannot affect rendering. */ }
     }
-    snapshot(): unknown[] { return structuredClone(this.records); }
-    clear() { this.generation++; this.pending.clear(); this.records = []; }
+    snapshot(): unknown[] { return this.exporter.snapshot(); }
+    async forceFlush() { await this.provider.forceFlush({timeoutMillis:1000}).catch(()=>{}); }
+    async shutdown() { this.clear(); await this.provider.shutdown().catch(()=>{}); }
+    clear() { this.generation++; this.pending.clear(); this.exporter.clear(); }
 }
