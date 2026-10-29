@@ -20,6 +20,8 @@ information into these providers. No telemetry is uploaded.
 work. Each runtime owns its context manager; concurrent runs and separate runtime
 instances cannot inherit one another's active span. Authorization remains in its
 separate runtime context and never depends on trace IDs or traceparent headers.
+Third-party code using global `context.active()` is not automatically attached;
+Pibo uses its explicit instance-local context and SDK parent arguments.
 
 Run, provider and tool start/end pairs own real SDK spans. Start/first-event/
 first-content markers are child spans, preserving evidence before completion.
@@ -67,7 +69,7 @@ job completion.
 Run:
 
 ```sh
-node --import tsx --test test/local-latency.test.ts test/standard-otel.test.ts
+node --import tsx --test test/local-latency.test.ts test/standard-otel.test.ts test/standard-otel-runtime.test.ts
 ```
 
 Fixtures cover real SDK construction, asynchronous concurrent parent chains,

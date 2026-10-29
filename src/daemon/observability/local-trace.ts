@@ -117,7 +117,7 @@ export class LocalTrace {
         const base = event.kind + ':' + run + ':' + event.id;
         const parent = event.kind === 'tool' && event.parentToolCallId && event.parentToolCallId !== event.id
             ? 'tool:' + run + ':' + event.parentToolCallId : undefined;
-        if(event.phase==='start')this.start(scope,base,event.kind+'.end',Date.now()-event.elapsedMs,parent);
+        if(event.phase==='start')this.start(scope,base,event.kind+'.end',Date.now()-(finite(event.elapsedMs)??0),parent);
         this.write(scope, event.kind + '.' + event.phase, event.phase === 'end' ? base : base + ':' + event.phase, {
             elapsedMs: finite(event.elapsedMs), outcome: ['ok','error','cancelled','blocked','uncertain'].includes(event.outcome ?? '') ? event.outcome : undefined,
             tool: this.tool(event.tool), inputTokens: finite(event.inputTokens), outputTokens: finite(event.outputTokens), cacheReadTokens: finite(event.cacheReadTokens)

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,readFileSync,rmSync,readdirSync,statSync} from 'node:fs';
 import {join} from 'node:path';
+import {Socket} from 'node:net';
 import {tmpdir} from 'node:os';
 import {TracerProvider} from '@opentelemetry/sdk-trace';
 import {LocalTrace} from '../src/daemon/observability/local-trace.ts';
@@ -44,9 +45,9 @@ test('shutdown ends open spans as cancelled, is idempotent, rejects writes after
 });
 
 test('poisoned exporter/resource environment cannot cause remote export or PII retention; bounded retention',async()=>{
- const dir=mkdtempSync(join(tmpdir(),'pibo-otel-private-'));const keys=['OTEL_TRACES_EXPORTER','OTEL_EXPORTER_OTLP_ENDPOINT','OTEL_RESOURCE_ATTRIBUTES','OTEL_SERVICE_NAME','OTEL_TRACES_SAMPLER'];const previous=keys.map(k=>process.env[k]);const fetchBefore=globalThis.fetch;let calls=0;
- try{Object.assign(process.env,{OTEL_TRACES_EXPORTER:'otlp',OTEL_EXPORTER_OTLP_ENDPOINT:'https://never-contact.invalid/private',OTEL_RESOURCE_ATTRIBUTES:'user.email=private@example.invalid',OTEL_SERVICE_NAME:'SECRET_ACCOUNT',OTEL_TRACES_SAMPLER:'always_off'});globalThis.fetch=(async()=>{calls++;throw Error('must not export');}) as any;
-  const local=new LocalTrace(dir,4096);for(let n=0;n<50;n++)local.boundary(scope(n),{kind:'provider',phase:'end',id:'secret-token-'+n,elapsedMs:1,outcome:'error',...{rawBody:'private@example.invalid Bearer PRIVATE',tool:'secret-token',declaredToolNames:['SECRET_ACCOUNT']}} as any);await local.forceFlush();await local.shutdown();assert.equal(calls,0);
+ const dir=mkdtempSync(join(tmpdir(),'pibo-otel-private-'));const keys=['OTEL_TRACES_EXPORTER','OTEL_EXPORTER_OTLP_ENDPOINT','OTEL_RESOURCE_ATTRIBUTES','OTEL_SERVICE_NAME','OTEL_TRACES_SAMPLER'];const previous=keys.map(k=>process.env[k]);const fetchBefore=globalThis.fetch;const connectBefore=Socket.prototype.connect;let calls=0,connections=0;
+ try{Socket.prototype.connect=function(){connections++;throw Error('no network permitted in trace fixture');} as typeof Socket.prototype.connect;Object.assign(process.env,{OTEL_TRACES_EXPORTER:'otlp',OTEL_EXPORTER_OTLP_ENDPOINT:'https://never-contact.invalid/private',OTEL_RESOURCE_ATTRIBUTES:'user.email=private@example.invalid',OTEL_SERVICE_NAME:'SECRET_ACCOUNT',OTEL_TRACES_SAMPLER:'always_off'});globalThis.fetch=(async()=>{calls++;throw Error('must not export');}) as any;
+  const local=new LocalTrace(dir,4096);for(let n=0;n<50;n++)local.boundary(scope(n),{kind:'provider',phase:'end',id:'secret-token-'+n,elapsedMs:1,outcome:'error',...{rawBody:'private@example.invalid Bearer PRIVATE',tool:'secret-token',declaredToolNames:['SECRET_ACCOUNT']}} as any);await local.forceFlush();await local.shutdown();assert.equal(calls,0);assert.equal(connections,0);
   assert.deepEqual(readdirSync(dir).sort(),['latency.otlp.jsonl','latency.otlp.jsonl.1']);for(const f of readdirSync(dir)){assert.ok(statSync(join(dir,f)).size<=4096);assert.equal(statSync(join(dir,f)).mode&0o777,0o600);assert.doesNotMatch(readFileSync(join(dir,f),'utf8'),/PRIVATE|SECRET_ACCOUNT|Bearer|secret-token|private@example|never-contact/);}
- }finally{globalThis.fetch=fetchBefore;keys.forEach((k,i)=>{if(previous[i]===undefined)delete process.env[k];else process.env[k]=previous[i];});rmSync(dir,{recursive:true,force:true});}
+ }finally{Socket.prototype.connect=connectBefore;globalThis.fetch=fetchBefore;keys.forEach((k,i)=>{if(previous[i]===undefined)delete process.env[k];else process.env[k]=previous[i];});rmSync(dir,{recursive:true,force:true});}
 });
