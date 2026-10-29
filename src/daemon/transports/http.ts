@@ -115,14 +115,16 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
                         }, 413);
                 }
                 const value = JSON.parse(body || '{}');
+                if (url.pathname === '/pi/connections/save') { const result=await settings.saveConnection(value); await daemon.requestPiReload(); return json(result); }
+                if (url.pathname === '/pi/connections/remove') { const result=settings.removeConnection(value.connectionId,value.expectedRevision); await daemon.requestPiReload(); return json(result); }
                 if (url.pathname === '/pi/login')
-                    return json(settings.startLogin(value.provider, value.type, value.requestId));
+                    return json(settings.startLogin(value.provider, value.type, value.requestId, value.connectionId));
                 if (url.pathname === '/pi/model') {
-                    await settings.selectModel(value.provider, value.model, value.thinkingLevel);
+                    await settings.selectModel(value.provider, value.model, value.thinkingLevel, value.connectionId);
                     return json(await daemon.requestPiReload());
                 }
                 if (url.pathname === '/pi/logout') {
-                    await settings.logout(value.provider);
+                    await settings.logout(value.provider, value.connectionId);
                     return json(await daemon.requestPiReload());
                 }
                 if (match && match[2] === 'input') {

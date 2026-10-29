@@ -16,6 +16,7 @@ import { createAgentSession, createBashTool, DefaultResourceLoader, ModelRuntime
 import { createAssistantMessageEventStream, type AssistantMessage, type Model, type Api } from '@earendil-works/pi-ai';
 import { createContextExtension, estimateContextTokens, type ContextOptions, type SummarySnapshot } from './context.ts';
 import { authorize, ProviderRequestGuardError, InferenceYieldError, JobExecutionError, type SessionFactory, type BotHost, type ProactivePort, type CredentialPort } from './host.ts';
+import { registerReactionTool } from './reaction-tool.ts';
 import { createProactiveExtension, proactiveToolNames } from './proactive-extension.ts';
 import { inboxIds } from './inbox-identity.ts';
 import { commitOutcome, conversationResource, ReadEvidence } from './state-protection.ts';
@@ -38,6 +39,8 @@ export interface PiOptions {
     dir: string;
     modelRuntime: ModelRuntime;
     model: Model<Api>;
+    /** Immutable account identity captured at the quiescent model configuration boundary. */
+    connectionBinding?: {connectionId:string;providerId:string;credentialVersion:number};
     tools?: ToolDefinition[];
     extensions?: ExtensionFactory[];
     proactive?: (host: BotHost) => ProactivePort;
@@ -259,7 +262,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
             },
         }) : undefined;
         const proactive = options.proactive?.(runtime);
-        const native = new Set([...(options.desktop ? desktopToolNames : []), ...(options.codingWorkers ? ['subagent'] : []), ...(runtime.fileContext && runtime.publishFile ? ['file_workspace', 'publish_file'] : []), 'request_credential', 'create_bot', 'list_bots', 'send_to_bot', 'send_to_group', 'send_message', 'ask_user', 'start_job', 'job_result', 'runtime_state', 'context_history', ...(proactive ? proactiveToolNames : []), ...(background ? ['codemode', 'codemode_wait', 'codemode_read', 'exec_wait', ...additionalTools.map(t => t.name)] : [])]);
+        const native = new Set([...(options.desktop ? desktopToolNames : []), ...(options.codingWorkers ? ['subagent'] : []), ...(runtime.fileContext && runtime.publishFile ? ['file_workspace', 'publish_file'] : []), 'request_credential', 'create_bot', 'list_bots', 'send_to_bot', 'send_to_group', 'send_message', 'react_to_message', 'ask_user', 'start_job', 'job_result', 'runtime_state', 'context_history', ...(proactive ? proactiveToolNames : []), ...(background ? ['codemode', 'codemode_wait', 'codemode_read', 'exec_wait', ...additionalTools.map(t => t.name)] : [])]);
         const allowed = new Set(options.allowTools ?? []);
         const extension: ExtensionFactory = api => {
             const pi = new Proxy(api, {
@@ -275,6 +278,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                     return Reflect.get(target, property);
                 }
             });
+            registerReactionTool(pi, { runtime, own, result });
             if (proactive)
                 createProactiveExtension(proactive, bot.id, own, evidence)(pi);
             if (options.credentials)
@@ -606,6 +610,10 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
         await loader.reload();
         const sessionFile = scopeKey ? bot.sessionFiles?.[scopeKey] : bot.sessionFile;
         const manager = sessionFile ? SessionManager.open(sessionFile, dir, dir) : SessionManager.create(dir, dir);
+        if(options.connectionBinding){
+            const previous=manager.getBranch().filter(e=>e.type==='custom'&&e.customType==='pibo.modelConnection').at(-1);
+            if(!previous||JSON.stringify((previous as any).data)!==JSON.stringify(options.connectionBinding)) manager.appendCustomEntry('pibo.modelConnection',options.connectionBinding);
+        }
         const { session } = await createAgentSession({
             cwd: dir, agentDir: dir, modelRuntime: options.modelRuntime, model: options.model, settingsManager: settings, resourceLoader: loader, sessionManager: manager, noTools: 'builtin', customTools: options.tools ?? []
         });
@@ -616,6 +624,7 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
         // provider boundary, rather than waiting behind one queued item per turn.
         session.setSteeringMode('all');
         session.agent.streamFunction = async (model, context, request) => {
+            if(options.connectionBinding&&model.provider!==options.connectionBinding.providerId) throw new Error('Session model does not belong to its selected connection');
             const timing = new ProviderTiming(boundary => runtime.events?.emit(bot.id, { type: 'latency', boundary }), context);
             const requestInbox = [...consumed];
             const controller = new AbortController();

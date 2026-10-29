@@ -61,7 +61,7 @@ export async function livePiFactory(dir: string, proactive: (host: BotHost) => P
     });
     const factory = piSessionFactory({
         sandbox,
-        credentials, desktop, codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model, proactive, context: {
+        credentials, desktop, codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model, connectionBinding:configuration.connectionBinding, proactive, context: {
             backgroundEnabled: true, outputReserveTokens: 16384, summaryTimeoutMs: 600000
         }, backgroundTools: {}, extensions: [trace], thinkingLevel: configuration.thinkingLevel, maxOutputTokens: 16384, maxRequestsPerWake: 16, inferenceRequestTimeoutMs: 600000, inferenceSignal: lifetime,
         beforeProviderRequest: budget ? () => {
