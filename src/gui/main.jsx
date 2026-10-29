@@ -30,6 +30,7 @@ import {
   AvatarContext,
 } from "./BotAvatar.jsx";
 import {FileCards} from "./FileCards.jsx";
+import {MessageReactions} from "./MessageReactions.jsx";
 import {uploadFile} from "./file-transfer.js";
 import { MessageBody } from "./MessageBody.jsx";
 import { botActivity, messageFailures } from "./presentation.ts";
@@ -1029,6 +1030,7 @@ function App({ runtime, workspace, setPiSettingsOpen, openConnectionSettings }) 
                           <div className="bubble">
                           <MessageBody text={displayText(m)} />
                           <FileCards files={m.attachments} imageInputStatus={m.imageInputStatus} api={api} scope={{botId:m.botId||selected,...(view==="group"?{groupId}:{})}} />
+                          <MessageReactions message={m} api={api} viewerActorId={data.viewerReactionActorId}/>
 
                           {(m.status === "queued" || (m.status === "processing" && !isUserMessage(m))) && (
                             <Text size="1" className="status">

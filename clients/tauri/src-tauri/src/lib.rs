@@ -480,6 +480,9 @@ async fn request_reply(
 }
 
 #[tauri::command]
+fn pi_settings_capabilities() -> serde_json::Value { serde_json::json!({"modelConnectionsVersion":1}) }
+
+#[tauri::command]
 async fn stream_open(
     window: tauri::Window,
     app: tauri::AppHandle,
@@ -913,6 +916,7 @@ pub fn run() {
             credential_submit,
             credential_form_metadata,
             pi_settings_close_forms,
+            pi_settings_capabilities,
             file_export::file_export
         ])
         .build(tauri::generate_context!())

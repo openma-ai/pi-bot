@@ -29,6 +29,13 @@ function accountCatalog(provider,state='confirmed'){
   if(state==='failed'){provider.models=[];provider.configured=false;}
 }
 if(parameters.has('account')){providers[0].credential='oauth';providers[0].configured=true;accountCatalog(providers[0],parameters.get('account'));}
+if(parameters.has('connections')) {
+  const model={id:'qa-model',name:'QA fixture model',reasoning:true,thinkingLevels:fakeThinkingLevels};
+  config.connections=[{id:'11111111-1111-4111-8111-111111111111',providerId:'openai',name:'工作账号 · QA',revision:1,configured:true,credential:'oauth',methods:providers[0].methods,methodLabels:providers[0].methodLabels,models:[model],catalog:{status:'refreshed',accountAccess:'confirmed',authChecked:true}},
+    {id:'22222222-2222-4222-8222-222222222222',providerId:'openai',name:'个人账号 · QA',revision:1,configured:true,credential:'oauth',methods:providers[0].methods,methodLabels:providers[0].methodLabels,models:[model],catalog:{status:'refreshed',accountAccess:'confirmed',authChecked:true}}];
+  config.current={connectionId:config.connections[0].id,provider:'openai',model:'qa-model',thinkingLevel:'high'};
+  config.connectionManagement={version:1,customEndpoint:true,endpointApis:[{id:'openai-completions',name:'OpenAI Chat Completions'},{id:'openai-responses',name:'OpenAI Responses'}]};
+}
 const flows = new Map(), calls = [], nativeForms = new Map();
 const fakeAuthUrl='https://example.invalid/isolated-qa-no-oauth';
 const browserEvents=()=>[{type:'auth_url',url:fakeAuthUrl,instructions:'隔离 QA：此链接不会执行真实授权'}];
@@ -44,11 +51,12 @@ const json = (value,status=200) => Response.json(structuredClone(value),{status}
 window.__MODEL_AUTH_QA__ = {calls,flows,nativeForms,warnings,configuration(){return structuredClone(config);},setMode(value){mode=value;},releaseStart(){releaseStart?.();},releaseAnswer(){releaseAnswer?.();},releaseState(){holdState=false;releaseState?.();},
   progress(id=lastId()){const flow=flows.get(id);if(flow){flow.events=[...browserEvents(),{type:'progress',message:'隔离 QA：正在确认授权结果'}];}},
   fail(id=lastId()){const flow=flows.get(id);if(flow){flow.status='failed';flow.error='隔离 QA：授权未完成';delete flow.prompt;}},
-  complete(id=lastId(),persist=true){const flow=flows.get(id);if(flow){flow.status='complete';delete flow.prompt;if(persist){const provider=providers.find(p=>p.id===flow.providerId);provider.credential=flow.type;provider.configured=true;config.catalog={status:'refreshed',source:'isolated-sdk-fixture'};provider.catalog={...config.catalog};if(provider.id==='openai'&&flow.type==='oauth')accountCatalog(provider,parameters.get('account')||'confirmed');}}}};
+  complete(id=lastId(),persist=true){const flow=flows.get(id);if(flow){flow.status='complete';delete flow.prompt;if(persist){const provider=flow.connectionId?config.connections.find(c=>c.id===flow.connectionId):providers.find(p=>p.id===flow.providerId);provider.credential=flow.type;provider.configured=true;config.catalog={status:'refreshed',source:'isolated-sdk-fixture'};provider.catalog={...config.catalog};if(provider.id==='openai'&&flow.type==='oauth')accountCatalog(provider,parameters.get('account')||'confirmed');}}}};
 if(parameters.has('native')) window.__PIBOT_NATIVE__ = {call:async(command,args={})=>{
   const id=args.path?.split('/').at(-1),flow=flows.get(id);
   calls.push({kind:'native-mock',command,path:args.path,promptId:args.promptId});
   // Returning from the empty connection form only cancels its mock login scope.
+  if(command==='pi_settings_capabilities')return{modelConnectionsVersion:parameters.has('old-native')?0:1};
   if(command==='runtime_control' && args.method==='tailscale/cancelLogin')return;
   if(command==='pi_settings_credential_window'){
     if(flow?.status!=='pending'||flow.prompt?.id!==args.promptId)throw {code:'promptExpired',message:'隔离 QA：步骤失效'};
@@ -69,10 +77,10 @@ window.fetch = async (input,options={}) => {
   const url = new URL(typeof input==='string'?input:input.url, location.href), method=options.method||'GET';
   if(url.origin!==location.origin || !url.pathname.startsWith('/qa/pi/')) throw new Error('QA fixture blocked external or unmocked request');
   const path=url.pathname.slice('/qa/pi/'.length), body=options.body?JSON.parse(options.body):{};
-  calls.push({path,method,requestId:body.requestId,promptId:body.promptId}); // Never retain input values.
+  calls.push({path,method,requestId:body.requestId,promptId:body.promptId,connectionId:body.connectionId}); // Never retain input values.
   if(path==='config')return mode==='config-error'?json({error:'隔离 QA：配置读取失败'},503):json(config);
   if(path==='login' && method==='POST'){
-    const id=body.requestId;if(flows.has(id))return json({id});const flow=freshFlow(id,body.provider,body.type);flows.set(id,flow);
+    const id=body.requestId;if(flows.has(id))return json({id});const flow={...freshFlow(id,body.provider,body.type),...(body.connectionId?{connectionId:body.connectionId}:{})};flows.set(id,flow);
     if(mode==='progress')window.__MODEL_AUTH_QA__.progress(id);if(mode==='success')window.__MODEL_AUTH_QA__.complete(id);if(mode==='failed')window.__MODEL_AUTH_QA__.fail(id);
     if(mode==='late-start'){mode='';return await new Promise(resolve=>{releaseStart=()=>{flows.set(id,freshFlow(id,body.provider,body.type));resolve(json({id}));};});}
     if(mode==='lost-start'){mode='';holdState=true;throw new TypeError('isolated simulated lost response');}
@@ -95,12 +103,20 @@ window.fetch = async (input,options={}) => {
     if(mode==='lost-poll'){mode='';throw new TypeError('isolated simulated lost status read');}
     return json(flow);
   }
-  if(path==='model'){
-    const model=providers.find(p=>p.id===body.provider)?.models.find(m=>m.id===body.model);
-    if(!model?.thinkingLevels.includes(body.thinkingLevel))return json({error:'隔离 QA：该模型不支持所选思考强度'},400);
-    config={...config,current:{provider:body.provider,model:body.model,thinkingLevel:body.thinkingLevel}};return json({applied:true});
+  if(path==='connections/save'){
+    const old=config.connections.find(c=>c.id===body.id);
+    if(old&&body.expectedRevision!==old.revision)return json({error:'隔离 QA：版本冲突'},409);
+    const p=providers.find(p=>p.id===body.providerId);
+    const next={...body,revision:(old?.revision||0)+1,configured:false,credential:null,models:body.endpoint?.models||p?.models||[],methods:p?.methods||['api_key'],methodLabels:p?.methodLabels||{api_key:'API key'},catalog:{status:'cached'}};
+    delete next.expectedRevision;config.connections=config.connections.filter(c=>c.id!==body.id).concat(next);return json({connection:next});
   }
-  if(path==='logout'){const provider=providers.find(p=>p.id===body.provider);provider.credential=null;provider.configured=false;return json({applied:true});}
+  if(path==='connections/remove'){config.connections=config.connections.filter(c=>c.id!==body.connectionId);if(config.current.connectionId===body.connectionId)config.current.connectionUnavailable=true;return json({removed:true});}
+  if(path==='model'){
+    const selected=body.connectionId?config.connections.find(c=>c.id===body.connectionId):providers.find(p=>p.id===body.provider);const model=selected?.models.find(m=>m.id===body.model);
+    if(!model?.thinkingLevels.includes(body.thinkingLevel))return json({error:'隔离 QA：该模型不支持所选思考强度'},400);
+    config={...config,current:{provider:body.provider,model:body.model,thinkingLevel:body.thinkingLevel,...(body.connectionId?{connectionId:body.connectionId}:{})}};return json({applied:true});
+  }
+  if(path==='logout'){const provider=body.connectionId?config.connections.find(c=>c.id===body.connectionId):providers.find(p=>p.id===body.provider);provider.credential=null;provider.configured=false;return json({applied:true});}
   return json({error:'QA fixture endpoint missing'},404);
 };
 const runtime={status:{active:{id:'qa-only',baseUrl:'/qa',mode:parameters.has('remote')?'tailnet':parameters.has('native')?'builtin':'direct',profile:{name:parameters.has('remote')?'隔离 QA 远端工作空间':'隔离 QA 工作空间'}},profiles:[]},busy:false,managed:parameters.has('manage'),registerBeforeSwitch(){return()=>{};}};

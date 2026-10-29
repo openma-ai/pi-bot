@@ -413,7 +413,7 @@ export class BotRuntime implements BotHost {
             const turn = this.tracker.begin(e);
             const runStarted = performance.now();
             this.trace.point({ inputId: e.id, turnId: turn.id }, 'run.start');
-            await this.store.events.context.run({
+            await this.trace.withScope({ inputId: e.id, turnId: turn.id }, () => this.store.events.context.run({
                 botId: id, threadId: turn.threadId, turnId: turn.id
             }, async () => {
                 let finalStatus: Turn['status'] = 'completed';
@@ -488,7 +488,7 @@ export class BotRuntime implements BotHost {
                     this.tracker.end(turn.id, finalStatus, finalError);
                     this.trace.point({ inputId: e.id, turnId: turn.id }, 'run.end', { status: finalStatus, elapsedMs: performance.now() - runStarted });
                 }
-            });
+            }));
         }
     }
     /** Trusted adapter checkpoint. A receipt/provider admission is not a resolution. */
@@ -969,6 +969,7 @@ export class BotRuntime implements BotHost {
         this.sessions.clear();
         this.store.close();
         this.releaseLock();
+        void this.trace.shutdown().catch(() => {});
     }
     async idle() {
         for (;;) {
@@ -989,5 +990,6 @@ export class BotRuntime implements BotHost {
         await Promise.allSettled([...this.sessions.values()].map(async (s) => (await s).close()));
         this.store.close();
         this.releaseLock();
+        await this.trace.shutdown();
     }
 }

@@ -4,15 +4,10 @@ import {
   Text,
   TextField,
   Button,
-  Select,
-  Popover,
   Skeleton,
 } from "@radix-ui/themes";
-import { Command } from "cmdk";
 import {
   Check,
-  ChevronDown,
-  Search,
   KeyRound,
   LogIn,
   MoreHorizontal,
@@ -26,6 +21,9 @@ import { DropdownMenu } from "@radix-ui/themes";
 import { createPiSettingsClient } from "../sdk/pi-settings-client.ts";
 import { createPiLoginFlow } from "./pi-login-flow.ts";
 import { piLoginPresentation, piProviderConfigured, piCatalogNote } from "./pi-login-presentation.ts";
+import {Choice} from "./PiChoice.jsx";
+import {ConnectionEditor,ConnectionList} from "./PiConnections.jsx";
+import {piConnections,piModelOptions,currentConnectionId} from "./pi-connections.ts";
 import { piThinkingSelection } from "./pi-thinking.ts";
 const safeLink = (value) => {
   try {
@@ -39,105 +37,6 @@ const safeLink = (value) => {
     return undefined;
   }
 };
-function Choice({
-  label,
-  value,
-  onChange,
-  items,
-  disabled,
-  searchable = false,
-  fallback,
-}) {
-  const [open, setOpen] = useState(false);
-  if (!searchable)
-    return (
-      <Select.Root
-        value={value || ""}
-        onValueChange={onChange}
-        disabled={disabled}
-      >
-        <Select.Trigger aria-label={label} placeholder="请选择" />
-        <Select.Content
-          position="popper"
-          sideOffset={6}
-          align="end"
-          variant="soft"
-          className="pi-select-menu"
-        >
-          {items.map((i) => (
-            <Select.Item key={i.id} value={i.id}>
-              {i.name}
-            </Select.Item>
-          ))}
-        </Select.Content>
-      </Select.Root>
-    );
-  const selected = items.find((i) => i.id === value);
-  return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger>
-        <button
-          type="button"
-          className="pi-choice"
-          role="combobox"
-          aria-label={label}
-          aria-expanded={open}
-          disabled={disabled}
-        >
-          <span>
-            <span className="pi-choice-name">
-              {selected?.name || fallback || value || "请选择"}
-            </span>
-            {selected?.detail && (
-              <span className="pi-choice-detail">{selected.detail}</span>
-            )}
-          </span>
-          <ChevronDown size={15} />
-        </button>
-      </Popover.Trigger>
-      <Popover.Content
-        className="pi-choice-popover"
-        side="bottom"
-        align="start"
-        size="1"
-      >
-        <Command
-          label={"搜索" + label}
-          defaultValue={
-            selected ? selected.id + " " + selected.name : undefined
-          }
-        >
-          <div className="pi-choice-search">
-            <Search size={15} />
-            <Command.Input
-              placeholder={"搜索" + label}
-              aria-label={"搜索" + label}
-            />
-          </div>
-          <Command.List>
-            <Command.Empty>没有匹配的选项</Command.Empty>
-            {items.map((i) => (
-              <Command.Item
-                key={i.id}
-                value={i.id + " " + i.name + " " + (i.detail || "")}
-                onSelect={() => {
-                  onChange(i.id);
-                  setOpen(false);
-                }}
-              >
-                <span className="pi-choice-option">
-                  <span>{i.name}</span>
-                  {i.detail && <small>{i.detail}</small>}
-                </span>
-                {i.id === value && <Check size={15} />}
-              </Command.Item>
-            ))}
-          </Command.List>
-        </Command>
-      </Popover.Content>
-    </Popover.Root>
-  );
-}
 function SettingsError({ error, onRetry, busy }) {
   return (
     <div className="pi-settings-error" role="alert">
@@ -175,6 +74,12 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
   const pendingAction = useRef(false), promptId = useRef();
   const [config, setConfig] = useState(),
     [provider, setProvider] = useState(""),
+    [connectionId,setConnectionId]=useState(""),
+    [authConnectionId,setAuthConnectionId]=useState(""),
+    [showMethods,setShowMethods]=useState(false),
+    [editing,setEditing]=useState(null),
+    [removeConfirm,setRemoveConfirm]=useState(false),
+    [nativeConnections,setNativeConnections]=useState(!window.__PIBOT_NATIVE__),
     [authProvider, setAuthProvider] = useState(""),
     [section, setSection] = useState("use"),
     [model, setModel] = useState(""),
@@ -194,11 +99,14 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
     if (initial) {
       // Browsing an authentication provider is not a draft model selection.
       setProvider(data.current.provider || "");
+      setConnectionId(currentConnectionId(data));
+      setAuthConnectionId(currentConnectionId(data)||piConnections(data)[0]?.id||"");
+      setShowMethods(false);
       setModel(data.current.model || "");
       setThinking(data.current.thinkingLevel || "high");
       setAuthProvider(data.current.provider || data.providers.find(p => piProviderConfigured(p))?.id ||
         data.providers.find(p => p.id === "openai")?.id || data.providers[0]?.id || "");
-      setSection(data.providers.some(p => piProviderConfigured(p) || p.credential) ? "use" : "auth");
+      setSection(data.providers.some(p => piProviderConfigured(p) || p.credential) || piConnections(data).some(c=>c.configured) ? "use" : Array.isArray(data.connections) ? (data.connections.length ? "connections" : "add") : "auth");
     }
     return data;
   }
@@ -206,6 +114,7 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
     alive.current = true; scope.current++;
     setConfig(undefined); setFlow(undefined); setError(""); setNotice("");
     const version = scope.current;
+    if (native) void window.__PIBOT_NATIVE__.call("pi_settings_capabilities").then(cap=>{if(alive.current&&version===scope.current)setNativeConnections(cap?.modelConnectionsVersion>=1);}).catch(()=>{});
     controller.current = createPiLoginFlow(request, next => {
       if (alive.current && version === scope.current) {
         if (promptId.current !== next?.prompt?.id) setValue("");
@@ -234,22 +143,39 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
   useEffect(() => registerBeforeSwitch?.(async () => {
     await controller.current?.cancel(); setValue("");
   }), [registerBeforeSwitch, request]);
-  const account = config?.providers.find(p => p.id === authProvider);
-  const models = (config?.providers || []).filter(p => piProviderConfigured(p)).flatMap(p =>
-    p.models.map(m => ({ id: JSON.stringify([p.id, m.id]), name: m.name,
-      detail: p.name + " · " + m.id, provider: p.id, model: m.id })));
-  const selected = config?.providers.find(p => p.id === provider);
-  const visibleCatalog = selected?.catalog || config?.providers.find(p => piProviderConfigured(p) || p.credential)?.catalog || config?.catalog;
-  const selectedModel = selected?.models.find(m => m.id === model);
-  const thinkingSelection = piThinkingSelection(selectedModel, thinking);
-  const validModel = piProviderConfigured(selected) && !!selectedModel;
-  const active = flow?.status === "pending";
-  const presentation = piLoginPresentation(flow, callbackPlacement);
-  const confirming = flow?.status === "complete" && section === "auth";
-  const hasConnection = !!config?.providers.some(p => piProviderConfigured(p) || p.credential);
-  const configured = !!config?.providers.some(p => piProviderConfigured(p) && p.id === config.current.provider && p.models.some(m => m.id === config.current.model));
-  const dirty = !!config && validModel && (provider !== config.current.provider ||
-    model !== config.current.model || thinking !== config.current.thinkingLevel);
+  const connections=piConnections(config),modern=Array.isArray(config?.connections);
+  const authConnection=connections.find(c=>c.id===authConnectionId);
+  const providerAccount=config?.providers.find(p=>p.id===(authConnection?.providerId||authProvider));
+  const account=authConnection ? {...providerAccount,...authConnection,id:authConnection.providerId} : providerAccount;
+  const models=piModelOptions(config);
+  const selected=connections.find(c=>c.id===connectionId);
+  const visibleCatalog=selected?.catalog || connections.find(c=>c.configured||c.credential)?.catalog || config?.catalog;
+  const selectedModel=selected?.models?.find(m=>m.id===model);
+  const thinkingSelection=piThinkingSelection(selectedModel,thinking);
+  const validModel=piProviderConfigured(selected)&&!!selectedModel;
+  const active=flow?.status==="pending";
+  const presentation=piLoginPresentation(flow,callbackPlacement);
+  const confirming=flow?.status==="complete"&&section==="auth";
+  const hasConnection=connections.length>0;
+  const configured=connections.some(c=>c.configured&&c.id===currentConnectionId(config)&&c.models.some(m=>m.id===config.current.model));
+  const dirty=!!config&&validModel&&(connectionId!==currentConnectionId(config)||provider!==config.current.provider||model!==config.current.model||thinking!==config.current.thinkingLevel);
+  const routeEpoch=useRef(0), routeOwner=useRef(crypto.randomUUID()), routeFromPop=useRef(false), routeClaimed=useRef(false);
+  useEffect(()=>{
+    if(!config)return;
+    if(routeFromPop.current){routeFromPop.current=false;return;}
+    const state={...history.state,piSettingsRoute:{owner:routeOwner.current,section,connectionId:authConnectionId}};
+    if(!routeClaimed.current){history.replaceState(state,"");routeClaimed.current=true;}else history.pushState(state,"");
+  },[!!config,section,authConnectionId]);
+  useEffect(()=>{
+    const pop=event=>{
+      const route=event.state?.piSettingsRoute;if(route?.owner!==routeOwner.current)return;
+      routeEpoch.current++;routeFromPop.current=true;void controller.current?.cancel();setValue("");setError("");setNotice("");setRemoveConfirm(false);
+      const saved=piConnections(config).find(c=>c.id===route.connectionId);
+      setAuthConnectionId(saved?.id||"");setEditing(route.section==="edit"?saved:null);setShowMethods(false);
+      setSection(["auth","edit"].includes(route.section)&&!saved?"connections":route.section);
+    };
+    window.addEventListener("popstate",pop);return()=>window.removeEventListener("popstate",pop);
+  },[config]);
   const effectiveError = error || (flow?.error ? {message:flow.error,code:flow.errorCode,submitted:flow.uncertain} : undefined);
   async function act(fn) {
     if (pendingAction.current) return;
@@ -260,7 +186,7 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
     finally { pendingAction.current = false; if(alive.current && version === scope.current) setBusy(false); }
   }
   function confirmConnection(data) {
-    const connected = data?.providers.find(p => p.id === flow?.providerId && piProviderConfigured(p));
+    const connected = piConnections(data).find(c => c.id === (flow?.connectionId || `legacy:${flow?.providerId}`) && piProviderConfigured(c));
     if (!connected) {
       setError({message:"登录已结束，但连接状态尚未确认。请重新加载。",code:"invalidResponse"});
       return;
@@ -272,7 +198,7 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
     if(active) await controller.current?.poll();
     else if(data && flow?.status === "complete") confirmConnection(data);
   });
-  const login = method => act(() => controller.current.begin(authProvider, method));
+  const login = method => act(() => controller.current.begin(account?.id||authProvider, method, modern ? authConnectionId : undefined));
   async function closeFlowWindows(id) {
     if (!native || !id) return;
     try { await window.__PIBOT_NATIVE__.call("pi_settings_close_forms", {path:baseUrl + "/pi/login/" + id}); }
@@ -283,7 +209,7 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
     const wasPending = previous?.status === "pending";
     const cleanup = controller.current?.cancel();
     setValue(""); setError(""); setNotice(wasPending ? "登录已取消。" : "");
-    if(back) setSection("use");
+    if(back) setSection(modern ? "connections" : "use");
     await cleanup;
     await closeFlowWindows(previous?.id);
   }
@@ -315,9 +241,19 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
         )}
       </div>
     );
+  if (modern && native && !nativeConnections) return <div className="pi-settings-panel"><Text role="status" size="2">此运行环境支持独立模型连接。请更新原生客户端后管理连接；现有账号和模型保持不变。</Text></div>;
   return (
     <div className="pi-settings-panel">
-      {section === "auth" ? (
+      {section === "connections" ? <ConnectionList connections={connections} providers={config.providers} currentId={currentConnectionId(config)} busy={busy} onBack={()=>setSection("use")}
+        onAdd={()=>{setEditing(null);setNotice("");setError("");setSection(modern?"add":"auth");setAuthConnectionId("");setShowMethods(true);}}
+        onManage={id=>{setRemoveConfirm(false);const c=connections.find(c=>c.id===id);setAuthConnectionId(id);setAuthProvider(c.providerId);setShowMethods(!c.configured);setNotice("");setError("");setSection("auth");}}/>
+      : section === "add" || section === "edit" ? <ConnectionEditor key={editing?.id||"new"} providers={config.providers} connection={editing}
+        canCustom={config.connectionManagement?.customEndpoint!==false} apiOptions={config.connectionManagement?.endpointApis} busy={busy}
+        onCancel={()=>{setEditing(null);setError("");setSection(connections.length?"connections":"use");}}
+        onSave={value=>act(async()=>{const generation=routeEpoch.current;const result=await request("connections/save",value);const data=await refresh();if(!data||generation!==routeEpoch.current)return;
+          const saved=piConnections(data).find(c=>c.id===(result.connection?.id||value.id));if(!saved)throw new Error("连接已提交，请刷新确认状态");
+          setAuthConnectionId(saved.id);setAuthProvider(saved.providerId);setShowMethods(!saved.configured);setEditing(null);setSection("auth");})}/>
+      : section === "auth" ? (
         <section className="pi-mode-content" aria-label="认证管理">
           <div className="pi-field-heading">
             {hasConnection ? <Button variant="ghost" color="gray" size="2" className="settings-back"
@@ -326,7 +262,7 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
             <Text size="1" color="gray">{runtimeLabel}</Text>
           </div>
           <section className="pi-settings-section" aria-label="提供商与认证">
-            {!active && <><Text size="2" color="gray">{hasConnection ? "管理已连接账号，或添加其他提供商。" : "先连接账号，再选择模型。"}</Text>
+            {!active && !authConnection && <><Text size="2" color="gray">先选择提供商，再完成认证。</Text>
             <Choice label="模型提供商" value={authProvider} disabled={busy || active || confirming} searchable
               items={config.providers.map(p => ({id:p.id,name:p.name,
                 detail:[p.methodLabels?.oauth, p.methods.includes("api_key") ? "API key" : ""].filter(Boolean).join(" · ")}))}
@@ -341,11 +277,16 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
                 {account.credential && <DropdownMenu.Root>
                   <DropdownMenu.Trigger><Button aria-label="管理提供商认证" size="1" variant="ghost" color="gray" disabled={busy || active}><MoreHorizontal size={17} /></Button></DropdownMenu.Trigger>
                   <DropdownMenu.Content><DropdownMenu.Item color="red" onSelect={() => void act(async () => {
-                    await request("logout", {provider:authProvider}); if (await refresh()) setNotice("已断开该提供商的认证。");
+                    await request("logout", {provider:account.id,...(modern?{connectionId:authConnectionId}:{})}); if (await refresh()) {setShowMethods(true);setNotice("已断开此连接的认证，其他连接保留。");}
                   })}>断开连接</DropdownMenu.Item></DropdownMenu.Content>
                 </DropdownMenu.Root>}
               </div>}
-              {!active && !confirming && <div className="pi-account-actions pi-auth-methods">
+              {!active && authConnection && <div className="pi-connected-summary"><span><strong>{authConnection.name}</strong><small>{providerAccount?.name||"自定义服务"}</small></span>
+                <Flex gap="2" wrap="wrap">{authConnection.configured&&!showMethods&&<Button size="1" variant="ghost" onClick={()=>setShowMethods(true)}>重新认证</Button>}
+                {modern&&!authConnection.legacy&&<Button size="1" variant="ghost" color="gray" onClick={()=>{setEditing(authConnection);setSection("edit");}}>编辑连接</Button>}
+                {modern&&!authConnection.legacy&&<Button size="1" variant="ghost" color="gray" disabled={busy} onClick={()=>setRemoveConfirm(true)}>移除连接</Button>}</Flex></div>}
+              {removeConfirm&&!active&&<div className="pi-remove-confirm" role="group" aria-label="确认移除连接"><Text size="2">移除“{authConnection.name}”的连接记录？历史会话和本地凭据文件保留；不会自动选择其他账号。</Text><Flex gap="2"><Button size="1" color="red" disabled={busy} onClick={()=>void act(async()=>{await request("connections/remove",{connectionId:authConnectionId,expectedRevision:authConnection.revision});await refresh();setRemoveConfirm(false);setAuthConnectionId("");setSection("connections");})}>确认移除</Button><Button size="1" variant="soft" disabled={busy} onClick={()=>setRemoveConfirm(false)}>取消</Button></Flex></div>}
+              {!active && !confirming && (!authConnection?.configured || showMethods) && <div className="pi-account-actions pi-auth-methods">
                 {[...account.methods].sort((a,b) => (a === "oauth" ? 0 : 1) - (b === "oauth" ? 0 : 1)).map(method => <Button
                   key={method} variant={method === "oauth" ? "solid" : "soft"} size="2" disabled={busy}
                   onClick={() => void login(method)}>
@@ -353,12 +294,6 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
                   {method === "oauth" ? (account.methodLabels?.oauth || "登录账号") : (account.credential === "api_key" ? "更新 API key" : "添加 API key")}
                 </Button>)}
               </div>}
-              {!active && !confirming && account.id === "openai" && account.methods.includes("oauth") && <Text as="p" size="1" color="gray" className="pi-auth-note">ChatGPT 账号登录与 OpenAI API key 是两种独立的连接方式。</Text>}
-              {!active && !confirming && account.id === "openai" && config.providers.some(p => p.id === "openai-codex" && p.methods.includes("oauth")) &&
-                <Button className="pi-device-method" size="1" variant="ghost" color="gray" onClick={() => {
-                  void controller.current?.cancel(); setAuthProvider("openai-codex"); setError(""); setNotice("设备码由 OpenAI Codex (legacy) 提供。点击登录后选择设备码，不会更改当前模型或已有连接。");
-                }}>设备码登录（可在手机完成）<ChevronRight size={13}/></Button>}
-              {!active && !confirming && account.id === "openai-codex" && account.methods.includes("oauth") && <Text as="p" size="1" color="gray" className="pi-auth-note">此 SDK 提供商支持浏览器登录或设备码登录；设备码可在手机上授权。</Text>}
             </>}
           </section>
           {active && <div className="pi-login-flow" aria-busy={!!flow.starting || !!flow.submitting}>
@@ -412,15 +347,15 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
           <section className="pi-settings-section pi-model-section" aria-label="默认模型设置">
             <div className="pi-field-heading">
               <div><Text as="p" size="3" weight="medium">{configured ? "默认模型" : "选择默认模型"}</Text><Text as="p" size="1" color="gray">{runtimeLabel}</Text></div>
-              <Button size="1" variant="ghost" color="gray" className="pi-auth-entry" onClick={() => {setNotice("");setSection("auth");}}>
+              <Button size="1" variant="ghost" color="gray" className="pi-auth-entry" onClick={() => {setNotice("");setError("");setSection(hasConnection?"connections":modern?"add":"auth");}}>
                 <KeyRound size={13} />{hasConnection ? "管理连接" : "连接提供商"}<ChevronRight size={13} />
               </Button>
             </div>
-            <Choice label="默认模型" value={validModel ? JSON.stringify([provider,model]) : ""}
-              fallback={models.length ? "请选择模型" : visibleCatalog?.status === "failed" ? "模型目录暂未确认" : "尚无模型目录"}
-              onChange={id => {const option=models.find(m => m.id===id); if(option){setProvider(option.provider);setModel(option.model);setNotice("");}}}
+            <Choice label="默认模型" value={validModel ? JSON.stringify([connectionId,model]) : ""}
+              fallback={config.current.connectionUnavailable ? "原连接已不可用，请选择其他连接的模型" : models.length ? "请选择模型" : visibleCatalog?.status === "failed" ? "模型目录暂未确认" : "尚无模型目录"}
+              onChange={id => {const option=models.find(m => m.id===id); if(option){setProvider(option.provider);setConnectionId(option.connectionId);setModel(option.model);setNotice("");}}}
               disabled={busy || !models.length} searchable items={models} />
-            <Text as="p" size="1" color="gray" className="pi-catalog-note">{piCatalogNote(visibleCatalog)}</Text>
+            <details className="pi-catalog-details"><summary>{visibleCatalog?.accountAccess==="confirmed"?"账号模型目录已更新":visibleCatalog?.status==="failed"?"模型目录暂未确认":"模型目录"}{visibleCatalog?.unsupportedModelCount ? ` · ${visibleCatalog.unsupportedModelCount} 个型号暂不支持` : ""}</summary><Text as="p" size="1" color="gray" className="pi-catalog-note">{piCatalogNote(visibleCatalog)}</Text></details>
             {!models.length && <Text size="2" color="gray">{visibleCatalog?.status === "failed" ? "暂时无法确认认证或模型目录，请重新检查。" : hasConnection ? "已连接的提供商暂未返回模型目录。" : "连接提供商后，即可选择模型。"}</Text>}
             {visibleCatalog && ["failed","partial"].includes(visibleCatalog.status) && <Button variant="ghost" color="gray" size="1" disabled={busy} onClick={reload}><RefreshCw size={13}/>重新检查模型目录</Button>}
             {validModel && selectedModel.reasoning && <details className="pi-advanced"><summary>更多选项</summary><div className="pi-thinking-row">
@@ -433,7 +368,7 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
           {validModel && <div className="pi-settings-footer">
             <Text size="1" color="gray" role="status">{config.reloadPending ? "已保存，等待当前任务完成后应用" : !configured ? "确认后即可开始聊天" : dirty ? "有未保存的更改" : "已保存"}</Text>
             <Button size="2" disabled={busy || !dirty || !thinkingSelection.valid} onClick={() => void act(async () => {
-              const result=await request("model",{provider,model,thinkingLevel:thinkingSelection.saveLevel});
+              const result=await request("model",{provider,model,thinkingLevel:thinkingSelection.saveLevel,...(modern?{connectionId}:{})});
               const saved=await refresh(); if (!saved) return;
               setThinking(saved.current.thinkingLevel);
               setNotice(result.pending ? "已保存，当前任务完成后自动应用。" : "模型已保存。");

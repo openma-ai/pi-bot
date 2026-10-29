@@ -38,6 +38,46 @@ fn fields(value: &Value, required: &[&str], optional: &[&str]) -> bool {
     value.as_object().is_some_and(|o| required.iter().all(|k| o.contains_key(*k))
         && o.keys().all(|k| required.contains(&k.as_str()) || optional.contains(&k.as_str())))
 }
+fn provider_id(value: &str) -> bool {
+    !value.is_empty() && value.len() <= 128 && value.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c,b'-'|b'_'|b'.'))
+}
+fn connection_id(value: &Value) -> bool {
+    value.as_str().is_some_and(|id| valid_id(id) || id.strip_prefix("legacy:").is_some_and(provider_id))
+}
+fn connection_field(value: &Value) -> bool {
+    value.get("connectionId").is_none_or(connection_id)
+}
+fn revision(value: &Value) -> bool { value.as_u64().is_some_and(|n| n > 0 && n <= 9007199254740991) }
+fn bounded_text(value: &Value, limit: usize) -> bool {
+    value.as_str().is_some_and(|s| !s.trim().is_empty() && s.chars().count() <= limit && !s.chars().any(char::is_control))
+}
+// Metadata only. Credentials, headers and arbitrary provider fields never cross
+// the main WebView; the existing bound credential window remains mandatory.
+fn endpoint_metadata(value: &Value) -> bool {
+    if !fields(value, &["baseUrl", "api", "models"], &[]) { return false; }
+    let Some(url) = value["baseUrl"].as_str() else { return false; };
+    if url.len() > 2048 || url.chars().any(char::is_control) { return false; }
+    let Ok(parsed) = reqwest::Url::parse(url) else { return false; };
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none()
+        || !parsed.username().is_empty() || parsed.password().is_some()
+        || parsed.query().is_some() || parsed.fragment().is_some() || parsed.path().contains("//") { return false; }
+    if !matches!(value["api"].as_str(), Some("openai-completions" | "openai-responses")) { return false; }
+    value["models"].as_array().is_some_and(|models| !models.is_empty() && models.len() <= 20 && models.iter().all(|m| {
+        fields(m, &["id", "contextWindow", "maxTokens"], &["name", "reasoning", "input"])
+            && bounded_text(&m["id"], 512) && m.get("name").is_none_or(|v| bounded_text(v, 200))
+            && revision(&m["contextWindow"]) && revision(&m["maxTokens"])
+            && m["maxTokens"].as_u64() <= m["contextWindow"].as_u64()
+            && m.get("reasoning").is_none_or(Value::is_boolean)
+            && m.get("input").is_none_or(|v| v.as_array().is_some_and(|a| !a.is_empty() && a.len() <= 2 && a.iter().all(|i| matches!(i.as_str(), Some("text" | "image")))))
+    }))
+}
+fn connection_metadata(value: &Value) -> bool {
+    fields(value, &["id", "name", "providerId"], &["expectedRevision", "endpoint"])
+        && value["id"].as_str().is_some_and(valid_id) && bounded_text(&value["name"], 128)
+        && value["providerId"].as_str().is_some_and(provider_id)
+        && value.get("expectedRevision").is_none_or(revision)
+        && if value["providerId"] == "custom" { value.get("endpoint").is_some_and(endpoint_metadata) } else { value.get("endpoint").is_none() }
+}
 pub(crate) fn flow_path(path: &str) -> Option<&str> {
     path.strip_prefix("/pi/login/").filter(|id| valid_id(id))
 }
@@ -47,13 +87,15 @@ pub(crate) fn classify(path: &str, method: &str, body: &str) -> Result<Action, R
     let value: Value = serde_json::from_str(body).map_err(|_| denied())?;
     let text = |key: &str| value[key].as_str().unwrap_or("");
     let valid = match path {
-        "/pi/login" => fields(&value, &["provider", "type", "requestId"], &[])
-            && valid_id(text("provider")) && valid_id(text("requestId"))
+        "/pi/login" => fields(&value, &["provider", "type", "requestId"], &["connectionId"]) && connection_field(&value)
+            && provider_id(text("provider")) && valid_id(text("requestId"))
             && matches!(text("type"), "oauth" | "api_key"),
-        "/pi/model" => fields(&value, &["provider", "model", "thinkingLevel"], &[])
-            && valid_id(text("provider")) && !text("model").is_empty() && text("model").len() <= 512
+        "/pi/model" => fields(&value, &["provider", "model", "thinkingLevel"], &["connectionId"]) && connection_field(&value)
+            && provider_id(text("provider")) && !text("model").is_empty() && text("model").len() <= 512
             && matches!(text("thinkingLevel"), "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"),
-        "/pi/logout" => fields(&value, &["provider"], &[]) && valid_id(text("provider")),
+        "/pi/logout" => fields(&value, &["provider"], &["connectionId"]) && provider_id(text("provider")) && connection_field(&value),
+        "/pi/connections/save" => connection_metadata(&value),
+        "/pi/connections/remove" => fields(&value, &["connectionId", "expectedRevision"], &[]) && connection_id(&value["connectionId"]) && revision(&value["expectedRevision"]),
         "/pi/reload" => fields(&value, &[], &[]),
         _ => {
             if let Some(flow) = path.strip_suffix("/cancel").and_then(flow_path) {
@@ -153,6 +195,26 @@ pub(crate) fn secure_body(prompt: &str, secret: &str) -> Result<zeroize::Zeroizi
 mod tests {
     use super::*;
     fn pending(kind: &str) -> Value { json!({"id":"flow-1","status":"pending","prompt":{"id":"step-1","type":kind,"options":[{"id":"device_code"}]}}) }
+    #[test]
+    fn connection_controls_accept_only_metadata_and_exact_account_binding() {
+        let id="11111111-1111-4111-8111-111111111111";
+        let mut body=json!({"id":id,"name":"Fixture","providerId":"custom","endpoint":{"baseUrl":"http://127.0.0.1:4319/v1/","api":"openai-responses","models":[{"id":"fixture","contextWindow":4096,"maxTokens":512}]}});
+        assert_eq!(classify("/pi/connections/save","POST",&body.to_string()).unwrap(),Action::Forward);
+        body["endpoint"]["apiKey"]=json!("synthetic-only");
+        assert!(classify("/pi/connections/save","POST",&body.to_string()).is_err());
+        body["endpoint"].as_object_mut().unwrap().remove("apiKey");
+        for url in ["https://user:password@example.invalid/v1","https://example.invalid/?key=x","file:///tmp/test","https://example.invalid//v1"] {
+            body["endpoint"]["baseUrl"]=json!(url);
+            assert!(classify("/pi/connections/save","POST",&body.to_string()).is_err());
+        }
+        for connection in [id,"legacy:openai"] {
+            let login=json!({"provider":"openai","type":"oauth","requestId":"request-1","connectionId":connection});
+            assert_eq!(classify("/pi/login","POST",&login.to_string()).unwrap(),Action::Forward);
+        }
+        assert!(classify("/pi/logout","POST",r#"{"provider":"openai","connectionId":"../other"}"#).is_err());
+        assert!(classify("/pi/connections/remove","POST",&json!({"connectionId":id}).to_string()).is_err());
+        assert_eq!(classify("/pi/connections/remove","POST",&json!({"connectionId":id,"expectedRevision":1}).to_string()).unwrap(),Action::Forward);
+    }
     #[test]
     fn safe_metadata_exposes_only_fixed_field_labels_and_terminal_state() {
         let mut state=pending("manual_code");state["type"]=json!("oauth");

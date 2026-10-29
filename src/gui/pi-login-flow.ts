@@ -1,6 +1,7 @@
 export type PiLoginState = {
     id: string;
     providerId: string;
+    connectionId?: string;
     type: string;
     status: 'pending' | 'complete' | 'failed' | 'cancelled';
     prompt?: Record<string, any>;
@@ -42,15 +43,15 @@ export function createPiLoginFlow(request: Request, onChange: (state: PiLoginSta
     };
     return {
         get current() { return current; },
-        async begin(provider: string, type: string) {
+        async begin(provider: string, type: string, connectionId?: string) {
             if (disposed) throw new Error('登录界面已关闭');
             if (current?.status === 'pending' || mayBePending) throw new Error('已有登录正在进行，请完成或取消');
             const version = ++epoch, id = crypto.randomUUID();
             revision++; polling = undefined; mayBePending = true;
-            publish({ id, providerId: provider, type, status: 'pending', events: [], starting: true, uncertain: false });
+            publish({ id, providerId: provider, connectionId, type, status: 'pending', events: [], starting: true, uncertain: false });
             if (!live(version)) return;
             try {
-                const result = await request('login', { provider, type, requestId: id });
+                const result = await request('login', { provider, type, requestId: id, ...(connectionId ? {connectionId} : {}) });
                 const actualId = typeof result?.id === 'string' && result.id ? result.id : id;
                 if (!live(version)) { await cancelRemote(actualId); return; }
                 if (!result?.id) throw Object.assign(new Error('登录响应尚未确认'), { code: 'invalidResponse', submitted: true });
@@ -72,10 +73,11 @@ export function createPiLoginFlow(request: Request, onChange: (state: PiLoginSta
             try {
                 const next = await request(`login/${encodeURIComponent(id)}`);
                 if (!live(version) || readRevision !== revision) return;
-                if (next?.id !== id || !['pending', 'complete', 'failed', 'cancelled'].includes(next?.status))
+                if (next?.id !== id || (current?.connectionId && next.connectionId !== current.connectionId) ||
+                    (next?.providerId && next.providerId !== current?.providerId) || !['pending', 'complete', 'failed', 'cancelled'].includes(next?.status))
                     throw Object.assign(new Error('无法读取登录状态，请重新检查'), { code: 'invalidResponse' });
                 mayBePending = next.status === 'pending';
-                publish({ ...next, providerId: next.providerId ?? current!.providerId, type: next.type ?? current!.type,
+                publish({ ...next, providerId: next.providerId ?? current!.providerId, connectionId: next.connectionId ?? current!.connectionId, type: next.type ?? current!.type,
                     events: next.events ?? [], starting: false, submitting: false, uncertain: false });
             } catch (error) {
                 if (!live(version) || readRevision !== revision) return;
