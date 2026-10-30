@@ -84,6 +84,49 @@ of the original three tests remains necessary before calling acceptance green.
 The final aggregate itself was completed, not abandoned or represented by a
 focused subset.
 
+## Original-limit isolated rerun (later on 2026-10-30)
+
+At `c9c0a34`, with a clean worktree and no old QA workers still running, the
+three remaining cases were run sequentially. No build ran alongside them, and
+no source, test timeout, process-isolation setting or production limit changed.
+
+| Original test | Strict rerun result |
+| --- | --- |
+| background reply, original 3-second scoped-ready poll | **Passed**, 2,095ms test duration |
+| proactive benchmark, original 10-second lifetime | **Failed**, 20/24 complete |
+| stdio, original 10-second total test timeout | **Timed out** |
+
+This clears the background case in isolation; it does **not** rewrite the prior
+full aggregate result as 489/491 or constitute another full-suite pass.
+
+A controlled comparison extracted only 1,295,734 bytes of tracked source/tests
+from the pre-five-feature commit `4b36b080dde8c9b32e3737b096b7e0570573dc3a`
+into a fresh `/tmp/pibo-before-five-*` directory. It reused the same installed
+SDK dependencies, and copied no runtime data or credentials. Both test files and
+the benchmark implementation were byte-identical to the current versions.
+With the original limits and sequential process isolation, that baseline also
+failed: benchmark **19/24**, stdio **10-second timeout**. This is evidence against
+a failure specific to the five new features, not proof that every performance
+issue is caused by the environment.
+
+Resource evidence was recorded after all these QA workers exited: this 12-CPU
+Mac had ten Chrome helper processes consuming approximately **910.9% CPU**
+(about 9.1 cores), grouped under browser parent PIDs **8568 and 58072**. Available
+disk was approximately **789MiB**. No user app/browser/harness was stopped and no
+files were cleaned. Low system load could not be established within the current
+authorization, so the remaining two performance gates are still unverified.
+
+Minimal next user action: provide a low-load window by pausing or closing the
+unneeded high-CPU Chrome pages/windows themselves, then rerun only these two
+original tests. No credential action, timeout increase, app replacement or disk
+cleanup is required for that next check.
+
+Evidence: `artifacts/three-original-retests/status.json`, the three original
+logs, `baseline-status.json`, baseline logs, `baseline-location.json` and
+`resource-check.json`. All processes started for this rerun were confirmed exited.
+No product source changed in this follow-up; prior TS/lint/build/Rust/UI evidence
+therefore still applies to the same product code.
+
 ## Evidence and operating boundaries
 
 - `artifacts/five-final-acceptance/acceptance-status.json`: bounded worker exits.
