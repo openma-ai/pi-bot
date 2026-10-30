@@ -11,8 +11,9 @@ type Point = 'message.queued' | 'message.admitted' | 'run.start' | 'run.end' | '
 import { trace, ROOT_CONTEXT, SpanStatusCode, SpanKind, type Span, type SpanContext } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { ExportResultCode, W3CTraceContextPropagator } from '@opentelemetry/core';
-import type { SpanExporter, ReadableSpan } from '@opentelemetry/sdk-trace';
-import { localProvider, localOtlp } from '../../sdk/local-otel.ts';
+import { TracerProvider, AlwaysOnSampler, type SpanProcessor, type SpanExporter, type ReadableSpan } from '@opentelemetry/sdk-trace';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { localTelemetryEnvelope } from '../../sdk/protocol/telemetry.ts';
 
 class LocalFileExporter implements SpanExporter {
     private failed = false;
@@ -26,7 +27,10 @@ class LocalFileExporter implements SpanExporter {
             if(lstatSync(this.directory).isSymbolicLink()) throw Error('Unsafe trace directory');
             for(const path of [this.file,this.file+'.1']) if(existsSync(path)&&(!lstatSync(path).isFile()||lstatSync(path).isSymbolicLink())) throw Error('Unsafe trace file');
             for(const span of spans) {
-                const record=localOtlp(span,'pibo-harness'); if(!record)continue;
+                const record=localTelemetryEnvelope({
+                    traceId:span.spanContext().traceId,spanId:span.spanContext().spanId,parentSpanId:span.parentSpanContext?.spanId,
+                    name:span.name,kind:span.kind,startTime:span.startTime,endTime:span.endTime,attributes:span.attributes,statusCode:span.status.code
+                },'pibo-harness'); if(!record)continue;
                 const line=JSON.stringify(record)+'\n'; if(Buffer.byteLength(line)>this.maxBytes)continue;
                 if(existsSync(this.file)&&statSync(this.file).size+Buffer.byteLength(line)>this.maxBytes)renameSync(this.file,this.file+'.1');
                 appendFileSync(this.file,line,{mode:0o600});chmodSync(this.file,0o600);
@@ -48,14 +52,25 @@ export class LocalTrace {
     private contexts=new AsyncLocalStorageContextManager().enable();
     private generating?: {spanId:string;traceId:string};
     private exporter: LocalFileExporter;
-    private provider: ReturnType<typeof localProvider>;
+    private provider: TracerProvider;
     private tracer;
     private active=new Map<string,Span>();
     constructor(directory:string,maxBytes=1024*1024) {
         this.exporter=new LocalFileExporter(directory,maxBytes);
-        this.provider=localProvider('pibo-harness',this.exporter,{
-            generateTraceId:()=>this.generating?.traceId??randomBytes(16).toString('hex'),
-            generateSpanId:()=>this.generating?.spanId??randomBytes(8).toString('hex')
+        const processor: SpanProcessor = {
+            onStart() {}, onEnd:span=>{this.exporter.export([span],()=>{});},
+            forceFlush:()=>this.exporter.forceFlush(), shutdown:()=>this.exporter.shutdown()
+        };
+        // The daemon owns its SDK lifecycle; only the pure wire contract is shared
+        // with the client. No global provider, detector or env-driven exporter.
+        this.provider=new TracerProvider({
+            resource:resourceFromAttributes({'service.name':'pibo-harness'}),
+            sampler:new AlwaysOnSampler(),spanProcessors:[processor],
+            idGenerator:{
+                generateTraceId:()=>this.generating?.traceId??randomBytes(16).toString('hex'),
+                generateSpanId:()=>this.generating?.spanId??randomBytes(8).toString('hex')
+            },
+            spanLimits:{attributeCountLimit:32,attributeValueLengthLimit:1024,eventCountLimit:0,linkCountLimit:0}
         });
         this.tracer=this.provider.getTracer('pibo.local-latency','2');
     }

@@ -1,6 +1,7 @@
 import { ProviderRequestGuardError } from '../../pi/host.ts';
 import type { ErrorReason } from '../../sdk/protocol/errors.ts';
 import { redactTraceValue } from '../../pi/redact.ts';
+import { ModelConnectionError } from '../../pi/model-connection-error.ts';
 import { ProviderFailureError } from '../../pi/provider-failure.ts';
 export class PiBotError extends Error {
     constructor(readonly reason: ErrorReason, message: string, readonly details?: Record<string, unknown>) {
@@ -11,6 +12,8 @@ export class PiBotError extends Error {
 export function classifyError(error: unknown): PiBotError {
     if (error instanceof PiBotError)
         return error;
+    if (error instanceof ModelConnectionError)
+        return new PiBotError(error.reason, error.message);
     if (error instanceof ProviderRequestGuardError)
         return new PiBotError(error.reason, error.message);
     if (error instanceof ProviderFailureError)

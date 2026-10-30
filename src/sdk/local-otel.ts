@@ -2,6 +2,7 @@ import { ROOT_CONTEXT, SpanStatusCode, type Context } from '@opentelemetry/api';
 import { TracerProvider, AlwaysOnSampler, type SpanProcessor, type ReadableSpan, type SpanExporter, type IdGenerator } from '@opentelemetry/sdk-trace';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ExportResultCode } from '@opentelemetry/core';
+import { localTelemetryEnvelope } from './protocol/telemetry.ts';
 
 /** Explicit manual SDK only: no NodeSDK, resource detectors, auto instrumentation,
  * global provider registration, environment exporter or collector configuration. */
@@ -15,17 +16,12 @@ export function localProvider(service: string, exporter: SpanExporter, idGenerat
         spanLimits: { attributeCountLimit: 32, attributeValueLengthLimit: 1024, eventCountLimit: 0, linkCountLimit: 0 }
     });
 }
-const keys = new Set(['elapsedMs','status','messageIdHash','correlationIdHash','tool','outcome','inputTokens','outputTokens','cacheReadTokens','systemPromptCharacters','toolSchemaCharacters','declaredToolCount','declaredToolNames','promptAndToolsChar4Estimate','messageCount','primaryInputIdHash','turnId','itemIdHash','receiveToCommitMs','serverToReceiveClockDeltaMs']);
-const names = /^(message\.(queued|admitted)|run\.(start|end)|session\.ready|request\.(pending|resolved)|delivery\.(pending|sending|delivered|uncertain|superseded)|job\.(start|end)|(?:provider|tool)\.(start|first_event|first_content|end)|frontend\.receive_to_commit)$/;
-const nanos = ([sec, nano]: readonly number[]) => (BigInt(sec) * 1000000000n + BigInt(nano)).toString();
 /** Convert actual SDK ReadableSpan, never arbitrary exceptions/events/resources. */
 export function localOtlp(span: ReadableSpan, service: 'pibo-harness'|'pibo-client') {
-    if (!names.test(span.name)) return undefined;
-    const attributes = Object.entries(span.attributes).filter(([key, value]) => key.startsWith('pibo.') && keys.has(key.slice(5)) && (typeof value === 'string' || typeof value === 'number' && Number.isFinite(value))).map(([key,value]) => ({key,value:typeof value==='number'?{doubleValue:value}:{stringValue:value}}));
-    return {resourceSpans:[{resource:{attributes:[{key:'service.name',value:{stringValue:service}}]},scopeSpans:[{scope:{name:service==='pibo-harness'?'pibo.local-latency':'pibo.frontend-latency',version:'2'},spans:[{
+    return localTelemetryEnvelope({
         traceId:span.spanContext().traceId,spanId:span.spanContext().spanId,parentSpanId:span.parentSpanContext?.spanId,
-        name:span.name,kind:span.kind+1,startTimeUnixNano:nanos(span.startTime),endTimeUnixNano:nanos(span.endTime),attributes,status:{code:span.status.code}
-    }]}]}]};
+        name:span.name,kind:span.kind,startTime:span.startTime,endTime:span.endTime,attributes:span.attributes,statusCode:span.status.code
+    },service);
 }
 export class BoundedMemoryExporter implements SpanExporter {
     private values: unknown[]=[];

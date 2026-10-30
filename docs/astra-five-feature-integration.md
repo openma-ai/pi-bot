@@ -60,3 +60,46 @@ is established. Rust policy validation uses the unchanged production validator
 module with a disabled transport stub and offline dependencies; compilation was
 still in dependency work when the interruption occurred. Its result must be
 checked before retrying. The installed development app was not changed.
+
+
+## Recovered execution and aggregate results (2026-10-30)
+
+The detached validation worker completed successfully as an execution mechanism.
+Its isolated Rust whitelist test finished **5/5, exit 0**. This compiles the actual
+production validator with an offline transport stub; it is not a Tauri app build.
+
+The full 84-file aggregate completed at 3f9d52f: **488 tests, 460 passed, 17
+failed, 11 cancelled, exit 1**. Full logs remain at
+`artifacts/five-final-validation/aggregate.log`. It must not be described as a
+passing aggregate. The SDK bridge dry check reported no pending changes; no
+shared dependencies were modified.
+
+Two genuine integration layer violations were fixed without weakening the rules:
+
+- Pi connection errors are now domain errors, translated by the daemon at its
+  existing RPC boundary. Explicit reasons and retryability are preserved.
+- Daemon and client own their own explicit official OTel providers; only pure
+  telemetry wire types and serialization are shared through the protocol layer.
+
+Post-fix layer/connection/OTel regression: **33/33 passed**. Lower-contention
+isolated SDK bridge **4/4** and codemode **16/16** passed without changes to their
+assertions, timeouts, or production execution semantics. The aggregate also
+exposed a desktop mock lacking the lifecycle `close()` method and a 30ms approval
+fixture race. The mock is corrected; approval expiry is now tested by advancing
+the synchronous fixture clock, preserving production approval policy.
+
+Final results after these fixes are recorded below. The earlier full-repo
+TypeScript and GUI lint both completed exit 0, before these final layer changes.
+
+
+A further read-only review caught the GUI HTTP boundary still recognizing only
+`PiBotError`. It now maps explicit connection-domain errors as well, preserving
+409/404 and safe messages without exposing arbitrary SDK exceptions or trusting
+an error's name string. The domain error lives in a lightweight Pi module, so
+error classification does not import the model SDK. Its actual loopback HTTP
+fixture covers stale save/remove, missing removal, invalid extra credential
+fields, and a spoofed error name. The focused HTTP/RPC/layer selection passed
+**9/9**. The earlier serial aggregate was explicitly stopped for this correction;
+its partial output is not acceptance. Final runs use
+`artifacts/five-final-acceptance/` with one test process at a time and a low-disk
+stop threshold. No user processes or installed applications were stopped.

@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { ModelConnections, normalizeEndpoint, createConnectionRuntime } from '../src/pi/model-connections.ts';
+import { ModelConnectionError } from '../src/pi/model-connection-error.ts';
+import { classifyError, toRpcError } from '../src/daemon/core/errors.ts';
 import { PiSettings } from '../src/daemon/pi-settings.ts';
 import { loadPiConfiguration } from '../src/pi/config.ts';
 
@@ -203,4 +205,44 @@ test('late cancelled SDK login cannot persist into the replaced endpoint or resu
         assert.equal(await fresh.getAuth('custom'),undefined,'new endpoint has a new empty credential generation');
         assert.equal(settings.loginState(flow.id).prompt,undefined);
     }finally{release?.();settings.close();}
+});
+
+// A domain-to-transport boundary must preserve semantics, not fall back to message regexes.
+test('connection domain errors retain explicit RPC classification and retry policy', () => {
+    for (const [reason, code, retryable] of [
+        ['invalidParams', -32602, false], ['conflict', -32002, false],
+        ['capacity', -32001, true], ['notFound', -32002, false], ['forbidden', -32002, false]
+    ] as const) {
+        const error = new ModelConnectionError(reason, 'Safe connection operation rejected');
+        assert.equal(classifyError(error).reason, reason);
+        assert.deepEqual(toRpcError(error), { code, message: error.message, data: { reason, retryable } });
+    }
+});
+
+
+test('GUI HTTP preserves connection conflict/not-found contracts and hides unknown errors', { timeout: 60000 }, async () => {
+    const { PiBotDaemon } = await import('../src/daemon/core/daemon.ts');
+    const { listenHttp } = await import('../src/daemon/transports/http.ts');
+    const dir = directory();
+    const daemon = await PiBotDaemon.create({ dataDir: join(dir, 'daemon'), factory: async () => ({ run: async () => {}, close: async () => {} }) });
+    daemon.piSettings = await service(join(dir, 'settings'));
+    const http = await listenHttp(daemon, { port: 0 });
+    const post = (path: string, body: unknown) => fetch(http.url + '/pi/connections/' + path, {
+        method: 'POST', headers: { 'authorization': 'Bearer ' + http.token, 'content-type': 'application/json' }, body: JSON.stringify(body)
+    });
+    try {
+        const id = randomUUID(), input = { id, providerId: 'custom', name: 'Fixture', endpoint: endpoint() };
+        assert.equal((await post('save', input)).status, 200);
+        const conflict = await post('save', { ...input, name: 'Stale update', expectedRevision: 0 });
+        assert.equal(conflict.status, 409); assert.match((await conflict.json()).error, /reload/);
+        assert.equal((await post('remove', { connectionId: id, expectedRevision: 0 })).status, 409);
+        assert.equal((await post('remove', { connectionId: id, expectedRevision: 1 })).status, 200);
+        const missing = await post('remove', { connectionId: id, expectedRevision: 1 });
+        assert.equal(missing.status, 404); assert.equal((await missing.json()).error, 'Connection not found');
+        const invalid = await post('save', { ...input, secret: 'synthetic-private-sentinel' });
+        assert.equal(invalid.status, 400); assert.doesNotMatch(JSON.stringify(await invalid.json()), /synthetic-private-sentinel/);
+        daemon.piSettings.saveConnection = async () => { throw Object.assign(new Error('synthetic-private-sentinel'), { name: 'PiBotError', reason: 'notFound' }); };
+        const unknown = await post('save', input);
+        assert.equal(unknown.status, 400); assert.deepEqual(await unknown.json(), { error: 'Pi 操作失败，请重试' });
+    } finally { await http.close(); await daemon.close(); }
 });

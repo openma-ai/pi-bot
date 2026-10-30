@@ -530,10 +530,10 @@ test('migration preserves existing message history without fabricating historica
         await d.close();
     }
 });
-test('approval decisions and expiry gate effects and are observable to matching clients', async () => {
+test('approval decisions and expiry gate effects and are observable to matching clients', async (t) => {
     let executions = 0;
     const d = await loaded.PiBotDaemon.create({
-        dataDir: mkdtempSync(join(tmpdir(), 'pi-approval-')), approvalRequired: true, approvalTimeoutMs: 30, factory: async (_b: any, host: any) => ({
+        dataDir: mkdtempSync(join(tmpdir(), 'pi-approval-')), approvalRequired: true, approvalTimeoutMs: 60000, factory: async (_b: any, host: any) => ({
             run: async (e: any) => {
                 host.startJob(e, 'effect', {}, 'effect:' + e.id, async () => {
                     executions++;
@@ -564,11 +564,17 @@ test('approval decisions and expiry gate effects and are observable to matching 
         }, () => {
         });
         const requests: any[] = [];
-        c.on('request', r => requests.push(r));
+        let requestArrived: (() => void) | undefined;
+        c.on('request', r => { requests.push(r); requestArrived?.(); });
+        const waitForRequests = (count: number) => new Promise<void>((resolve, reject) => {
+            const deadline = setTimeout(() => reject(Error('Approval request not delivered')), 10000);
+            requestArrived = () => { if (requests.length >= count) { clearTimeout(deadline); resolve(); } };
+            requestArrived();
+        });
         await c.turn.start({
             botId: bot.id, text: 'work', key: 'approved'
         });
-        await new Promise(r => setTimeout(r, 5));
+        await waitForRequests(1);
         assert.equal(executions, 0);
         assert.ok(requests.length);
         await c.request.resolve({
@@ -581,8 +587,12 @@ test('approval decisions and expiry gate effects and are observable to matching 
         await c.turn.start({
             botId: bot.id, text: 'second', key: 'expired'
         });
-        await new Promise(r => setTimeout(r, 40));
-        d.broker.sweep();
+        await waitForRequests(2);
+        // Advance only the synchronous expiry check, independent of host load.
+        const expiry = requests[1].params.request.expiresAt;
+        assert.equal(typeof expiry, 'number');
+        const clock = t.mock.method(Date, 'now', () => expiry + 1);
+        try { d.broker.sweep(); } finally { clock.mock.restore(); }
         await d.runtime.idle();
         assert.equal(executions, 1);
         assert.ok(d.broker.list().some((r: any) => r.status === 'expired'));
@@ -712,6 +722,8 @@ test('desktop control accepts the released null lease through the SDK result sch
         })
     });
     d.desktop = {
+        close() {},
+        async assertAvailable() {}, // This fixture exercises the lease result schema, not probing.
         request: async (_path: string, p: any) => ({
             json: async () => p.take ? {
                 botId: p.botId, expiresAt: Date.now() + 60000

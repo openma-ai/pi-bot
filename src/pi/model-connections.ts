@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { join } from 'node:path';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import type { Model, Api } from '@earendil-works/pi-ai';
-import { PiBotError } from '../daemon/core/errors.ts';
+import { ModelConnectionError } from './model-connection-error.ts';
 
 export type EndpointModel = { id: string; name: string; reasoning: boolean; contextWindow: number; maxTokens: number; input: ('text' | 'image')[] };
 export type ModelEndpoint = { baseUrl: string; api: 'openai-completions' | 'openai-responses'; models: EndpointModel[] };
@@ -12,7 +12,7 @@ export type ModelSelection = { connectionId: string; provider: string; model: st
 type Document = { version: 1; connections: ModelConnection[]; current?: ModelSelection };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PROVIDER = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
-function invalid(message: string): never { throw new PiBotError('invalidParams', message); }
+function invalid(message: string): never { throw new ModelConnectionError('invalidParams', message); }
 function text(value: unknown, max = 128): string {
     if (typeof value !== 'string' || !value.trim() || value.length > max || /[\u0000-\u001f\u007f]/.test(value)) invalid('Invalid connection text');
     return value.trim();
@@ -90,21 +90,21 @@ export class ModelConnections {
         if (previous) {
             const same = JSON.stringify({ providerId: previous.providerId, name: previous.name, ...(previous.endpoint ? { endpoint: previous.endpoint } : {}) }) === JSON.stringify(identity);
             if (same && (input.expectedRevision === undefined || input.expectedRevision === previous.revision || input.expectedRevision === previous.revision - 1)) return previous;
-            if (input.expectedRevision !== previous.revision) throw new PiBotError('conflict', 'Connection changed; reload before saving');
+            if (input.expectedRevision !== previous.revision) throw new ModelConnectionError('conflict', 'Connection changed; reload before saving');
             const credentialChanged = previous.providerId !== identity.providerId || JSON.stringify(previous.endpoint) !== JSON.stringify(endpoint);
             const next = { ...identity, id, revision: previous.revision + 1, credentialVersion: previous.credentialVersion + Number(credentialChanged) };
             doc.connections = doc.connections.map(c => c.id === id ? next : c);
             this.write(doc); return next;
         }
-        if (input.expectedRevision !== undefined) throw new PiBotError('conflict', 'Connection no longer exists');
+        if (input.expectedRevision !== undefined) throw new ModelConnectionError('conflict', 'Connection no longer exists');
         const next = { ...identity, id, revision: 1, credentialVersion: 1 };
-        if (doc.connections.length >= 64) throw new PiBotError('capacity', 'Connection limit reached');
+        if (doc.connections.length >= 64) throw new ModelConnectionError('capacity', 'Connection limit reached');
         doc.connections.push(next); this.write(doc); return next;
     }
     remove(id: string, expectedRevision: number) {
         const doc = this.read(), previous = doc.connections.find(c => c.id === id);
-        if (!previous) throw new PiBotError('notFound', 'Connection not found');
-        if (previous.revision !== expectedRevision) throw new PiBotError('conflict', 'Connection changed; reload before removing');
+        if (!previous) throw new ModelConnectionError('notFound', 'Connection not found');
+        if (previous.revision !== expectedRevision) throw new ModelConnectionError('conflict', 'Connection changed; reload before removing');
         doc.connections = doc.connections.filter(c => c.id !== id);
         // Retain an unavailable selected identity instead of silently choosing another account.
         this.write(doc);
@@ -155,7 +155,7 @@ export async function createConnectionRuntime(store: ModelConnections, connectio
         const value = Reflect.get(target, property);
         if (['stream','streamSimple','complete','completeSimple','streamDeferred','fetchDeferred','cancelDeferred','generateImages','classify'].includes(String(property))) return (model: Model<Api>, ...args: unknown[]) => {
             const registered = target.getModel(model.provider,model.id);
-            if (!matches(model) || !registered || registered.baseUrl !== model.baseUrl || registered.api !== model.api) throw new PiBotError('forbidden', 'Model belongs to a different connection');
+            if (!matches(model) || !registered || registered.baseUrl !== model.baseUrl || registered.api !== model.api) throw new ModelConnectionError('forbidden', 'Model belongs to a different connection');
             return value.call(target,model,...args);
         };
         return typeof value === 'function' ? value.bind(target) : value;

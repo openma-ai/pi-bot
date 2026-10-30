@@ -7,9 +7,19 @@ import {tmpdir} from 'node:os';
 import {TracerProvider} from '@opentelemetry/sdk-trace';
 import {LocalTrace} from '../src/daemon/observability/local-trace.ts';
 import {FrontendLatency} from '../src/sdk/frontend-latency.ts';
+import {localTelemetryEnvelope, type LocalTelemetrySpan} from '../src/sdk/protocol/telemetry.ts';
 const pause=()=>new Promise<void>(r=>setTimeout(r,1));
 const scope=(n:number)=>({inputId:'fixture-'+n,turnId:'trn_00000000-0000-0000-0000-'+String(n).padStart(12,'0')});
 const read=(dir:string)=>readFileSync(join(dir,'latency.otlp.jsonl'),'utf8').trim().split('\n').flatMap(l=>JSON.parse(l).resourceSpans[0].scopeSpans[0].spans);
+
+test('shared telemetry wire contract accepts plain data and excludes non-contract metadata',()=>{
+ const data:LocalTelemetrySpan={traceId:'1'.repeat(32),spanId:'2'.repeat(16),parentSpanId:'3'.repeat(16),name:'provider.end',kind:2,startTime:[4,5],endTime:[6,7],statusCode:2,attributes:{'pibo.elapsedMs':2,'pibo.outcome':'error','pibo.rawBody':'PRIVATE','account.email':'PRIVATE','pibo.inputTokens':NaN}};
+ const record=localTelemetryEnvelope(data,'pibo-harness')!;
+ const span=record.resourceSpans[0].scopeSpans[0].spans[0];
+ assert.equal(span.kind,3);assert.equal(span.startTimeUnixNano,'4000000005');assert.equal(span.endTimeUnixNano,'6000000007');assert.equal(span.parentSpanId,data.parentSpanId);assert.deepEqual(span.status,{code:2});
+ assert.deepEqual(span.attributes.map(a=>a.key),['pibo.elapsedMs','pibo.outcome']);assert.doesNotMatch(JSON.stringify(record),/PRIVATE|NaN/);
+ assert.equal(localTelemetryEnvelope({...data,name:'unrecognized.event'},'pibo-client'),undefined);
+});
 
 test('real SDK, asynchronous concurrent context isolation, flush and W3C frontend parent',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'pibo-otel-standard-'));const local=new LocalTrace(dir);

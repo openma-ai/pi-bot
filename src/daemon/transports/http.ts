@@ -3,6 +3,8 @@ import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, extname } from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
+import { ModelConnectionError } from '../../pi/model-connection-error.ts';
+import { PiBotError, classifyError } from '../core/errors.ts';
 import type { PiBotDaemon } from '../core/daemon.ts';
 import type { DaemonConnection } from '../core/connection.ts';
 import { listenTailnetGateway, type TailnetListener } from './tailnet-gateway.ts';
@@ -146,14 +148,12 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
                 }, 404);
             }
             catch (error) {
-                const known = error as {
-                    name?: string;
-                    message?: string;
-                    reason?: string;
-                };
+                // Only explicit public domain errors cross this direct form channel.
+                // Do not classify arbitrary SDK exception text or trust a spoofed name.
+                const known = error instanceof PiBotError || error instanceof ModelConnectionError ? classifyError(error) : undefined;
                 return json({
-                    error: known.name === 'PiBotError' ? known.message : 'Pi 操作失败，请重试'
-                }, known.name === 'PiBotError' && known.reason === 'notFound' ? 404 : known.name === 'PiBotError' && known.reason === 'conflict' ? 409 : 400);
+                    error: known?.message ?? 'Pi 操作失败，请重试'
+                }, known?.reason === 'notFound' ? 404 : known?.reason === 'conflict' ? 409 : 400);
             }
         }
         if (url.pathname === '/rpc' && req.method === 'POST') {
