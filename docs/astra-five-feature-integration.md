@@ -41,3 +41,22 @@ Synthetic local evidence (not uploaded):
 `artifacts/model-connections-review/`, and `/tmp/pibo-reaction-qa/`.
 Remaining checks and their final results must be recorded below before describing
 this integration as fully accepted.
+
+## 2026-10-30 acceptance checkpoint
+
+The root executor read this run's `artifacts/feed-status-final/results.json`: all
+89 assertions passed, zero failed, and browser errors were empty. This covers
+1100x760, 393x852, 320x568 and 844x390, short/long feeds, idle/running/queued/request
+transitions, transparent wrappers, full visibility above the floating capsule,
+push-away/return, preserved history position, and no real actions dispatched.
+Only the browser CLI timeout changed from 30 to 90 seconds; assertions and
+product layout were unchanged. These remain browser fixtures, not native-device
+or real-request acceptance.
+
+The two-worker aggregate run was explicitly cancelled (exit 130) after resource
+inspection; the replacement retained per-file process isolation with 8 workers.
+Its executor subsequently reported a transport disconnect, so no aggregate pass
+is established. Rust policy validation uses the unchanged production validator
+module with a disabled transport stub and offline dependencies; compilation was
+still in dependency work when the interruption occurred. Its result must be
+checked before retrying. The installed development app was not changed.

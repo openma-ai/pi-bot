@@ -5,7 +5,8 @@ from pathlib import Path
 out=Path('artifacts/feed-status-final');out.mkdir(parents=True,exist_ok=True)
 checks=[]
 def ab(*args,code=None):
-    p=subprocess.run(['agent-browser','--session','pibo-feed-state','--json',*args],input=code,text=True,capture_output=True,timeout=30)
+    # Browser CLI startup on this host exceeded 30s; retain a bounded 90s wait.
+    p=subprocess.run(['agent-browser','--session','pibo-feed-state','--json',*args],input=code,text=True,capture_output=True,timeout=90)
     if p.returncode:raise RuntimeError(p.stderr or p.stdout)
     value=json.loads(p.stdout)
     if not value.get('success'):raise RuntimeError(value)
