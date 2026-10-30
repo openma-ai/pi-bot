@@ -1,8 +1,10 @@
 # Local five-feature integration — 2026-10-30
 
 Code is integrated on `publish/astra-oauth-wip`, through `56d0f3d`.
-**Full acceptance is not green:** the final aggregate has three timing-related
-non-passing tests. The original development app was not replaced.
+**All three previously non-passing checks are now resolved by original-limit,
+isolated reruns.** The earlier 491-test aggregate result is preserved below; a
+new complete aggregate was not run in this follow-up. The original development
+app was not replaced.
 
 ## Included work
 
@@ -126,6 +128,45 @@ logs, `baseline-status.json`, baseline logs, `baseline-location.json` and
 `resource-check.json`. All processes started for this rerun were confirmed exited.
 No product source changed in this follow-up; prior TS/lint/build/Rust/UI evidence
 therefore still applies to the same product code.
+
+## Final closure after identifying task-owned QA load
+
+After the user closed their Chrome pages, the same two high-CPU browser groups
+remained. A read-only ownership check established that they were **old Pibo QA
+sessions**, not the user's ordinary browser pages:
+
+| Session | agent-browser daemon | Chrome parent | Confirmed launch directory |
+| --- | --- | --- | --- |
+| `pibo-isolated-review` | 8567 | 8568 | original 2026-10-25 Codex task |
+| `pibo-logo-qa` | 58071 | 58072 | original `pibo-menu-review` checkout |
+
+The mappings came from the CLI's numeric PID metadata and the OS parent chain
+and working directories. Page-origin queries timed out; no page body, account
+data, URL query/fragment or credentials were read. The earlier attribution to
+general Chrome/user-page load was incomplete. Both completed task-owned sessions
+were closed using their named `agent-browser ... close` command. Both commands
+succeeded, and the browser/daemon PIDs were confirmed absent. The user's original
+Pibo app and harness (11244/11263) remained running. No unrelated program or file
+was stopped or removed.
+
+At product source unchanged from `6ec51a9`, the final two tests then ran
+**sequentially, without any concurrent build, original 10-second limits and
+original per-file process isolation**:
+
+| Test | Final original-limit result | Total runner duration |
+| --- | --- | --- |
+| proactive benchmark | **Passed, 1,477ms**; original complete-work assertions intact | 3,323ms |
+| stdio handshake, durable turn and delivery | **Passed, 1,383ms** | 1,600ms |
+
+Both exited 0, with no failures/cancellations/skips. Combined with the earlier
+2,095ms strict background-reply pass, no previously failed case remains open.
+This does not rewrite the old aggregate report or claim a new 491/491 full run.
+No product/test source, timeout, credentials, app bundle or dependency changed;
+the previous type/lint/build/Rust/browser results still apply.
+
+Final evidence: `artifacts/two-after-qa-close/status.json`,
+`proactive-benchmark.log`, `stdio.log` and `resources-before.json`. Available disk
+was about 2.5GiB; no cleanup or build was needed for these reruns.
 
 ## Evidence and operating boundaries
 
