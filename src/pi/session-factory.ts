@@ -6,7 +6,8 @@ import { redactChannelText } from './redact.ts';
 import { ProviderFailureError } from './provider-failure.ts';
 import { ProviderTiming, toolTimingOutcome } from './latency.ts';
 import { TaskSourceRequiredError } from './task-source.ts';
-import { runCodingWorker } from './coding-worker.ts';
+import { runCodingWorker, type CodingWorkerControls } from './coding-worker.ts';
+type WorkerEntry = { source: Envelope; dir: string; controls?: CodingWorkerControls; sessionFile?: string };
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -36,6 +37,8 @@ export interface PiOptions {
     desktop?: DesktopClient;
     /** Isolated native coding sessions dispatched through durable jobs. */
     codingWorkers?: boolean;
+    /** Max concurrently running coding workers per bot (default 4); the runtime-wide job limit still applies. */
+    maxCodingWorkers?: number;
     dir: string;
     modelRuntime: ModelRuntime;
     model: Model<Api>;
@@ -103,7 +106,14 @@ export function createModelSummarizer(modelRuntime: ModelRuntime, model: Model<A
     };
 }
 export function piSessionFactory(options: PiOptions): SessionFactory {
+    // Live/retained coding worker handles, keyed by bot id then job key; process-local.
+    const botWorkers = new Map<string, Map<string, WorkerEntry>>();
+    const maxWorkers = options.maxCodingWorkers ?? 4;
+    if (!Number.isSafeInteger(maxWorkers) || maxWorkers < 1)
+        throw Error('Invalid maxCodingWorkers');
     return async (bot, runtime, scope) => {
+        const workers = botWorkers.get(bot.id) ?? new Map<string, WorkerEntry>();
+        botWorkers.set(bot.id, workers);
         if (options.inferenceRequestTimeoutMs !== undefined && (!Number.isSafeInteger(options.inferenceRequestTimeoutMs) || options.inferenceRequestTimeoutMs <= 0 || options.inferenceRequestTimeoutMs > 2147483647))
             throw Error('Invalid inference request timeout');
         const scopeKey = scope ? createHash('sha256').update(scope).digest('hex').slice(0, 24) : undefined;
@@ -517,32 +527,84 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                 })(pi);
             if (options.codingWorkers)
                 pi.registerTool({
-                    name: 'subagent', label: 'Pi coding worker', exposure: 'model-only',
-                    description: 'Delegate substantial coding/file work to an isolated native Pi coding agent. Returns a durable job receipt immediately; continue handling messages and wait for the completion inbox, then read job_result. Worker cannot message the user or spawn another worker. Use a stable key and source_message_id. Never treat receipt as completion.',
+                    name: 'subagent', label: 'Pi coding workers', exposure: 'model-only',
+                    description: `Delegate coding/file work to isolated native Pi coding agents (pi-subagents engine). action=spawn (default) starts one worker for task, or several in parallel for tasks[] (fanout, each its own job). Up to ${maxWorkers} workers may run at once per bot. action=steer/follow_up sends message to a running worker (key = its spawn key); action=interrupt stops it; action=resume continues a finished worker's retained session with message as a new job under a new key (resume_key = original worker key); action=status lists workers. Spawn/resume return durable job receipts immediately; wait for the completion inbox and read job_result. Workers cannot message the user or spawn workers. Use stable keys and source_message_id. Never treat receipt as completion.`,
                     parameters: Type.Object({
-                        task: Type.String({
-                            minLength: 1, maxLength: 20000
-                        }), key, source_message_id: Type.Optional(Type.String())
+                        action: Type.Optional(Type.Union([Type.Literal('spawn'), Type.Literal('steer'), Type.Literal('follow_up'), Type.Literal('interrupt'), Type.Literal('resume'), Type.Literal('status')])),
+                        task: Type.Optional(Type.String({ minLength: 1, maxLength: 20000 })),
+                        tasks: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 20000 }), { minItems: 1, maxItems: 8 })),
+                        message: Type.Optional(Type.String({ minLength: 1, maxLength: 20000 })),
+                        resume_key: Type.Optional(Type.String()),
+                        key, source_message_id: Type.Optional(Type.String())
                     }),
                     async execute(_id, p) {
+                        const action = p.action ?? 'spawn';
+                        if (action === 'status')
+                            return result({ workers: runtime.store.list<Job>('jobs').filter(j => j.botId === bot.id && j.tool === 'pi-coding-agent').map(j => ({ key: j.key, jobId: j.id, state: j.state, live: workers.get(j.key)?.controls !== undefined, resumable: !!workers.get(j.key)?.sessionFile })) });
+                        if (action === 'steer' || action === 'follow_up' || action === 'interrupt') {
+                            const w = workers.get(p.key);
+                            const job = runtime.store.find<Job>('jobs', bot.id, p.key);
+                            if (!w || !job || job.state !== 'running' || !w.controls)
+                                throw Error('No live coding worker with that key');
+                            runtime.assertTaskCurrent(w.source);
+                            if (action === 'interrupt')
+                                w.controls.stop('Interrupted by parent bot');
+                            else {
+                                if (!p.message)
+                                    throw Error('message is required');
+                                await (action === 'steer' ? w.controls.steer(p.message) : w.controls.followUp(p.message));
+                            }
+                            return result({ key: p.key, jobId: job.id, action, delivered: true });
+                        }
                         const source = own(p.source_message_id, true), original = hostTask(source);
                         if (!original)
                             throw Error('Coding delegation requires a verified original host task');
-                        const old = runtime.store.find<Job>('jobs', bot.id, p.key);
-                        if (!old && runtime.store.list<Job>('jobs').some(j => j.botId === bot.id && j.tool === 'pi-coding-agent' && j.state === 'running'))
-                            throw Error('This bot already has an active coding worker');
-                        const workerDir = join(dir, 'workers', createHash('sha256').update(source.id + ':' + p.key).digest('hex').slice(0, 24));
-                        const job = runtime.startJob(source, 'pi-coding-agent', {
-                            task: p.task
-                        }, p.key, () => runCodingWorker({
-                            ...options, extensions: [...(options.extensions ?? []), ...(options.desktop ? [createDesktopExtension(options.desktop, bot.id, () => runtime.assertTaskCurrent(source))] : [])], dir: workerDir, assertCurrent: () => runtime.assertTaskCurrent(source),
-                            permission: async (tool, args) => await authorize(runtime, {
-                                botId: bot.id, taskId: source.taskId, tool, args
-                            })
-                        }, p.task, original));
-                        return result({
-                            jobId: job.id, state: job.state, taskId: job.taskId, worker: 'pi-coding-agent'
-                        });
+                        const running = () => runtime.store.list<Job>('jobs').filter(j => j.botId === bot.id && j.tool === 'pi-coding-agent' && j.state === 'running').length;
+                        const launch = (task: string, jobKey: string, resume?: { from: string; sessionFile: string; dir: string }) => {
+                            const old = runtime.store.find<Job>('jobs', bot.id, jobKey);
+                            if (!old && running() >= maxWorkers)
+                                throw Error(`This bot already has ${maxWorkers} active coding workers`);
+                            const workerDir = resume?.dir ?? join(dir, 'workers', createHash('sha256').update(source.id + ':' + jobKey).digest('hex').slice(0, 24));
+                            const entry: WorkerEntry = { source, dir: workerDir };
+                            const job = runtime.startJob(source, 'pi-coding-agent', resume ? { task, resume: resume.from } : { task }, jobKey, async () => {
+                                workers.set(jobKey, entry);
+                                try {
+                                    const value = await runCodingWorker({
+                                        ...options, extensions: [...(options.extensions ?? []), ...(options.desktop ? [createDesktopExtension(options.desktop, bot.id, () => runtime.assertTaskCurrent(source))] : [])], dir: workerDir, assertCurrent: () => runtime.assertTaskCurrent(source),
+                                        permission: async (tool, args) => await authorize(runtime, { botId: bot.id, taskId: source.taskId, tool, args }),
+                                        onControls: c => entry.controls = c, resumeSessionFile: resume?.sessionFile
+                                    }, task, original);
+                                    entry.sessionFile = value.sessionFile;
+                                    return value;
+                                }
+                                finally {
+                                    entry.controls = undefined;
+                                }
+                            });
+                            return { key: jobKey, jobId: job.id, state: job.state, taskId: job.taskId, worker: 'pi-coding-agent' };
+                        };
+                        if (action === 'resume') {
+                            const from = p.resume_key && workers.get(p.resume_key);
+                            const prev = p.resume_key ? runtime.store.find<Job>('jobs', bot.id, p.resume_key) : undefined;
+                            if (!from || !from.sessionFile || !prev || prev.state === 'running')
+                                throw Error('No finished retained coding worker with that resume_key');
+                            if (from.source.taskId !== source.taskId)
+                                throw Error('Resume must stay within the original host task');
+                            if (!p.message)
+                                throw Error('message is required');
+                            return result(launch(p.message, p.key, { from: p.resume_key!, sessionFile: from.sessionFile, dir: from.dir }));
+                        }
+                        if (p.tasks) {
+                            if (p.task)
+                                throw Error('Use task or tasks, not both');
+                            const fresh = p.tasks.filter((_t, i) => !runtime.store.find<Job>('jobs', bot.id, `${p.key}#${i}`)).length;
+                            if (running() + fresh > maxWorkers)
+                                throw Error(`Fanout would exceed ${maxWorkers} active coding workers`);
+                            return result({ fanout: p.tasks.map((t, i) => launch(t, `${p.key}#${i}`)) });
+                        }
+                        if (!p.task)
+                            throw Error('task is required');
+                        return result(launch(p.task, p.key));
                     }
                 });
             pi.registerTool({

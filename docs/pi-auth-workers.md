@@ -16,11 +16,13 @@
 
 每个 GUI / CLI bot 注册 `subagent` extension 工具：`task`、稳定 `key`、必要时 `source_message_id`。它验证原始宿主任务，使用现有 `startJob` 持久化机制返回 receipt，交给社区 `runSync` 执行流程和 `createDefaultChildSessionFactory` 创建独立原生 session，复用同一个 ModelRuntime、模型及认证。子会话只含原始宿主任务与派发内容，不复制私聊/群聊历史；工具调用和结果保存原生 session，脱敏 tool_call/tool_result 使用既有 trace。
 
-Pi 自带 subagent 示例位于已安装包的 `examples/extensions/subagent/`。它同步等待并在父回合 abort 时杀子进程，因此没有原样全局安装。本项目以本地 Pi extension 注册异步工具，执行端已替换为社区 pi-subagents 的执行内核；没有全局安装完整社区 extension。薄适配层通过它的每次运行 childSessionFactory 注入现有 Pi SDK、认证和安全钩子，不修改社区包源码，也不全局覆盖其 factory。社区独立 runner、自己的通知/恢复队列与递归/工作流界面未启用，以免和现有 jobs/inbox 重复管理。
+Pi 自带 subagent 示例位于已安装包的 `examples/extensions/subagent/`。它同步等待并在父回合 abort 时杀子进程，因此没有原样全局安装。本项目以本地 Pi extension 注册异步工具，执行端已替换为社区 pi-subagents 的执行内核；没有全局安装完整社区 extension。薄适配层通过它的每次运行 childSessionFactory 注入现有 Pi SDK、认证和安全钩子，不修改社区包源码，也不全局覆盖其 factory。社区独立 runner、自己的通知队列与递归/工作流界面未启用，以免和现有 jobs/inbox 重复管理，也避免独立进程绕过宿主安全钩子；插件的前台 steer/follow_up/stop 控制与保留 session 续接已通过宿主工具开放（见下）。
 
 社区执行端使用受控 worker profile，fresh context；不进行全局/项目 profile 自动发现。worker 位于对应会话的 `workers/<stable hash>/`，文件任务默认在那里执行。它没有 send_message、send_to_bot 或递归 subagent 工具，不自动加载用户/项目第三方扩展或上下文文件。父 bot 通过 job 完成 inbox 被唤醒，读取 `job_result`，核查后用 send_message 回应用户。子任务不能自行改变回复路由。
 
-同一 bot 最多一个在运行的 coding worker，重复 key 与相同任务返回已有 job；冲突拒绝。全局原有 job 数限制仍生效。每子任务最多 16 请求、总时间 10 分钟、单请求 10 分钟、最多 16,384 输出 token，禁用 provider 自动重试；同一 worker 第二次 child launch 被拒绝，阻止社区 abort recovery 自动重新执行；GUI 父/子会话共用 32 请求、384k 输入预留及 60 分钟期限，不另开隐形预算。子会话禁止同步压缩，不使用任意裁剪。
+2026-10-31 解除限制：同一 bot 可同时运行多个 coding worker，默认上限 4（`PiOptions.maxCodingWorkers` 可配置），全局原有 job 数限制（默认 8）与每任务 32 job 预算仍生效。重复 key 与相同任务返回已有 job；冲突拒绝。`subagent` 工具新增 `action`：`spawn`（默认；`task` 单个，或 `tasks[]` 最多 8 个并行 fanout，各自成为 `<key>#<序号>` job）、`steer` / `follow_up`（向运行中的 worker 注入消息，走插件 `onChildSession` 前台控制）、`interrupt`（插件 `stop`，job 以“被父 bot 中断”失败）、`resume`（用新 key 在原 worker 目录续接已结束 worker 保留的原生 session，须同一宿主任务）、`status`。控制前都会校验来源任务仍有效。每次运行最多 16 请求、总时间 10 分钟、单请求 10 分钟、最多 16,384 输出 token，禁用 provider 自动重试；插件自身的 child relaunch 不再被拒绝，但每次 launch 同样经过 guard、权限钩子与共享请求预算；GUI 父/子会话共用 32 请求、384k 输入预留及 60 分钟期限，不另开隐形预算。子会话禁止同步压缩，不使用任意裁剪。
+
+插件 watchdog 保持插件默认（关闭）：在 Pi settings 中设置 `subagents.watchdog.enabled` / `children` 后，由 `runSync` 按插件逻辑应用到 worker。仍未启用的：插件 detached/background runner（独立进程无法套用宿主的认证注入、权限钩子和任务有效性 guard）、递归 subagent、workflow script 里的 `runs.all`（fanout 由宿主 jobs 实现，等价于并行独立 worker）。steer/resume 句柄为进程内状态，daemon 重启后不可 steer 旧 worker，但 session 文件仍保留在 worker 目录。
 
 父 bot 的推理被新消息中断不会取消子 job。工具执行前再次验证任务有效性和宿主 permission hook；失效后的新工具被拦截。已启动的工具不因父消息取消；最终结果再验证任务有效性，过时结果不能通过父 bot 发出。worker 总期限终止的是该独立会话，不是父 bot 的推理控制器。进程崩溃后 jobs 保持现有 uncertain 语义，不自动重跑文件操作。
 
