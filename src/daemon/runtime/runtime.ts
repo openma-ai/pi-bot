@@ -12,6 +12,9 @@ import { Store, type Bot, type Envelope, type Job, type Question, type Outbound,
 import { redactChannelText } from './channel-messages.ts';
 import type { OpenMatterTrigger } from './openmatter-trigger.ts';
 import { StateGuard } from './state-guard.ts';
+import { OpenMatterReplyHost } from '../openmatter/reply-host.ts';
+import { makePiBotIntegration, PiBotReplyNotApplied, PI_BOT_INTEGRATION_ID, PI_BOT_REPLY, PI_BOT_REPLY_TOOL, workEventForEnvelope, type PiBotReplyInput } from '../openmatter/pi-bot-integration.ts';
+import type { OperationCallResult } from '@openma/matter';
 import { conversationResource, outboxResource, type CommitResult, type Revision } from '../../pi/state-protection.ts';
 import { groupMentions } from './group-mentions.ts';
 import { InferenceYieldError, JobExecutionError, type BotHost, type BotSession, type Permission, type SessionFactory } from '../../pi/host.ts';
@@ -104,6 +107,9 @@ export class BotRuntime implements BotHost {
     private readonly generation = randomUUID();
     private delivery: Promise<void> | undefined;
     readonly errors: unknown[] = [];
+    /** OpenMatter operation-call path for replies (pi-bot shell as an OpenMatter integration). */
+    readonly replies!: OpenMatterReplyHost;
+    private replyToolCallId: string | undefined;
     private releaseLock: () => void;
     constructor(path: string, private factory: SessionFactory, readonly options: {
         isolateConversations?: boolean;
@@ -123,6 +129,13 @@ export class BotRuntime implements BotHost {
             this.store.scopeForEnvelope = e => this.sessionScope(e);
             this.store.recover();
             this.state = new StateGuard(this.store);
+            this.replies = new OpenMatterReplyHost(this.store.db, new Map([[PI_BOT_INTEGRATION_ID, makePiBotIntegration({
+                    reply: input => this.deliverOpenMatterReply(input)
+                })]]));
+            // Conversation log backfill for envelopes accepted before it existed (store order).
+            for (const e of this.store.list<Envelope>('inbox'))
+                if (!this.replies.entry(e.id))
+                    this.replies.record(workEventForEnvelope(e));
             this.tracker = new TurnTracker(this.store);
             this.trace = new LocalTrace(join(dirname(path), 'diagnostics'));
             // Observe only newly committed lifecycle events; no history/payload export.
@@ -281,7 +294,11 @@ export class BotRuntime implements BotHost {
             } : {})
         };
         this.options.activation?.publish(e);
-        this.store.put('inbox', e);
+        this.store.transaction(() => {
+            this.store.put('inbox', e);
+            // Recorded when accepted, before its claim: a running Turn sees it at its next reply.
+            this.replies.record(workEventForEnvelope(e));
+        });
         if (this.options.activation) {
             if (!this.store.db.isTransaction)
                 this.options.activation.flush();
@@ -595,6 +612,72 @@ export class BotRuntime implements BotHost {
         return commit.status === 'committed' ? {
             ...commit, value: this.store.find<Outbound>('outbox', e.to, key) ?? commit.value
         } : commit;
+    }
+    /** `pi-bot.message.reply` delivery: appends to the outbox exactly as send_message did;
+     * the outbox delivery loop then writes channel_messages/GUI. Freshness was checked by
+     * OpenMatter before this runs, so no conversation revision is re-checked here. */
+    private deliverOpenMatterReply(input: PiBotReplyInput) {
+        const source = this.store.get<Envelope>('inbox', input.sourceMessageId);
+        if (!source)
+            throw new PiBotReplyNotApplied('Unknown source message');
+        let commit: CommitResult<Outbound>;
+        try {
+            commit = this.commitMessage(source, input.text, input.key, {
+                ...(this.replyToolCallId ? { toolCallId: this.replyToolCallId } : {})
+            });
+        }
+        catch (e) {
+            if (e instanceof PiBotError)
+                throw Object.assign(new PiBotReplyNotApplied(e.message), { reason: e.reason });
+            throw e;
+        }
+        if (commit.status === 'conflict')
+            throw new PiBotReplyNotApplied('Idempotency key conflict');
+        const o = commit.value;
+        return {
+            outboxId: o.id, botId: o.botId, key: o.key, replyTo: o.replyTo ?? null, state: o.state
+        };
+    }
+    /** Reply to `source` through OpenMatter: grant, host-bound target, seen-revision
+     * freshness check, idempotent call record, delivery and receipt.
+     * `observedInputId` is the latest conversation input the model was shown (ReadEvidence). */
+    replyThroughOpenMatter(source: Envelope, text: string, key: string, options: {
+        toolCallId?: string;
+        observedInputId?: string | null;
+    } = {}): OperationCallResult & {
+        outbound?: Outbound;
+    } {
+        this.assertTaskCurrent(source, true);
+        const trigger = workEventForEnvelope(source);
+        const triggerEntry = this.replies.entry(source.id);
+        const seenEntry = options.observedInputId ? this.replies.entry(options.observedInputId) : undefined;
+        const seen = {
+            revision: seenEntry && triggerEntry && seenEntry.conversationKey === triggerEntry.conversationKey ? seenEntry.revision : 0
+        };
+        this.replyToolCallId = options.toolCallId;
+        let result;
+        try {
+            result = this.replies.call({
+                turnId: `pi-bot:${source.to}`, callId: `message:${key}`, trigger, allow: [PI_BOT_REPLY_TOOL], seen, params: {
+                    integrationId: PI_BOT_INTEGRATION_ID, operation: PI_BOT_REPLY, input: { text, key }
+                }
+            });
+        }
+        finally {
+            this.replyToolCallId = undefined;
+        }
+        if (result.status === 'fingerprint-mismatch')
+            throw new PiBotError('conflict', 'Idempotency key conflict');
+        if (result.status === 'refused' || result.status === 'failed') {
+            const reason = (result as { reason: string }).reason;
+            throw new PiBotError(/Idempotency key conflict/.test(reason) ? 'conflict' : /budget/i.test(reason) ? 'budgetExhausted' : 'invalidParams', reason);
+        }
+        if (result.status === 'delivered') {
+            const receipt = result.receipt as { outboxId?: string } | undefined;
+            const outbound = this.store.find<Outbound>('outbox', source.to, key) ?? (receipt?.outboxId ? this.store.get<Outbound>('outbox', receipt.outboxId) : undefined);
+            return { ...result, ...(outbound ? { outbound } : {}) };
+        }
+        return result;
     }
     askUser(e: Envelope, text: string, key: string, choices?: string[]) {
         this.assertTaskCurrent(e);
