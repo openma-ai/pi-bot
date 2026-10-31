@@ -7,6 +7,7 @@
  */
 import type { Bot, BotStateSnapshot, Envelope, Job, JobResultPage, MemoryRecord, Monitor, Outbound, Proposal, Question, Schedule } from './types.ts';
 import type { CommitResult, Decision, Revision } from './state-protection.ts';
+import type { OperationCallResult } from '@openma/matter';
 /** Thrown by a tool whose durable job failed; carries the native outcome. */
 export class JobExecutionError extends Error {
     constructor(message: string, readonly outcome: unknown) {
@@ -86,6 +87,13 @@ export interface BotHost {
         toolCallId?: string;
         observedConversation?: Revision;
     }): CommitResult<Outbound>;
+    /** Reply to the source message through OpenMatter's pi-bot.message.reply operation. */
+    replyThroughOpenMatter(source: Envelope, text: string, key: string, options?: {
+        toolCallId?: string;
+        observedInputId?: string | null;
+    }): OperationCallResult & {
+        outbound?: Outbound;
+    };
     askUser(e: Envelope, text: string, key: string, choices?: string[]): Question;
     startJob(e: Envelope, tool: string, args: unknown, key: string, execute: () => Promise<unknown>, options?: {
         quiet?: boolean;
