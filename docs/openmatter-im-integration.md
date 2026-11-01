@@ -37,11 +37,14 @@ IM → OpenMatter → pi-bot。开启后 `BotRuntime` 不再唤醒原生 lane，
   - 回复是内核 operation call（`pi-bot.message.reply`），授权、目标绑定、新鲜度、投递、回执都在 OpenMatter 内。
   - 所有 project 事件写入会话日志，委派后的 Turn 也有 trigger revision 可查；只有 human 消息计入新鲜度。
 - 依赖 OpenMatter 本地分支 `local/om-integration-pibot-host`（PR #52、#53，外加 project-host 的 `integrations` / `grants` / `observe` / `eventLeaseMs` / `origin`）。
+- backlog 合并：30ms 批次窗口；协调者忙时用 Pi `AgentDriver.steer` 注入运行中的 Turn，Turn 已结束则用整批文本开启一个 Turn。人类消息仍逐条写入会话日志。
+- 协调者原生功能：`ask_user`、`send_to_bot`、`start_job` / `job_result`、`file_workspace` / `publish_file`、`schedule_create`。它们都通过 `BotRuntime` 的既有 inbox/job/proactive 通道回流，不是 worker 委派。
 
 端到端验证：`node --import tsx examples/openmatter-project-host-e2e.ts`（DeepSeek deepseek-flash）。
 
 ## 尚未迁移
 
-- 协调者模式下没有 `ask_user`、作业、proactive、`send_to_bot`、文件/图片附件；`PI_BOT_PROJECT_HOST` 因此默认关闭。
-- 移除原生 lane 与 `reply-host.ts`（默认路径仍在使用）。
-- GUI 未展示 worker 线程，流式事件（`replyDelta` 等）未从 driver 转发。
+- GUI 未展示 OpenMatter worker 线程；`replyDelta` 等流式事件尚未桥接回 pi-bot snapshot。
+- 附件目前向协调者提供元数据与 `file_workspace` 路径；图片字节还没有作为 Pi image content 直接送入模型。
+- 移除原生 lane 与 `reply-host.ts`（默认路径仍在使用，尚未证明 parity）。
+- backlog 的 live steer 目前由 `PiBotProjectHost` 直接调用自己构造的 Pi driver，而不是经 OpenMatter `session.steer` 入口；OpenMatter checkout 在本环境只读，后续应把 coordinator steer 事件收归 project-host。

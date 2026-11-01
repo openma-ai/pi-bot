@@ -186,7 +186,9 @@ test('a stale reply is rejected by freshness: nothing is delivered and the newer
     assert.deepEqual(results[0].conflict.messages.map((m: any) => m.text), ['Correction: failures only']);
     assert.equal(results[1].status, 'delivered', 'having seen it, the coordinator may reply');
     assert.deepEqual(delivered.map(d => d.text), ['failures only: none'], 'the stale text never reached the channel');
-    await until('correction Turn', () => sessions.some(s => s.role === 'coordinator' && s.prompts.some(p => p.startsWith('[trigger]') && p.includes('Correction'))));
+    // The correction arrived during a running Turn, so the backlog merge
+    // steered it into that Turn instead of opening another prompt.
+    await until('correction reached the coordinator', () => sessions.some(s => s.role === 'coordinator' && (s.steers.some(p => p.includes('Correction')) || s.prompts.some(p => p.startsWith('[trigger]') && p.includes('Correction')))));
 });
 test('worker traffic and a peer app message do not make a reply stale', async () => {
     const results: any[] = [];
@@ -352,4 +354,97 @@ test('the daemon opts in with PI_BOT_PROJECT_HOST and otherwise keeps the native
     finally {
         delete process.env.PI_BOT_PROJECT_HOST;
     }
+});
+test('messages arriving during a coordinator Turn are merged into one steer, or one backlog Turn', async () => {
+    const release = gate(), running = gate();
+    const coordinatorPrompts: string[] = [];
+    let steered = 0;
+    const { host, sessions, delivered } = setup(async (session, prompt) => {
+        if (session.role === 'worker')
+            return session.say('worker done');
+        coordinatorPrompts.push(prompt);
+        if (coordinatorPrompts.length === 1) {
+            running.open();
+            await release.opened;
+            return;
+        }
+        await session.call('pi-bot_message_reply', { text: 'merged handled', key: `k${coordinatorPrompts.length}` });
+    });
+    const first = envelope('m1', 'start the long thing');
+    await host.submit(first);
+    await running.opened;
+    // Two more messages arrive while the coordinator Turn is blocked. The
+    // driver receives one merged steer, and neither opens its own Turn.
+    await Promise.all([
+        host.submit(envelope('m2', 'also include alpha')),
+        host.submit(envelope('m3', 'and beta')),
+    ]);
+    const coordinator = () => sessions.find(s => s.role === 'coordinator')!;
+    await until('merged steer', () => coordinator().steers.length === 1);
+    const steer = coordinator().steers[0]!;
+    assert.match(steer, /also include alpha/);
+    assert.match(steer, /and beta/);
+    assert.equal(coordinator().prompts.length, 1, 'no extra Turn while the coordinator is busy');
+    const project = projectIdForEnvelope(first);
+    const entries = await Effect.runPromise(host.service.store.listConversationEntries(conversationKeyOf(project), 0));
+    assert.deepEqual(entries.filter(e => e.messageId).map(e => e.messageId), ['m1', 'm2', 'm3'], 'each merged message stays in the freshness log');
+    release.open();
+    await until('first turn settles', async () => (await host.service.view(project)).pending === 0);
+    assert.equal(coordinator().prompts.length, 1, 'the steer did not become another Turn');
+    // A later message, after the Turn settled, opens exactly one new Turn.
+    await host.submit(envelope('m4', 'now answer the user'));
+    await until('later turn', () => coordinator().prompts.length === 2);
+    assert.match(coordinator().prompts[1]!, /now answer the user/);
+    assert.equal(coordinator().steers.length, 1);
+    await until('reply', () => delivered.length === 1);
+});
+test('coordinator mode exposes pi-bot ask_user, teammate messages, jobs, files and proactive actions', async () => {
+    const calls: string[] = [];
+    const results: Record<string, any> = {};
+    const actions = {
+        askUser: (input: any) => (calls.push(`ask:${input.text}`), { questionId: 'q1' }),
+        sendToBot: (input: any) => (calls.push(`bot:${input.to}`), { messageId: 'm2', state: 'queued' }),
+        startJob: (input: any) => (calls.push(`job:${input.task}`), { jobId: 'j1', state: 'running' }),
+        jobResult: (input: any) => (calls.push(`result:${input.jobId}`), { text: '42', next: null }),
+        createSchedule: (input: any) => (calls.push(`schedule:${input.timezone}`), { id: 's1', state: 'active' }),
+        fileWorkspace: () => (calls.push('files'), { outputDir: '/tmp/out', attachments: [] }),
+        publishFile: (input: any) => (calls.push(`publish:${input.name}`), { outboxId: 'o1', state: 'pending' })
+    };
+    const { host } = setup(async (session) => {
+        if (session.role !== 'coordinator')
+            return;
+        for (const [name, args] of Object.entries({
+            ask_user: { question: 'Pick one', choices: ['a', 'b'], key: 'q' },
+            send_to_bot: { bot_id: 'bot-b', text: 'hello', key: 's' },
+            start_job: { task: 'compute 6*7', key: 'j' },
+            job_result: { job_id: 'j1' },
+            schedule_create: { prompt: 'wake', at: 123, timezone: 'UTC', key: 'sch' },
+            file_workspace: {},
+            publish_file: { name: 'report.txt', mime: 'text/plain', key: 'p' }
+        }))
+            results[name] = await session.call(name, args);
+    }, { actions, source: () => envelope('m1', 'use your features') });
+    await host.submit(envelope('m1', 'use your features'));
+    await until('all actions called', () => calls.length === 7);
+    assert.deepEqual(calls, ['ask:Pick one', 'bot:bot-b', 'job:compute 6*7', 'result:j1', 'schedule:UTC', 'files', 'publish:report.txt']);
+    assert.equal(results.ask_user.questionId, 'q1');
+    assert.equal(results.job_result.text, '42');
+    const coordinatorTools = (await import('../src/daemon/openmatter/project-host.ts')).COORDINATOR_PROMPT;
+    assert.match(coordinatorTools, /ask_user/);
+});
+test('inbound attachments travel with the project event and are visible to the coordinator', async () => {
+    let prompt = '';
+    const { host, delivered } = setup(async (session, text) => {
+        prompt = text;
+        await session.call('pi-bot_message_reply', { text: 'seen metadata', key: 'k' });
+    });
+    const e = envelope('m1', 'look at the attachment', {
+        attachments: [{ id: 'f1', name: 'photo.png', mime: 'image/png', size: 3, sha256: 'abc', scope: 'alpha/main', image: { mime: 'image/png', width: 1, height: 1 } }]
+    });
+    await host.submit(e);
+    await until('reply', () => delivered.length === 1);
+    assert.match(prompt, /photo\.png/);
+    assert.match(prompt, /"kind":"image"/);
+    assert.match(prompt, /"mimeType":"image\/png"/);
+    assert.doesNotMatch(prompt, /"data":"[^"]{1000}/, 'binary data never becomes a base64 wall in text');
 });

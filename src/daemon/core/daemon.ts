@@ -9,7 +9,8 @@ import { BotRuntime, type SessionFactory } from '../runtime/runtime.ts';
 import { ProactiveService, type Monitor } from '../runtime/proactive.ts';
 import { OpenMatterTrigger } from '../runtime/openmatter-trigger.ts';
 import { livePiFactory } from '../live-pi.ts';
-import { COORDINATOR_PROMPT, PiBotProjectHost, WORKER_PROMPT } from '../openmatter/project-host.ts';
+import { COORDINATOR_PROMPT, JOB_PROMPT, PiBotProjectHost, WORKER_PROMPT } from '../openmatter/project-host.ts';
+import { envelopeSource, makePiBotCoordinatorActions } from '../openmatter/coordinator-actions.ts';
 import { canResumePiConversation, openPiConversation } from '../../pi/agent-driver-session.ts';
 import { createFileChangeDetector } from '../runtime/proactive-detectors.ts';
 import { DesktopClient } from '../../pi/desktop-client.ts';
@@ -54,6 +55,12 @@ export class PiBotDaemon {
             directory: join(this.dataDir, 'projects'),
             reply: input => this.runtime.deliverProjectReply(input),
             canResume: (role, id) => canResumePiConversation(sessions(role), id),
+            source: envelopeSource(() => this.runtime),
+            actions: makePiBotCoordinatorActions({
+                runtime: () => this.runtime,
+                proactive: () => this.proactive,
+                openJob: input => this.runProjectJob(input)
+            }),
             open: (role, input) => {
                 const binding = this.live?.modelBinding;
                 if (!binding)
@@ -61,6 +68,29 @@ export class PiBotDaemon {
                 return openPiConversation({ ...binding, dir: sessions(role), systemPrompt: role === 'coordinator' ? COORDINATOR_PROMPT : WORKER_PROMPT }, input);
             }
         });
+    }
+    /** A pi-bot background job: isolated Pi run, completion through BotRuntime's job ledger. */
+    private async runProjectJob(input: { sessionId: string; task: string }) {
+        const binding = this.live?.modelBinding;
+        if (!binding)
+            throw new Error('Pi 配置不可用，请在设置的「模型」中完成认证并选择模型');
+        const conversation = await openPiConversation({
+            ...binding,
+            dir: join(this.dataDir, 'project-sessions', 'job'),
+            systemPrompt: JOB_PROMPT
+        }, { sessionId: input.sessionId, tools: [] });
+        let final = '';
+        conversation.subscribe(event => {
+            if (event.type === 'assistant_message' && !event.hasToolCalls && event.text)
+                final = event.text;
+        });
+        try {
+            await conversation.prompt(input.task);
+            return final || 'Job finished without a textual result.';
+        }
+        finally {
+            await conversation.dispose();
+        }
     }
     private constructor(readonly dataDir: string, readonly options: {
         factory?: SessionFactory;

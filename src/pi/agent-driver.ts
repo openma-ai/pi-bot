@@ -75,7 +75,7 @@ const withoutAttachmentData = (value: unknown): unknown => {
 const triggerText = (value: unknown) => {
     const event = value as { type?: string; payload?: Record<string, unknown> } | null;
     const payload = event?.payload;
-    return { type: event?.type, text: payload?.text ?? payload?.task ?? payload?.instruction ?? payload?.summary ?? payload?.reason, ...(payload?.workerId ? { workerId: payload.workerId } : {}), ...(payload?.origin ? { origin: payload.origin } : {}) };
+    return { type: event?.type, text: payload?.text ?? payload?.task ?? payload?.instruction ?? payload?.summary ?? payload?.reason, ...(payload?.workerId ? { workerId: payload.workerId } : {}), ...(payload?.origin ? { origin: payload.origin } : {}), ...(Array.isArray(payload?.attachments) ? { attachments: payload.attachments } : {}) };
 };
 /** What the Agent reads for a Turn. Repeated project context is sent once per Session. */
 export function renderTurnPrompt(context: ContextProjection, seen: Set<string> = new Set()) {
