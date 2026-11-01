@@ -173,10 +173,19 @@ export interface PiBotReplyPort {
   readonly reply: (input: PiBotReplyInput) => JsonValue;
 }
 
+/** Where a Turn triggered by a project event replies; bound by the project host. */
+export type PiBotReplyTarget = Pick<PiBotReplyInput, "sourceMessageId" | "conversationId" | "threadId">;
+
 /** A host error whose effect is known not to have been applied (stale task, invalid input). */
 export class PiBotReplyNotApplied extends Error {}
 
-export const makePiBotIntegration = (port: PiBotReplyPort): WorkIntegration => ({
+export const makePiBotIntegration = (
+  port: PiBotReplyPort,
+  options: {
+    /** Coordinator Turns run on project events; the host binds their reply target. */
+    readonly projectTarget?: (trigger: WorkEvent) => PiBotReplyTarget | undefined;
+  } = {},
+): WorkIntegration => ({
   manifest: {
     id: PI_BOT_INTEGRATION_ID,
     displayName: "pi-bot chat",
@@ -223,6 +232,12 @@ export const makePiBotIntegration = (port: PiBotReplyPort): WorkIntegration => (
     );
     if (extra.length > 0)
       return { refused: `message.reply does not accept: ${extra.join(", ")}` };
+    if (trigger.source.provider === "project" && options.projectTarget) {
+      const target = options.projectTarget(trigger);
+      return target
+        ? { input: { ...target, text: input.text, key: input.key } }
+        : { refused: "This project has no message to reply to" };
+    }
     const sourceMessageId = payloadOf(trigger)?.id;
     if (
       trigger.source.provider !== PI_BOT_INTEGRATION_ID ||

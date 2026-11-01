@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { Store, type Bot, type Envelope, type Job, type Question, type Outbound, type ChatRoute, type ChatGroup } from './store.ts';
 import { redactChannelText } from './channel-messages.ts';
 import type { OpenMatterTrigger } from './openmatter-trigger.ts';
+import type { EnvelopeDispatch } from '../openmatter/project-host.ts';
 import { StateGuard } from './state-guard.ts';
 import { OpenMatterReplyHost } from '../openmatter/reply-host.ts';
 import { makePiBotIntegration, PiBotReplyNotApplied, PI_BOT_INTEGRATION_ID, PI_BOT_REPLY, PI_BOT_REPLY_TOOL, workEventForEnvelope, type PiBotReplyInput } from '../openmatter/pi-bot-integration.ts';
@@ -115,6 +116,8 @@ export class BotRuntime implements BotHost {
     constructor(path: string, private factory: SessionFactory, readonly options: {
         isolateConversations?: boolean;
         activation?: OpenMatterTrigger;
+        /** OpenMatter owns dispatch: accepted input is submitted here and no Pi lane wakes. */
+        dispatch?: EnvelopeDispatch;
         maxBots?: number;
         maxHops?: number;
         maxTaskMessages?: number;
@@ -294,13 +297,16 @@ export class BotRuntime implements BotHost {
                 deliveryTarget
             } : {})
         };
-        this.options.activation?.publish(e);
+        if (!this.options.dispatch)
+            this.options.activation?.publish(e);
         this.store.transaction(() => {
             this.store.put('inbox', e);
             // Recorded when accepted, before its claim: a running Turn sees it at its next reply.
             this.replies.record(workEventForEnvelope(e));
         });
-        if (this.options.activation) {
+        if (this.options.dispatch)
+            this.dispatchEnvelope(e);
+        else if (this.options.activation) {
             if (!this.store.db.isTransaction)
                 this.options.activation.flush();
         }
@@ -376,7 +382,25 @@ export class BotRuntime implements BotHost {
             return deliveries;
         });
     }
+    /** Hands a durable envelope to OpenMatter; queued until it is in the OpenMatter inbox. */
+    private dispatchEnvelope(e: Envelope) {
+        void this.options.dispatch!.submit(e).then(() => {
+            const current = this.store.get<Envelope>('inbox', e.id);
+            if (!this.stopped && current?.state === 'queued')
+                this.store.put('inbox', { ...current, state: 'processed', consumedAt: Date.now() });
+        }).catch(error => {
+            this.errors.push(error);
+        });
+    }
+    /** Submits what a previous process accepted but did not hand over; idempotent by envelope id. */
+    resubmitQueued() {
+        for (const e of this.store.list<Envelope>('inbox'))
+            if (e.state === 'queued')
+                this.dispatchEnvelope(e);
+    }
     private wake(id: string) {
+        if (this.options.dispatch)
+            return;
         if (this.stopped || this.reconfiguring)
             return;
         if (this.lanes.has(id)) {
@@ -641,6 +665,25 @@ export class BotRuntime implements BotHost {
         return {
             outboxId: o.id, botId: o.botId, key: o.key, replyTo: o.replyTo ?? null, state: o.state
         };
+    }
+    /** Delivery for a reply OpenMatter's runtime already authorized and checked for freshness. */
+    deliverProjectReply(input: PiBotReplyInput, toolCallId?: string) {
+        const source = this.store.get<Envelope>('inbox', input.sourceMessageId);
+        if (!source)
+            throw new PiBotReplyNotApplied('Unknown source message');
+        let commit: CommitResult<Outbound>;
+        try {
+            commit = this.commitMessage(source, input.text, input.key, toolCallId ? { toolCallId } : {});
+        }
+        catch (e) {
+            if (e instanceof PiBotError)
+                throw Object.assign(new PiBotReplyNotApplied(e.message), { reason: e.reason });
+            throw e;
+        }
+        if (commit.status === 'conflict')
+            throw new PiBotReplyNotApplied('Idempotency key conflict');
+        const o = commit.value;
+        return { outboxId: o.id, botId: o.botId, key: o.key, replyTo: o.replyTo ?? null, state: o.state };
     }
     /** Reply to `source` through OpenMatter: grant, host-bound target, seen-revision
      * freshness check, idempotent call record, delivery and receipt.
