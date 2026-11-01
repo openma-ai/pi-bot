@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { Store, type Bot, type Envelope, type Job, type Question, type Outbound, type ChatRoute, type ChatGroup } from './store.ts';
 import { redactChannelText } from './channel-messages.ts';
 import type { OpenMatterTrigger } from './openmatter-trigger.ts';
+import type { EnvelopeDispatch } from '../openmatter/project-host.ts';
 import { StateGuard } from './state-guard.ts';
 import { OpenMatterReplyHost } from '../openmatter/reply-host.ts';
 import { makePiBotIntegration, PiBotReplyNotApplied, PI_BOT_INTEGRATION_ID, PI_BOT_REPLY, PI_BOT_REPLY_TOOL, workEventForEnvelope, type PiBotReplyInput } from '../openmatter/pi-bot-integration.ts';
@@ -110,10 +111,13 @@ export class BotRuntime implements BotHost {
     /** OpenMatter operation-call path for replies (pi-bot shell as an OpenMatter integration). */
     readonly replies!: OpenMatterReplyHost;
     private replyToolCallId: string | undefined;
+    private replyObservedConversation: Revision | undefined;
     private releaseLock: () => void;
     constructor(path: string, private factory: SessionFactory, readonly options: {
         isolateConversations?: boolean;
         activation?: OpenMatterTrigger;
+        /** OpenMatter owns dispatch: accepted input is submitted here and no Pi lane wakes. */
+        dispatch?: EnvelopeDispatch;
         maxBots?: number;
         maxHops?: number;
         maxTaskMessages?: number;
@@ -293,13 +297,16 @@ export class BotRuntime implements BotHost {
                 deliveryTarget
             } : {})
         };
-        this.options.activation?.publish(e);
+        if (!this.options.dispatch)
+            this.options.activation?.publish(e);
         this.store.transaction(() => {
             this.store.put('inbox', e);
             // Recorded when accepted, before its claim: a running Turn sees it at its next reply.
             this.replies.record(workEventForEnvelope(e));
         });
-        if (this.options.activation) {
+        if (this.options.dispatch)
+            this.dispatchEnvelope(e);
+        else if (this.options.activation) {
             if (!this.store.db.isTransaction)
                 this.options.activation.flush();
         }
@@ -375,7 +382,25 @@ export class BotRuntime implements BotHost {
             return deliveries;
         });
     }
+    /** Hands a durable envelope to OpenMatter; queued until it is in the OpenMatter inbox. */
+    private dispatchEnvelope(e: Envelope) {
+        void this.options.dispatch!.submit(e).then(() => {
+            const current = this.store.get<Envelope>('inbox', e.id);
+            if (!this.stopped && current?.state === 'queued')
+                this.store.put('inbox', { ...current, state: 'processed', consumedAt: Date.now() });
+        }).catch(error => {
+            this.errors.push(error);
+        });
+    }
+    /** Submits what a previous process accepted but did not hand over; idempotent by envelope id. */
+    resubmitQueued() {
+        for (const e of this.store.list<Envelope>('inbox'))
+            if (e.state === 'queued')
+                this.dispatchEnvelope(e);
+    }
     private wake(id: string) {
+        if (this.options.dispatch)
+            return;
         if (this.stopped || this.reconfiguring)
             return;
         if (this.lanes.has(id)) {
@@ -623,7 +648,10 @@ export class BotRuntime implements BotHost {
         let commit: CommitResult<Outbound>;
         try {
             commit = this.commitMessage(source, input.text, input.key, {
-                ...(this.replyToolCallId ? { toolCallId: this.replyToolCallId } : {})
+                ...(this.replyToolCallId ? { toolCallId: this.replyToolCallId } : {}),
+                // Keep main's guard: the replying session must have seen the conversation's
+                // latest human input (a delegated worker that never saw it cannot answer the user).
+                observedConversation: this.replyObservedConversation ?? null
             });
         }
         catch (e) {
@@ -637,6 +665,84 @@ export class BotRuntime implements BotHost {
         return {
             outboxId: o.id, botId: o.botId, key: o.key, replyTo: o.replyTo ?? null, state: o.state
         };
+    }
+    /** Delivery for a reply OpenMatter's runtime already authorized and checked for freshness.
+     * `ask: true` is the ask_user variant of the same reply path: create a Question binding
+     * and project it to the user; the receipt's questionId binds the later answer. */
+    deliverProjectReply(input: PiBotReplyInput, toolCallId?: string) {
+        if (input.ask === true)
+            return this.deliverProjectAsk(input, toolCallId);
+        const source = this.store.get<Envelope>('inbox', input.sourceMessageId);
+        if (!source)
+            throw new PiBotReplyNotApplied('Unknown source message');
+        let commit: CommitResult<Outbound>;
+        try {
+            commit = this.commitMessage(source, input.text, input.key, toolCallId ? { toolCallId } : {});
+        }
+        catch (e) {
+            if (e instanceof PiBotError)
+                throw Object.assign(new PiBotReplyNotApplied(e.message), { reason: e.reason });
+            throw e;
+        }
+        if (commit.status === 'conflict')
+            throw new PiBotReplyNotApplied('Idempotency key conflict');
+        const o = commit.value;
+        return { outboxId: o.id, botId: o.botId, key: o.key, replyTo: o.replyTo ?? null, state: o.state };
+    }
+    /** ask_user as message.reply extension: same freshness/authorization already applied. */
+    private deliverProjectAsk(input: PiBotReplyInput, toolCallId?: string) {
+        const source = this.store.get<Envelope>('inbox', input.sourceMessageId);
+        if (!source)
+            throw new PiBotReplyNotApplied('Unknown source message');
+        const text = input.text;
+        const choices = input.choices;
+        if (text.length > 4000)
+            throw Object.assign(new PiBotReplyNotApplied('Question exceeds 4000 characters'), { reason: 'invalidParams' });
+        if (choices && (!Array.isArray(choices) || choices.length < 1 || choices.length > 6 || choices.some(c => typeof c !== 'string' || !c.trim() || c.length > 300) || new Set(choices).size !== choices.length))
+            throw Object.assign(new PiBotReplyNotApplied('Invalid decision choices'), { reason: 'invalidParams' });
+        const old = this.store.find<Question>('questions', source.to, input.key);
+        if (old) {
+            if (old.text !== text || JSON.stringify(old.choices ?? []) !== JSON.stringify(choices ?? []))
+                throw new PiBotReplyNotApplied('Idempotency key conflict');
+            return {
+                questionId: old.id, outboxId: null, botId: old.botId, key: old.key, replyTo: old.messageId, state: old.state,
+                receipt: 'Question already recorded; the answer arrives as its own Turn bound by questionId.'
+            };
+        }
+        if (this.store.count('questions', 'botId', source.to, 'pending') >= 16)
+            throw Object.assign(new PiBotReplyNotApplied('Pending question capacity reached'), { reason: 'capacity' });
+        try {
+            return this.store.transaction(() => {
+                const q: Question = {
+                    id: randomUUID(), botId: source.to, taskId: source.taskId, messageId: source.id, key: input.key, text, ...(choices ? {
+                        choices: [...choices]
+                    } : {}), state: 'pending', createdAt: Date.now()
+                };
+                this.store.put('questions', q);
+                (this as any).requestBroker?.question(q);
+                const projected = JSON.stringify({
+                    questionId: q.id, question: text, ...(choices ? {
+                        choices: q.choices
+                    } : {})
+                });
+                // Outbox key mirrors native askUser (`question:<id>`); the agent's key dedupes the Question.
+                const commit = this.commitMessage(source, projected, `question:${q.id}`, toolCallId ? {
+                    toolCallId
+                } : {});
+                if (commit.status === 'conflict')
+                    throw new PiBotReplyNotApplied('Idempotency key conflict');
+                const o = commit.value;
+                return {
+                    questionId: q.id, outboxId: o.id, botId: o.botId, key: input.key, replyTo: o.replyTo ?? null, state: o.state,
+                    receipt: 'Question delivered through OpenMatter reply; the answer arrives as its own Turn bound by questionId.'
+                };
+            });
+        }
+        catch (e) {
+            if (e instanceof PiBotError)
+                throw Object.assign(new PiBotReplyNotApplied(e.message), { reason: e.reason });
+            throw e;
+        }
     }
     /** Reply to `source` through OpenMatter: grant, host-bound target, seen-revision
      * freshness check, idempotent call record, delivery and receipt.
@@ -655,6 +761,7 @@ export class BotRuntime implements BotHost {
             revision: seenEntry && triggerEntry && seenEntry.conversationKey === triggerEntry.conversationKey ? seenEntry.revision : 0
         };
         this.replyToolCallId = options.toolCallId;
+        this.replyObservedConversation = options.observedInputId ?? null;
         let result;
         try {
             result = this.replies.call({
@@ -665,6 +772,7 @@ export class BotRuntime implements BotHost {
         }
         finally {
             this.replyToolCallId = undefined;
+            this.replyObservedConversation = undefined;
         }
         if (result.status === 'fingerprint-mismatch')
             throw new PiBotError('conflict', 'Idempotency key conflict');
