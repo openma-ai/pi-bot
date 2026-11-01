@@ -666,8 +666,12 @@ export class BotRuntime implements BotHost {
             outboxId: o.id, botId: o.botId, key: o.key, replyTo: o.replyTo ?? null, state: o.state
         };
     }
-    /** Delivery for a reply OpenMatter's runtime already authorized and checked for freshness. */
+    /** Delivery for a reply OpenMatter's runtime already authorized and checked for freshness.
+     * `ask: true` is the ask_user variant of the same reply path: create a Question binding
+     * and project it to the user; the receipt's questionId binds the later answer. */
     deliverProjectReply(input: PiBotReplyInput, toolCallId?: string) {
+        if (input.ask === true)
+            return this.deliverProjectAsk(input, toolCallId);
         const source = this.store.get<Envelope>('inbox', input.sourceMessageId);
         if (!source)
             throw new PiBotReplyNotApplied('Unknown source message');
@@ -684,6 +688,61 @@ export class BotRuntime implements BotHost {
             throw new PiBotReplyNotApplied('Idempotency key conflict');
         const o = commit.value;
         return { outboxId: o.id, botId: o.botId, key: o.key, replyTo: o.replyTo ?? null, state: o.state };
+    }
+    /** ask_user as message.reply extension: same freshness/authorization already applied. */
+    private deliverProjectAsk(input: PiBotReplyInput, toolCallId?: string) {
+        const source = this.store.get<Envelope>('inbox', input.sourceMessageId);
+        if (!source)
+            throw new PiBotReplyNotApplied('Unknown source message');
+        const text = input.text;
+        const choices = input.choices;
+        if (text.length > 4000)
+            throw Object.assign(new PiBotReplyNotApplied('Question exceeds 4000 characters'), { reason: 'invalidParams' });
+        if (choices && (!Array.isArray(choices) || choices.length < 1 || choices.length > 6 || choices.some(c => typeof c !== 'string' || !c.trim() || c.length > 300) || new Set(choices).size !== choices.length))
+            throw Object.assign(new PiBotReplyNotApplied('Invalid decision choices'), { reason: 'invalidParams' });
+        const old = this.store.find<Question>('questions', source.to, input.key);
+        if (old) {
+            if (old.text !== text || JSON.stringify(old.choices ?? []) !== JSON.stringify(choices ?? []))
+                throw new PiBotReplyNotApplied('Idempotency key conflict');
+            return {
+                questionId: old.id, outboxId: null, botId: old.botId, key: old.key, replyTo: old.messageId, state: old.state,
+                receipt: 'Question already recorded; the answer arrives as its own Turn bound by questionId.'
+            };
+        }
+        if (this.store.count('questions', 'botId', source.to, 'pending') >= 16)
+            throw Object.assign(new PiBotReplyNotApplied('Pending question capacity reached'), { reason: 'capacity' });
+        try {
+            return this.store.transaction(() => {
+                const q: Question = {
+                    id: randomUUID(), botId: source.to, taskId: source.taskId, messageId: source.id, key: input.key, text, ...(choices ? {
+                        choices: [...choices]
+                    } : {}), state: 'pending', createdAt: Date.now()
+                };
+                this.store.put('questions', q);
+                (this as any).requestBroker?.question(q);
+                const projected = JSON.stringify({
+                    questionId: q.id, question: text, ...(choices ? {
+                        choices: q.choices
+                    } : {})
+                });
+                // Outbox key mirrors native askUser (`question:<id>`); the agent's key dedupes the Question.
+                const commit = this.commitMessage(source, projected, `question:${q.id}`, toolCallId ? {
+                    toolCallId
+                } : {});
+                if (commit.status === 'conflict')
+                    throw new PiBotReplyNotApplied('Idempotency key conflict');
+                const o = commit.value;
+                return {
+                    questionId: q.id, outboxId: o.id, botId: o.botId, key: input.key, replyTo: o.replyTo ?? null, state: o.state,
+                    receipt: 'Question delivered through OpenMatter reply; the answer arrives as its own Turn bound by questionId.'
+                };
+            });
+        }
+        catch (e) {
+            if (e instanceof PiBotError)
+                throw Object.assign(new PiBotReplyNotApplied(e.message), { reason: e.reason });
+            throw e;
+        }
     }
     /** Reply to `source` through OpenMatter: grant, host-bound target, seen-revision
      * freshness check, idempotent call record, delivery and receipt.

@@ -135,7 +135,7 @@ test('coordinator delegates to a worker through project-host, and the result is 
     assert.match(coordinator.prompts[1]!, /coordinator-worker-result.*RESULT for: count/);
     // Workers have no way to talk to the user; only the coordinator has controls and reply.
     assert.deepEqual(worker.input.tools, []);
-    assert.deepEqual(coordinator.input.tools.map(t => t.name).sort(), ['cancel_worker', 'complete_project', 'delegate_worker', 'pi-bot_message_reply', 'steer_worker']);
+    assert.deepEqual(coordinator.input.tools.map(t => t.name).sort(), ['ask_user', 'cancel_worker', 'complete_project', 'delegate_worker', 'pi-bot_message_reply', 'steer_worker']);
     // The target was bound by the host, from the message at the Turn's trigger.
     assert.deepEqual(delivered[0], { sourceMessageId: 'm1', conversationId: JSON.stringify(['bot-a', 'alpha', 'alpha']), threadId: 'main', text: 'The worker finished: 42', key: 'final' });
     await until('turns settled', async () => (await host.service.view(project)).pending === 0);
@@ -398,11 +398,11 @@ test('messages arriving during a coordinator Turn are merged into one steer, or 
     assert.equal(coordinator().steers.length, 1);
     await until('reply', () => delivered.length === 1);
 });
-test('coordinator mode exposes pi-bot ask_user, teammate messages, jobs, files and proactive actions', async () => {
+test('coordinator mode exposes ask_user as message.reply extension plus teammate, jobs, files and proactive actions', async () => {
     const calls: string[] = [];
     const results: Record<string, any> = {};
+    const delivered: any[] = [];
     const actions = {
-        askUser: (input: any) => (calls.push(`ask:${input.text}`), { questionId: 'q1' }),
         sendToBot: (input: any) => (calls.push(`bot:${input.to}`), { messageId: 'm2', state: 'queued' }),
         startJob: (input: any) => (calls.push(`job:${input.task}`), { jobId: 'j1', state: 'running' }),
         jobResult: (input: any) => (calls.push(`result:${input.jobId}`), { text: '42', next: null }),
@@ -413,8 +413,8 @@ test('coordinator mode exposes pi-bot ask_user, teammate messages, jobs, files a
     const { host } = setup(async (session) => {
         if (session.role !== 'coordinator')
             return;
+        results.ask_user = await session.call('ask_user', { question: 'Pick one', choices: ['a', 'b'], key: 'q' });
         for (const [name, args] of Object.entries({
-            ask_user: { question: 'Pick one', choices: ['a', 'b'], key: 'q' },
             send_to_bot: { bot_id: 'bot-b', text: 'hello', key: 's' },
             start_job: { task: 'compute 6*7', key: 'j' },
             job_result: { job_id: 'j1' },
@@ -423,14 +423,26 @@ test('coordinator mode exposes pi-bot ask_user, teammate messages, jobs, files a
             publish_file: { name: 'report.txt', mime: 'text/plain', key: 'p' }
         }))
             results[name] = await session.call(name, args);
-    }, { actions, source: () => envelope('m1', 'use your features') });
+    }, {
+        actions,
+        source: () => envelope('m1', 'use your features'),
+        reply: (input: any) => {
+            delivered.push(input);
+            calls.push(`ask:${input.text}`);
+            return { questionId: 'q1', outboxId: 'o-ask', botId: 'bot', key: input.key, replyTo: input.sourceMessageId, state: 'pending', receipt: 'Question delivered through OpenMatter reply; the answer arrives as its own Turn bound by questionId.', ...(input.ask ? { ask: true } : {}) };
+        }
+    });
     await host.submit(envelope('m1', 'use your features'));
     await until('all actions called', () => calls.length === 7);
     assert.deepEqual(calls, ['ask:Pick one', 'bot:bot-b', 'job:compute 6*7', 'result:j1', 'schedule:UTC', 'files', 'publish:report.txt']);
-    assert.equal(results.ask_user.questionId, 'q1');
+    assert.equal(results.ask_user?.status, 'delivered');
+    assert.equal(results.ask_user?.receipt?.questionId, 'q1');
+    assert.equal(delivered[0]?.ask, true);
+    assert.deepEqual(delivered[0]?.choices, ['a', 'b']);
     assert.equal(results.job_result.text, '42');
     const coordinatorTools = (await import('../src/daemon/openmatter/project-host.ts')).COORDINATOR_PROMPT;
     assert.match(coordinatorTools, /ask_user/);
+    assert.match(coordinatorTools, /ask=true/);
 });
 test('inbound attachments travel with the project event and are visible to the coordinator', async () => {
     let prompt = '';

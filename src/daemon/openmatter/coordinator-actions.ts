@@ -44,10 +44,12 @@ export type CoordinatorActionOptions = {
 };
 
 /**
- * Binds pi-bot's native coordinator features (ask_user, teammate messages,
- * jobs, proactive, files) to tools the coordinator can call. OpenMatter still
- * owns the Turn, the inbox and the reply path; these actions only create
- * pi-bot events that come back through the same project inbox.
+ * Binds pi-bot's native coordinator features (teammate messages, jobs,
+ * proactive, files) to tools the coordinator can call. ask_user is not here:
+ * it is an extension of pi-bot.message.reply (ask=true) through OpenMatter
+ * callOperation. OpenMatter still owns the Turn, the inbox and the reply path;
+ * these actions only create pi-bot events that come back through the same
+ * project inbox.
  */
 export const makePiBotCoordinatorActions = (
   options: CoordinatorActionOptions,
@@ -59,10 +61,6 @@ export const makePiBotCoordinatorActions = (
       ? options.proactive()
       : options.proactive;
   return {
-    askUser: ({ source, text, key, choices }) => ({
-      ...runtime().askUser(source, text, key, choices),
-      receipt: "Question created; the answer arrives as its own Turn.",
-    }),
     sendToBot: ({ source, to, text, key }) => {
       const accepted = runtime().sendToBot(source, to, text, key);
       return {

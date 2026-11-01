@@ -135,10 +135,15 @@ export const observePiBotEvent = (
   };
 };
 
-/** What the Agent supplies for `message.reply`; the target is bound by the host. */
+/** What the Agent supplies for `message.reply`; the target is bound by the host.
+ * `ask: true` (optional `choices`) is the ask_user variant of the same reply:
+ * same authorization, freshness and delivery, plus a receipt that binds the
+ * later answer back to this Turn. */
 export const PiBotReplyToolInputSchema = Schema.Struct({
   text: Schema.String,
   key: Schema.String,
+  ask: Schema.optional(Schema.Boolean),
+  choices: Schema.optional(Schema.Array(Schema.String)),
 });
 /** What is delivered: the Agent's content plus the triggering message it answers. */
 export const PiBotReplyInputSchema = Schema.Struct({
@@ -148,18 +153,27 @@ export const PiBotReplyInputSchema = Schema.Struct({
   text: Schema.String,
   key: Schema.String,
   toolCallId: Schema.optional(Schema.String),
+  ask: Schema.optional(Schema.Boolean),
+  choices: Schema.optional(Schema.Array(Schema.String)),
 });
 export type PiBotReplyInput = typeof PiBotReplyInputSchema.Type;
 
 export const PI_BOT_TOOLS = {
   [PI_BOT_REPLY]: {
     description:
-      "Reply to the user in the conversation and thread of the message that triggered this Turn. Not applied, with the newer messages returned, if the user wrote again after what you have seen.",
+      "Reply to the user in the conversation and thread of the message that triggered this Turn. Set ask=true (optional choices) to ask a question instead of a plain reply: same path, and the receipt includes questionId so the later answer binds back to this Turn. Not applied, with the newer messages returned, if the user wrote again after what you have seen.",
     inputSchema: {
       type: "object",
       properties: {
         text: { type: "string", maxLength: 64000 },
         key: { type: "string", maxLength: 256 },
+        ask: { type: "boolean" },
+        choices: {
+          type: "array",
+          items: { type: "string", minLength: 1, maxLength: 300 },
+          minItems: 1,
+          maxItems: 6,
+        },
       },
       required: ["text", "key"],
       additionalProperties: false,
@@ -226,16 +240,32 @@ export const makePiBotIntegration = (
     if (operation !== PI_BOT_REPLY)
       return { refused: `Not a pi-bot tool: ${operation}` };
     if (!Schema.is(PiBotReplyToolInputSchema)(input))
-      return { refused: "message.reply takes { text, key }" };
-    const extra = Object.keys(input as object).filter(
-      (k) => k !== "text" && k !== "key",
-    );
+      return { refused: "message.reply takes { text, key, ask?, choices? }" };
+    const allowed = new Set(["text", "key", "ask", "choices"]);
+    const extra = Object.keys(input as object).filter((k) => !allowed.has(k));
     if (extra.length > 0)
       return { refused: `message.reply does not accept: ${extra.join(", ")}` };
+    if (input.choices !== undefined) {
+      const choices = input.choices;
+      if (
+        !Array.isArray(choices) ||
+        choices.length < 1 ||
+        choices.length > 6 ||
+        choices.some((c) => typeof c !== "string" || !c.trim() || c.length > 300) ||
+        new Set(choices).size !== choices.length
+      )
+        return { refused: "message.reply choices must be 1–6 unique non-empty strings" };
+      if (input.ask === false)
+        return { refused: "message.reply choices require ask: true" };
+    }
+    const askFields = {
+      ...(input.ask === true || input.choices !== undefined ? { ask: true as const } : {}),
+      ...(input.choices !== undefined ? { choices: input.choices } : {}),
+    };
     if (trigger.source.provider === "project" && options.projectTarget) {
       const target = options.projectTarget(trigger);
       return target
-        ? { input: { ...target, text: input.text, key: input.key } }
+        ? { input: { ...target, text: input.text, key: input.key, ...askFields } }
         : { refused: "This project has no message to reply to" };
     }
     const sourceMessageId = payloadOf(trigger)?.id;
@@ -252,6 +282,7 @@ export const makePiBotIntegration = (
         threadId: trigger.source.threadId ?? "main",
         text: input.text,
         key: input.key,
+        ...askFields,
       },
     };
   },

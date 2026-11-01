@@ -62,6 +62,8 @@ export type PiAgentDriverOptions = {
     render?(context: ContextProjection, seen: Set<string>): string;
     /** Observation point before a call reaches the runtime; awaited. */
     beforeOperationCall?(tool: AgentTool, input: unknown): Promise<void>;
+    /** Extra tools that wrap granted operations (e.g. ask_user → message.reply with ask:true). */
+    aliasOperations?(operations: PiDriverTool[]): PiDriverTool[];
     clock?(): string;
 };
 const ROUTING_KINDS = new Set(['coordinator-association']);
@@ -197,7 +199,8 @@ export function makePiAgentDriver(options: PiAgentDriverOptions): AgentDriver {
     const conversationFor = (session: SessionState, tools: readonly AgentTool[]) => {
         const hostTools = options.hostTools?.({ sessionId: session.id, ...(session.scopeId ? { scopeId: session.scopeId } : {}), ...(session.workThreadId ? { workThreadId: session.workThreadId } : {}) }) ?? [];
         const operations = options.exposeOperations === false ? [] : tools.map(tool => operationTool(session, tool));
-        const all = [...hostTools, ...operations];
+        const aliases = options.aliasOperations?.(operations) ?? [];
+        const all = [...hostTools, ...operations, ...aliases];
         const names = JSON.stringify(all.map(tool => tool.name).sort());
         if (session.conversation && session.toolNames === names)
             return session.conversation;

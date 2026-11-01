@@ -119,12 +119,12 @@ try {
     const bot = runtime.createBot('main', 'Coordinator', 'alpha');
     section(`SETUP model=${MODEL} provider=${SMOKE_PROVIDER}`);
     section('SCENARIO 1: IM message -> coordinator delegates -> worker -> reply through OpenMatter');
-    const first = runtime.accept({ to: bot.id, text: 'Please delegate this to a worker with worker_id "calc": compute 17 * 23 and return only the number. When the worker result arrives, tell me the number with pi-bot_message_reply.', key: 'q1', route });
+    const first = runtime.accept({ to: bot.id, text: 'Please delegate this to a worker with worker_id "calc": compute 17 * 23 and return only the number. Do not send any acknowledgement or status message; reply exactly once, when the worker result arrives, with only the number via pi-bot_message_reply.', key: 'q1', route });
     log('[IM -> pi-bot accept]', { id: first.id, text: first.text });
     const project = projectIdForEnvelope(first);
     log('[project]', { id: project, config: { workspace: host.service.config(project)?.workspace, controls: host.service.config(project)?.controls } });
-    await until('first reply', () => outbox().length >= 1);
-    const sent = outbox()[0]!;
+    await until('first reply', () => outbox().some(o => o.text.includes('391')));
+    const sent = outbox().find(o => o.text.includes('391'))!;
     check('reply landed in the pi-bot outbox', sent.replyTo === first.id, { text: sent.text, replyTo: sent.replyTo });
     check('worker result reached the user', sent.text.includes('391'), sent.text);
     await until('scenario 1 settled', async () => (await host.service.view(project)).pending === 0);
@@ -159,7 +159,7 @@ try {
         });
         log('[corrections recorded in the OpenMatter conversation log]');
     };
-    const second = runtime.accept({ to: bot.id, text: 'New request. Delegate to worker_id "calc2": compute 19 * 23 and return only the number. When the worker result arrives, tell me the number with pi-bot_message_reply.', key: 'q2', route });
+    const second = runtime.accept({ to: bot.id, text: 'New request. Delegate to worker_id "calc2": compute 19 * 23 and return only the number. Do not send any acknowledgement or status message; reply exactly once, when the worker result arrives, with only the number via pi-bot_message_reply.', key: 'q2', route });
     log('[IM -> pi-bot accept]', { id: second.id, text: second.text });
     await until('correction delivered', () => outbox().slice(before).some(o => o.text.includes('414')));
     await until('scenario 2 settled', async () => (await host.service.view(project)).pending === 0);
@@ -212,6 +212,13 @@ try {
     check('cancellation produced a cancelled worker Turn', await slowSession() !== undefined && facts3.turns.some(turn => turn.state === 'cancelled'));
 
     section('SCENARIO 4: restart the host/runtime and resume the durable Session');
+    // Let the coordinator finish reacting to the cancellation before restarting,
+    // so the post-restart check reads the reply to the post-restart message.
+    await until('no running Turns before restart', async () => {
+        const facts = await Effect.runPromise(host.service.store.inspectScope(project));
+        return facts.turns.every(turn => turn.state !== 'running');
+    });
+    await new Promise(r => setTimeout(r, 2000));
     const outboxBeforeRestart = outbox().length;
     await host.close();
     runtime.close();
@@ -222,8 +229,10 @@ try {
     const resumedBot = runtime.store.list<{ id: string }>('bots').find(b => b.id === bot.id)!;
     const resumed = runtime.accept({ to: resumedBot.id, text: 'Repeat the last number you told me, using pi-bot_message_reply. Only the number.', key: 'q4', route });
     log('[IM -> pi-bot accept after restart]', { id: resumed.id });
-    await until('reply after restart', () => outbox().length > outboxBeforeRestart);
-    const resumedReply = outbox().at(-1)!;
+    // A message that arrives while a resumed Turn is running is steered into it,
+    // so its reply may be bound to that Turn's trigger rather than to this message.
+    await until('reply after restart', () => outbox().slice(outboxBeforeRestart).some(o => o.text.includes('414')));
+    const resumedReply = outbox().slice(outboxBeforeRestart).find(o => o.text.includes('414'))!;
     check('a fresh runtime resumed the coordinator Session and replied', resumedReply.text.includes('414'), resumedReply.text);
     check('resume reopened a durable Pi session directory', canResumePiConversation(join(dir, 'pi', 'coordinator'), (await Effect.runPromise(host.service.store.inspectScope(project))).sessions.find(s => s.workThreadId.endsWith(':coordinator'))!.id));
 
