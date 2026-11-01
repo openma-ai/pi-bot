@@ -6,7 +6,7 @@ import {
   type WorkEvent,
 } from "../../../vendor/openmatter/core/index.ts";
 import type { Envelope } from "./store.ts";
-import { redactChannelText } from "./channel-messages.ts";
+import { workEventForEnvelope } from "../openmatter/pi-bot-integration.ts";
 /** Actual OpenMatter durable ingress; lease completion acknowledges Pi handoff only. */
 export class OpenMatterTrigger {
   private readonly inbox;
@@ -22,41 +22,9 @@ export class OpenMatterTrigger {
     this.activate = activate;
   }
   publish(envelope: Envelope, activationId = envelope.id) {
-    const {
-      state,
-      admittedAt,
-      consumedAt,
-      resolvedAt,
-      resolution,
-      error,
-      deferredContinuation,
-      ...stable
-    } = envelope;
-    const stamp = new Date(envelope.createdAt).toISOString();
-    const event: WorkEvent = {
-      schemaVersion: "1",
-      id: activationId,
-      type: "pi." + envelope.kind,
-      occurredAt: stamp,
-      receivedAt: stamp,
-      idempotencyKey: activationId,
-      source: {
-        provider: "pi-bot",
-        authority: envelope.from,
-        conversationId:
-          envelope.route?.conversationId ??
-          envelope.route?.channelId ??
-          `local:${envelope.to}`,
-        threadId: envelope.route?.threadId ?? "private",
-        messageId: envelope.id,
-      },
-      payload: JSON.parse(
-        JSON.stringify({
-          ...stable,
-          text: redactChannelText(envelope.text),
-        }),
-      ),
-    };
+    // The pi-bot shell's OpenMatter event binding (src/openmatter/pi-bot-integration.ts).
+    const event: WorkEvent = workEventForEnvelope(envelope, activationId);
+    const stamp = event.receivedAt;
     if (!Schema.is(WorkEventSchema)(event))
       throw new PiBotError("invalidParams", "Invalid OpenMatter work event");
     Effect.runSync(

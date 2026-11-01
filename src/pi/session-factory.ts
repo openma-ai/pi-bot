@@ -463,9 +463,23 @@ export function piSessionFactory(options: PiOptions): SessionFactory {
                     text: Type.String(), key, source_message_id: Type.Optional(Type.String())
                 }), async execute(_id, p) {
                     const source = own(p.source_message_id, true);
-                    return result(commitOutcome(runtime.commitMessage(source, p.text, p.key, {
-                        toolCallId: _id, observedConversation: evidence.decision(_id, conversationResource(source.route)).observed
-                    })));
+                    // Delivered through OpenMatter's pi-bot.message.reply: the reply target is the
+                    // source message; freshness is checked against what this session was shown.
+                    const resource = conversationResource(source.route);
+                    const observed = evidence.decision(_id, resource).observed;
+                    const reply = runtime.replyThroughOpenMatter(source, p.text, p.key, {
+                        toolCallId: _id, observedInputId: typeof observed === 'string' ? observed : null
+                    });
+                    if (reply.status === 'conflict') {
+                        // The newer messages are shown to the model in this result, so it has seen them.
+                        const latest = reply.conflict.messages.at(-1)?.messageId;
+                        if (latest)
+                            evidence.observe(resource, latest);
+                        return result({ ...reply, reread: 'New user input arrived in this conversation after the context you decided on; nothing was sent. The newer messages are listed here; decide again with a new key.' });
+                    }
+                    if (reply.status === 'delivered' && reply.outbound)
+                        return result({ ...reply.outbound, openmatter: { status: reply.status, receipt: reply.receipt ?? null } });
+                    return result(reply);
                 }
             });
             pi.registerTool({
