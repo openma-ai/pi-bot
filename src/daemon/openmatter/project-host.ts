@@ -230,8 +230,9 @@ export class PiBotProjectHost implements EnvelopeDispatch {
     this.service = new ProjectWorkService<PiBotProject>({
       directory: options.directory,
       eventLeaseMs: options.eventLeaseMs ?? 10_000,
-      // Busy-time human messages merge into the running coordinator Turn via session.steer.
-      steerCoordinator: true,
+      // Mid-turn injection for busy coordinator is host-owned (backlog →
+      // AgentDriver.steer below), not an OpenMatter busy-merge policy.
+      // OM protocol still opens a new Turn per submitted Event.
       getProject: projectFromId,
       observe: observeProjectEvent,
       grants: () => [PI_BOT_REPLY_TOOL],
@@ -622,10 +623,13 @@ export class PiBotProjectHost implements EnvelopeDispatch {
   }
 
   /**
-   * Merge what arrives while the coordinator is busy. A short batch window
-   * coalesces bursts; if a coordinator Turn is running the batch is steered
-   * into it through the Pi AgentDriver, otherwise (or when steer is rejected
-   * because the Turn just settled) one Turn starts with the whole backlog.
+   * Host-defined backlog merge while the coordinator is busy. A short batch
+   * window coalesces bursts. If a coordinator Turn is running, this host may
+   * call Pi `AgentDriver.steer` (optional OM extension; payload/_meta is
+   * host-defined). That is pi-bot policy, not OpenMatter busy-merge: each
+   * Event OpenMatter accepts still opens a new Turn when not steered here.
+   * When steer is rejected (Turn just settled) or idle, one Turn starts with
+   * the whole backlog text.
    */
   async submit(envelope: Envelope): Promise<void> {
     const project = projectFromId(projectIdForEnvelope(envelope))!;

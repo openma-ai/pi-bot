@@ -3,8 +3,10 @@
  *   node --import tsx examples/openmatter-project-host-e2e.ts
  * A simulated-IM message reaches a real coordinator, which delegates to a real
  * worker; the result is replied through OpenMatter; a correction written while
- * the coordinator is busy is steered into its running Turn; a worker is
- * cancelled through OpenMatter; and a fresh host resumes the durable Session.
+ * the coordinator is busy is mid-turn injected by the host via Pi
+ * AgentDriver.steer (host policy, not OM busy-merge — OM still opens new Turns);
+ * a worker is cancelled through OpenMatter; and a fresh host resumes the durable
+ * Session.
  * Prints no secrets.
  */
 import { mkdtemp, rm } from 'node:fs/promises';

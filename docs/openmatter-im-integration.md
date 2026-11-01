@@ -36,10 +36,9 @@ IM → OpenMatter → pi-bot。开启后 `BotRuntime` 不再唤醒原生 lane，
   - 协调者工具 `delegate_worker` / `steer_worker` / `cancel_worker` / `complete_project` 绑定所在 Project；Thread = worker id。worker 不能直接回复用户。
   - 回复是内核 operation call（`pi-bot.message.reply`），授权、目标绑定、新鲜度、投递、回执都在 OpenMatter 内。
   - 所有 project 事件写入会话日志，委派后的 Turn 也有 trigger revision 可查；只有 human 消息计入新鲜度。
-- 依赖 OpenMatter 本地分支 `local/om-integration-pibot-host`（PR #52、#53，外加 project-host 的 `integrations` / `grants` / `observe` / `eventLeaseMs` / `origin`）。
-- backlog 合并：30ms 批次窗口；协调者忙时用 Pi `AgentDriver.steer` 注入运行中的 Turn，Turn 已结束则用整批文本开启一个 Turn。人类消息仍逐条写入会话日志。
+- 依赖 OpenMatter（已合并 #52/#53/#54；#55 校正为「新 Turn + 宿主扩展 `_meta`/steer」，去掉 OM busy-merge）。本地 `file:../OpenMatter-int`。
+- backlog 合并（**宿主策略**）：30ms 批次窗口；协调者忙时由 `PiBotProjectHost` 自行调用 Pi `AgentDriver.steer`（OM 可选扩展；`_meta`/载荷含义由宿主定）。OpenMatter 协议仍是新 Event → 新 Turn，**不**做 busy-merge。Turn 已结束或 steer 被拒则用整批文本开启一个 Turn。人类消息仍逐条写入会话日志。
 - 协调者原生功能：`ask_user` 是 `pi-bot.message.reply` 的扩展（`ask=true`，可选 `choices`），走同一套 OpenMatter 授权/新鲜度/投递/回执，回执含 `questionId` 绑定后续 answer；`send_to_bot`、`start_job` / `job_result`、`file_workspace` / `publish_file`、`schedule_create` 仍通过 `BotRuntime` 的既有 inbox/job/proactive 通道回流，不是 worker 委派。
-- `steerCoordinator: true`：协调者忙时新消息可经 OpenMatter `session.steer` 合并进运行中 Turn（宿主侧仍保留 30ms backlog 批处理）。
 
 端到端验证：`node --import tsx examples/openmatter-project-host-e2e.ts`（DeepSeek deepseek-flash）。
 
@@ -48,4 +47,4 @@ IM → OpenMatter → pi-bot。开启后 `BotRuntime` 不再唤醒原生 lane，
 - GUI 未展示 OpenMatter worker 线程；`replyDelta` 等流式事件尚未桥接回 pi-bot snapshot。
 - 附件目前向协调者提供元数据与 `file_workspace` 路径；图片字节还没有作为 Pi image content 直接送入模型。
 - 移除原生 lane 与 `reply-host.ts`（默认路径仍在使用，尚未证明 parity）。
-- backlog 的 live steer 目前由 `PiBotProjectHost` 直接调用自己构造的 Pi driver，而不是经 OpenMatter `session.steer` 入口；OpenMatter checkout 在本环境只读，后续应把 coordinator steer 事件收归 project-host。
+- backlog 的 live steer 由 `PiBotProjectHost` 直接调用 Pi `AgentDriver.steer`（宿主解释可选扩展）。这是预期分层：OM 不开 busy-merge 协议；是否 mid-turn 注入由 pi-bot 决定。
