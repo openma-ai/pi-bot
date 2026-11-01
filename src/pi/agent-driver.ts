@@ -1,25 +1,17 @@
 import { createHash } from 'node:crypto';
 import { Effect, Stream } from 'effect';
 import type { ContextProjection, JsonValue } from '@openma/matter';
-import { AgentDriverError, AgentSessionUnavailableError, createOpenMAEvent, OPERATION_CALL_METHOD, type AgentDriver, type AgentSessionHandle, type AgentTool, type AgentTurnInput, type OpenMAEvent } from '@openma/matter/agent';
+import { AgentDriverError, AgentSessionUnavailableError, createOpenMAEvent, OPERATION_CALL_METHOD, type AgentDriver, type AgentSessionHandle, type AgentSteerInput, type AgentSteerAck, type AgentTool, type AgentTurnInput, type OpenMAEvent } from '@openma/matter/agent';
 /**
  * Pi as an OpenMatter Agent, for both the coordinator and its workers. OpenMatter
  * sees only the AgentDriver contract and never the Pi SDK: Turn -> Pi prompt,
  * steer -> Pi steer, an allowed operation -> a Pi tool whose call is answered by
  * the runtime through the callback channel.
  */
-/** Mirrors optional AgentDriver.steer from @openma/matter after 0.2.7 (#52); npm 0.2.7 types omit it. */
-export interface PiSteerInput {
-    readonly session: AgentSessionHandle;
-    readonly sessionId: string;
-    readonly turnId: string;
-    readonly steerId: string;
-    readonly context: ContextProjection;
-}
-export type PiSteerAck = { readonly status: 'accepted' } | { readonly status: 'rejected'; readonly reason: string };
-export type PiAgentDriver = AgentDriver & {
-    readonly steer: (input: PiSteerInput) => Effect.Effect<PiSteerAck, AgentDriverError>;
-};
+/** The Pi driver always implements the optional steer extension. */
+export type PiSteerInput = AgentSteerInput;
+export type PiSteerAck = AgentSteerAck;
+export type PiAgentDriver = AgentDriver & { readonly steer: NonNullable<AgentDriver['steer']> };
 /** A provider-safe tool the Agent can call. */
 export type PiDriverTool = {
     name: string;
@@ -277,7 +269,7 @@ export function makePiAgentDriver(options: PiAgentDriverOptions): PiAgentDriver 
     };
     return {
         id: options.id,
-        capabilities: () => Effect.succeed({ resume: true, cancel: true, permissions: false, concurrentTurns: false, operations: true, ...( { steering: true } as object) }),
+        capabilities: () => Effect.succeed({ resume: true, cancel: true, permissions: false, concurrentTurns: false, operations: true, steering: true }),
         createSession: input => Effect.sync(() => {
             const handle = { id: input.sessionId, raw: { ...(input.scopeId ? { scopeId: input.scopeId } : {}), ...(input.workThreadId ? { workThreadId: input.workThreadId } : {}) } };
             state(handle);

@@ -6,16 +6,15 @@
  */
 import type { AgentSession as PiSession } from '@earendil-works/pi-coding-agent';
 import type { ContextProjection } from '@openma/matter';
-import { AgentDriverError, AgentSessionUnavailableError, createOpenMAEvent, type AgentDriver, type AgentSessionHandle, type OpenMAEvent } from '@openma/matter/agent';
+import { AgentDriverError, AgentSessionUnavailableError, createOpenMAEvent, type AgentDriver, type AgentSessionHandle, type AgentSteerInput, type AgentSteerAck, type OpenMAEvent } from '@openma/matter/agent';
 import { Effect, Stream } from 'effect';
 
 /** The part of a Pi session the driver uses. */
 export type PiTurnSession = Pick<PiSession, 'prompt' | 'steer' | 'subscribe' | 'abort' | 'isStreaming'>;
 
-/** Mirrors `AgentSteerInput`/`AgentSteerAck` from @openma/matter (>0.2.7). */
-export interface PiSteerInput { readonly session: AgentSessionHandle; readonly sessionId: string; readonly turnId: string; readonly steerId: string; readonly context: ContextProjection }
-export type PiSteerAck = { readonly status: 'accepted' } | { readonly status: 'rejected'; readonly reason: string };
-export type PiAgentDriver = AgentDriver & { readonly steer: (input: PiSteerInput) => Effect.Effect<PiSteerAck, AgentDriverError> };
+export type PiSteerInput = AgentSteerInput;
+export type PiSteerAck = AgentSteerAck;
+export type PiAgentDriver = AgentDriver & { readonly steer: NonNullable<AgentDriver['steer']> };
 
 export interface PiAgentDriverOptions {
     readonly id: string;
