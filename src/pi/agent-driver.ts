@@ -8,6 +8,18 @@ import { AgentDriverError, AgentSessionUnavailableError, createOpenMAEvent, OPER
  * steer -> Pi steer, an allowed operation -> a Pi tool whose call is answered by
  * the runtime through the callback channel.
  */
+/** Mirrors optional AgentDriver.steer from @openma/matter after 0.2.7 (#52); npm 0.2.7 types omit it. */
+export interface PiSteerInput {
+    readonly session: AgentSessionHandle;
+    readonly sessionId: string;
+    readonly turnId: string;
+    readonly steerId: string;
+    readonly context: ContextProjection;
+}
+export type PiSteerAck = { readonly status: 'accepted' } | { readonly status: 'rejected'; readonly reason: string };
+export type PiAgentDriver = AgentDriver & {
+    readonly steer: (input: PiSteerInput) => Effect.Effect<PiSteerAck, AgentDriverError>;
+};
 /** A provider-safe tool the Agent can call. */
 export type PiDriverTool = {
     name: string;
@@ -161,7 +173,7 @@ type SessionState = {
 };
 const toolName = (name: string) => name.replace(/[^a-zA-Z0-9_-]/g, '_');
 const driverError = (message: string, cause: unknown) => new AgentDriverError({ message, cause });
-export function makePiAgentDriver(options: PiAgentDriverOptions): AgentDriver {
+export function makePiAgentDriver(options: PiAgentDriverOptions): PiAgentDriver {
     const sessions = new Map<string, SessionState>();
     const clock = options.clock ?? (() => new Date().toISOString());
     const render = options.render ?? renderTurnPrompt;
@@ -265,7 +277,7 @@ export function makePiAgentDriver(options: PiAgentDriverOptions): AgentDriver {
     };
     return {
         id: options.id,
-        capabilities: () => Effect.succeed({ resume: true, cancel: true, permissions: false, concurrentTurns: false, operations: true, steering: true }),
+        capabilities: () => Effect.succeed({ resume: true, cancel: true, permissions: false, concurrentTurns: false, operations: true, ...( { steering: true } as object) }),
         createSession: input => Effect.sync(() => {
             const handle = { id: input.sessionId, raw: { ...(input.scopeId ? { scopeId: input.scopeId } : {}), ...(input.workThreadId ? { workThreadId: input.workThreadId } : {}) } };
             state(handle);
@@ -312,7 +324,7 @@ export function makePiAgentDriver(options: PiAgentDriverOptions): AgentDriver {
             turn?.callbacks.delete(input.callbackId);
             answer?.(input.result);
         }),
-        steer: input => Effect.tryPromise({
+        steer: (input: PiSteerInput) => Effect.tryPromise({
             try: async () => {
                 const session = state(input.session);
                 const turn = session.turn;
@@ -355,5 +367,5 @@ export function makePiAgentDriver(options: PiAgentDriverOptions): AgentDriver {
             },
             catch: cause => driverError('Pi session close failed', cause)
         })
-    };
+    } as PiAgentDriver;
 }

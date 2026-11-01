@@ -11,9 +11,10 @@ import {
   type ProjectWorkCommand,
   type ProjectWorkConfig,
 } from "@openma/matter-project-host";
-import type { AgentDriver, AgentSessionHandle } from "@openma/matter/agent";
+import type { AgentSessionHandle } from "@openma/matter/agent";
 import {
   makePiAgentDriver,
+  type PiAgentDriver,
   type PiAgentDriverOptions,
   type PiConversation,
   type PiConversationInput,
@@ -213,7 +214,7 @@ export type PiBotProjectHostOptions = {
 
 export class PiBotProjectHost implements EnvelopeDispatch {
   readonly service: ProjectWorkService<PiBotProject>;
-  private readonly drivers: Record<PiBotRole, AgentDriver>;
+  private readonly drivers: Record<PiBotRole, PiAgentDriver>;
   private readonly batches = new Map<string, {
     project: PiBotProject;
     entries: Envelope[];
@@ -246,7 +247,7 @@ export class PiBotProjectHost implements EnvelopeDispatch {
     });
   }
 
-  private driver(role: PiBotRole): AgentDriver {
+  private driver(role: PiBotRole): PiAgentDriver {
     return makePiAgentDriver({
       id: `pi-${role}`,
       exposeOperations: role === "coordinator",
@@ -750,7 +751,7 @@ export class PiBotProjectHost implements EnvelopeDispatch {
     };
     try {
       const result = (await Effect.runPromise(
-        this.drivers.coordinator.steer!({
+        this.drivers.coordinator.steer({
           session: handle,
           sessionId: running.session.id,
           turnId: running.turn.id,
