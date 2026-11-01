@@ -79,7 +79,7 @@ export async function livePiFactory(dir: string, proactive: (host: BotHost) => P
         } : undefined
     });
     return {
-        factory, budget, model: model.id, configuration: configuration.public, dispose: async () => {
+        factory, budget, model: model.id, modelBinding: { modelRuntime: models, model }, configuration: configuration.public, dispose: async () => {
             await sandbox.dispose();
             configuration.dispose();
         }

@@ -9,6 +9,8 @@ import { BotRuntime, type SessionFactory } from '../runtime/runtime.ts';
 import { ProactiveService, type Monitor } from '../runtime/proactive.ts';
 import { OpenMatterTrigger } from '../runtime/openmatter-trigger.ts';
 import { livePiFactory } from '../live-pi.ts';
+import { COORDINATOR_PROMPT, PiBotProjectHost, WORKER_PROMPT } from '../openmatter/project-host.ts';
+import { canResumePiConversation, openPiConversation } from '../../pi/agent-driver-session.ts';
 import { createFileChangeDetector } from '../runtime/proactive-detectors.ts';
 import { DesktopClient } from '../../pi/desktop-client.ts';
 import { unconfiguredDesktopCapabilities } from '../../pi/desktop-capabilities.ts';
@@ -38,12 +40,28 @@ export class PiBotDaemon {
     trigger!: OpenMatterTrigger;
     broker!: RequestBroker;
     live?: Awaited<ReturnType<typeof livePiFactory>>;
+    projects?: PiBotProjectHost;
     desktop?: DesktopClient;
     private absentDesktopCapabilities = unconfiguredDesktopCapabilities();
     get desktopCapabilities() { return this.desktop?.capabilitySnapshot ?? this.absentDesktopCapabilities; }
     private timer?: ReturnType<typeof setInterval>;
     private closePromise?: Promise<void>;
     private detectors: Record<string, ReturnType<typeof createFileChangeDetector>> = {};
+    /** Reads the model when a Session opens, so a Pi reconfiguration reaches new Sessions. */
+    private createProjectHost() {
+        const sessions = (role: string) => join(this.dataDir, 'project-sessions', role);
+        return new PiBotProjectHost({
+            directory: join(this.dataDir, 'projects'),
+            reply: input => this.runtime.deliverProjectReply(input),
+            canResume: (role, id) => canResumePiConversation(sessions(role), id),
+            open: (role, input) => {
+                const binding = this.live?.modelBinding;
+                if (!binding)
+                    throw new Error('Pi 配置不可用，请在设置的「模型」中完成认证并选择模型');
+                return openPiConversation({ ...binding, dir: sessions(role), systemPrompt: role === 'coordinator' ? COORDINATOR_PROMPT : WORKER_PROMPT }, input);
+            }
+        });
+    }
     private constructor(readonly dataDir: string, readonly options: {
         factory?: SessionFactory;
         approvalRequired?: boolean;
@@ -119,9 +137,16 @@ export class PiBotDaemon {
         catch { /* GUI reports unavailable without leaking native auth errors. */
         }
         d.trigger = new OpenMatterTrigger(join(d.dataDir, 'triggers.db'));
+        // Opt-in cutover: IM -> OpenMatter project-host -> pi-bot. Off keeps the native lanes.
+        const projects = process.env.PI_BOT_PROJECT_HOST === '1' ? d.createProjectHost() : undefined;
+        d.projects = projects;
         d.runtime = new BotRuntime(join(d.dataDir, 'runtime.db'), options.factory ?? d.live!.factory, {
-            isolateConversations: true, activation: d.trigger
+            isolateConversations: true, activation: d.trigger, ...(projects ? { dispatch: projects } : {})
         });
+        if (projects) {
+            d.runtime.resubmitQueued();
+            projects.start();
+        }
         d.trigger.bind(id => d.runtime.activateInbox(id));
         for (const m of d.runtime.store.list<Monitor>('monitors'))
             if (m.detector.startsWith('file:'))
@@ -480,10 +505,14 @@ export class PiBotDaemon {
             this.setStatus('stopped');
             for (const c of [...this.connections.values()])
                 c.close();
-            if (finished)
+            if (finished) {
+                await this.projects?.close();
                 await this.runtime.close();
-            else
+            }
+            else {
+                this.projects?.service.stop();
                 this.runtime.forceClose();
+            }
             this.trigger.close();
             this.credentials.close();
             this.piSettings?.close();
