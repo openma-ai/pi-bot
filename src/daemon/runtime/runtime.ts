@@ -110,6 +110,7 @@ export class BotRuntime implements BotHost {
     /** OpenMatter operation-call path for replies (pi-bot shell as an OpenMatter integration). */
     readonly replies!: OpenMatterReplyHost;
     private replyToolCallId: string | undefined;
+    private replyObservedConversation: Revision | undefined;
     private releaseLock: () => void;
     constructor(path: string, private factory: SessionFactory, readonly options: {
         isolateConversations?: boolean;
@@ -623,7 +624,10 @@ export class BotRuntime implements BotHost {
         let commit: CommitResult<Outbound>;
         try {
             commit = this.commitMessage(source, input.text, input.key, {
-                ...(this.replyToolCallId ? { toolCallId: this.replyToolCallId } : {})
+                ...(this.replyToolCallId ? { toolCallId: this.replyToolCallId } : {}),
+                // Keep main's guard: the replying session must have seen the conversation's
+                // latest human input (a delegated worker that never saw it cannot answer the user).
+                observedConversation: this.replyObservedConversation ?? null
             });
         }
         catch (e) {
@@ -655,6 +659,7 @@ export class BotRuntime implements BotHost {
             revision: seenEntry && triggerEntry && seenEntry.conversationKey === triggerEntry.conversationKey ? seenEntry.revision : 0
         };
         this.replyToolCallId = options.toolCallId;
+        this.replyObservedConversation = options.observedInputId ?? null;
         let result;
         try {
             result = this.replies.call({
@@ -665,6 +670,7 @@ export class BotRuntime implements BotHost {
         }
         finally {
             this.replyToolCallId = undefined;
+            this.replyObservedConversation = undefined;
         }
         if (result.status === 'fingerprint-mismatch')
             throw new PiBotError('conflict', 'Idempotency key conflict');
