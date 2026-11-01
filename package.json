@@ -38,7 +38,7 @@
     "@earendil-works/pi-ai": "1.2.0",
     "@earendil-works/pi-coding-agent": "1.2.0",
     "@novnc/novnc": "1.7.0",
-    "@openma/matter": "^0.2.7",
+    "@openma/matter": "file:../OpenMatter-int/packages/matter",
     "@radix-ui/themes": "^3.2.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/api": "2.12.3",
@@ -63,7 +63,10 @@
     "@opentelemetry/sdk-trace": "3.0.0",
     "@opentelemetry/context-async-hooks": "3.0.0",
     "@opentelemetry/core": "3.0.0",
-    "@opentelemetry/resources": "3.0.0"
+    "@opentelemetry/resources": "3.0.0",
+    "@openma/matter-project-host": "file:../OpenMatter-int/packages/project-host",
+    "@openma/matter-project": "file:../OpenMatter-int/packages/project",
+    "@openma/matter-orchestration": "file:../OpenMatter-int/packages/orchestration"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
