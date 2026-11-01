@@ -36,7 +36,7 @@ IM → OpenMatter → pi-bot。开启后 `BotRuntime` 不再唤醒原生 lane，
   - 协调者工具 `delegate_worker` / `steer_worker` / `cancel_worker` / `complete_project` 绑定所在 Project；Thread = worker id。worker 不能直接回复用户。
   - 回复是内核 operation call（`pi-bot.message.reply`），授权、目标绑定、新鲜度、投递、回执都在 OpenMatter 内。
   - 所有 project 事件写入会话日志，委派后的 Turn 也有 trigger revision 可查；只有 human 消息计入新鲜度。
-- 依赖 `@openma/matter*` **0.2.7**（npm；含 #52/#53/#54 与 #55 校正：协议仍开新 Turn；`steer`/`_meta` 为宿主扩展，OM 不做 busy-merge）。
+- 依赖 `@openma/matter*` **0.2.8**（npm；含 #52/#53/#54 与 #55 校正：协议仍开新 Turn；`steer`/`_meta` 为宿主扩展，OM 不做 busy-merge）。
 - backlog 合并（**宿主策略**）：30ms 批次窗口；协调者忙时由 `PiBotProjectHost` 自行调用 Pi `AgentDriver.steer`（OM 可选扩展；`_meta`/载荷含义由宿主定）。OpenMatter 协议仍是新 Event → 新 Turn，**不**做 busy-merge。Turn 已结束或 steer 被拒则用整批文本开启一个 Turn。人类消息仍逐条写入会话日志。
 - 协调者原生功能：`ask_user` 是 `pi-bot.message.reply` 的扩展（`ask=true`，可选 `choices`），走同一套 OpenMatter 授权/新鲜度/投递/回执，回执含 `questionId` 绑定后续 answer；`send_to_bot`、`start_job` / `job_result`、`file_workspace` / `publish_file`、`schedule_create` 仍通过 `BotRuntime` 的既有 inbox/job/proactive 通道回流，不是 worker 委派。
 

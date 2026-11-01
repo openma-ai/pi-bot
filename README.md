@@ -100,7 +100,7 @@ CLI 的 outbox sink 仅输出本地 stdout；`delivered` 只表示该 sink 成�
 
 ### 1. 用户抢占采样，工具和后台工作保留
 
-每个 bot 只有一条模型执行 lane，不同 bot 可并行。新消息先提交 SQLite。host user/answer 默认 preempt：只取消当前 provider 请求，丢弃过时采样，保留已启动工具、job/cell 和后台摘要。普通 peer queue 到整 run 结束；direct priority=true 只在非 user lane 使用 steer，在下一次 LLM call 前插入，不取消当前 call。user lane 保护，group 广播忽略 priority；继承群上下文的 direct 仍是 direct。`preemptInference: false` 可关闭用户推理抢占。忽略取消信号的 provider 必须结束后才能继续，保持单 bot 单前台请求。
+每个 bot 只有一条模型执行 lane，不同 bot 可并行。新消息先提交 SQLite。host user/answer 默认 preempt：只取消当前 provider 请求，丢弃过时采样，保留已启动工具、job/cell 和后台摘要。普通 peer queue 到整 run 结束；direct priority=true 只在非 user lane 使用 steer，在下一次 LLM call 前插入，不取消当前 call。user lane 保护，group 广播忽略 priority；继承群上下文的 direct 仍是 direct。`preemptInference: false` 可关闭用户推理抢占。每个 wake 最多抢占 `maxInferencePreemptsPerWake` 次（默认 3，见 `src/pi/session-factory.ts`），超过后新消息仍以 steer 进入，在下一次模型请求前插入，不再取消当前请求。忽略取消信号的 provider 必须结束后才能继续，保持单 bot 单前台请求。
 
 准入消息归入 active wake batch；仅有 ledger 中的 ID 不算真实输入消费。成功 native final 步骤保存检查点，后续请求失败不撤销它；未决消息仍为 uncertain。`processed` 不证明用户任务完成，实际工具效果与 send_message 另行验收。多任务路由工具必须明确 source_message_id；宿主验证自身来源及继承分支，不能把最近闲聊作为旧任务来源。
 
@@ -116,6 +116,18 @@ CLI 的 outbox sink 仅输出本地 stdout；`delivered` 只表示该 sink 成�
 - 每个 bot 仅一个后台摘要任务；默认 30 秒超时、失败后至少 30 秒冷却，同一前缀最多 3 次尝试。忽略 abort 的适配器未结束前不会启动更多摘要。晚于 idle 才完成的摘要在下一个原生边界采用，不另开前台模型请求。
 
 手动 compact 不对外暴露；extension 的 `session_before_compact` 防止默认摘要，但原生 `session.compact()` 在该 hook 前已经会 abort。因此第三方代码直接调用该 API 的行为不在本 runtime 的保证内。
+
+## 接入 OpenMatter
+
+pi-bot 的聊天壳（daemon、GUI、SDK 会话、群组、bot 间消息）作为一个 OpenMatter integration 接入，和 Slack、飞书走同一套契约。依赖 `@openma/matter`、`@openma/matter-orchestration`、`@openma/matter-project`、`@openma/matter-project-host` 0.2.8。
+
+- 回复：`send_message` 调用 OpenMatter 的 `pi-bot.message.reply` 工具。宿主绑定回复目标（`source_message_id`）和会话线程，模型只给 `{ text, key }`。发送前检查新鲜度：模型读过之后同一线程如果又来了人类消息，返回 `conflict`，新消息展示给模型，它可以换一个 key 重新回复。投递后返回回执（#10、#11）。
+- Pi driver：`src/pi/agent-driver.ts` 用 Pi SDK 实现 OpenMatter `AgentDriver`。`turn` 对应 Pi prompt，`steer` 对应 Pi steer，Turn 运行中返回 `accepted`，结束后返回 `rejected`，由 runtime 开启下一个 Turn（#9）。
+- project-host：设置 `PI_BOT_PROJECT_HOST=1` 后，收到的消息交给 OpenMatter，原生 lane 不再被唤醒。一个 bot 的一个 IM 线程对应一个 Project，默认 `workspace: "none"`。协调者用 `delegate_worker`、`steer_worker`、`cancel_worker`、`complete_project` 管理 worker，worker 不能直接回复用户。协调者忙时，同一 Project 内 30ms 窗口里到达的消息合并成一批，由 pi-bot 调用 Pi `steer` 送进运行中的 Turn，Turn 已结束或 steer 被拒时用整批文本开一个新 Turn。`ask_user` 是 `pi-bot.message.reply` 的扩展，回执里带 `questionId`，用来绑定后续回答（#12）。未设置该变量时行为不变。
+
+端到端示例：`node --import tsx examples/openmatter-project-host-e2e.ts`（DeepSeek deepseek-flash，会产生模型费用），live steer 示例见 `examples/openmatter-live-steer.ts`。GUI 还不展示 worker 线程，流式回复事件也还没桥接回 pi-bot，详见 [OpenMatter 集成](docs/openmatter-im-integration.md)。
+
+Loop、Bond、Turn、回复新鲜度和协调者/worker 这些概念的完整说明见文章 [用 OpenMatter 在任意 harness 上搭 Super-agent](https://github.com/clash-art/draft/blob/openmatter-super-agent-v6.49/content/openmatter-super-agent/article.zh.md)。
 
 ## 原生工具
 
