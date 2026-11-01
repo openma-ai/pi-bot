@@ -26,7 +26,22 @@ dispatch 与 reply（授权、过期检查、投递、回执）。
     新消息已展示给模型，因此 seen revision 前移；模型可用新 key 重新回复。
   - 同 key 不同内容仍返回 `Idempotency key conflict`；任务被取代（`assertTaskCurrent`）仍在调用前抛错。
 
-## 不在本阶段
+## project-host（`PI_BOT_PROJECT_HOST=1`）
 
-- dispatch 迁移到 project-host、subagent 改造。
-- 用 OpenMatter 的 agent-turn runtime 运行 pi-bot Turn（届时 reply-host 由内核替代）。
+IM → OpenMatter → pi-bot。开启后 `BotRuntime` 不再唤醒原生 lane，接收的 Envelope 提交给 OpenMatter；未开启时行为不变。
+
+- `src/pi/agent-driver.ts`：Pi 实现 `AgentDriver`。`turn` → Pi prompt；`steer` → Pi steer，Turn 运行中 `accepted`，结束后 `rejected`（由 runtime 开启下一个 Turn）。OpenMatter 不依赖 Pi SDK。
+- `src/daemon/openmatter/project-host.ts`：`PiBotProjectHost` 封装 `ProjectWorkService`。
+  - 一个 bot 的一个 IM 线程 = 一个 Project，默认 `workspace: "none"`。
+  - 协调者工具 `delegate_worker` / `steer_worker` / `cancel_worker` / `complete_project` 绑定所在 Project；Thread = worker id。worker 不能直接回复用户。
+  - 回复是内核 operation call（`pi-bot.message.reply`），授权、目标绑定、新鲜度、投递、回执都在 OpenMatter 内。
+  - 所有 project 事件写入会话日志，委派后的 Turn 也有 trigger revision 可查；只有 human 消息计入新鲜度。
+- 依赖 OpenMatter 本地分支 `local/om-integration-pibot-host`（PR #52、#53，外加 project-host 的 `integrations` / `grants` / `observe` / `eventLeaseMs` / `origin`）。
+
+端到端验证：`node --import tsx examples/openmatter-project-host-e2e.ts`（DeepSeek deepseek-flash）。
+
+## 尚未迁移
+
+- 协调者模式下没有 `ask_user`、作业、proactive、`send_to_bot`、文件/图片附件；`PI_BOT_PROJECT_HOST` 因此默认关闭。
+- 移除原生 lane 与 `reply-host.ts`（默认路径仍在使用）。
+- GUI 未展示 worker 线程，流式事件（`replyDelta` 等）未从 driver 转发。
