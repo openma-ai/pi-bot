@@ -1,6 +1,6 @@
 import React,{useState} from 'react';
 import {Button,Text,TextField} from '@radix-ui/themes';
-import {ArrowLeft,ChevronRight,Plus} from 'lucide-react';
+import {ArrowLeft,ChevronRight,Link2,Plus} from 'lucide-react';
 import {Choice} from './PiChoice.jsx';
 import {endpointInputError} from './pi-connections.ts';
 import './pi-connections.css';
@@ -13,7 +13,7 @@ export function ConnectionList({connections,providers,currentId,busy,onAdd,onMan
         <span><strong>{c.name}</strong><small>{providers.find(p=>p.id===c.providerId)?.name||'自定义服务'}{c.endpoint?.baseUrl?' · '+c.endpoint.baseUrl:''}</small></span>
         <span className="pi-connection-state">{c.catalog?.authChecked===false?'状态待确认':c.configured?'已连接':'尚未认证'}{c.id===currentId?' · 当前模型':''}<ChevronRight size={15}/></span>
       </button></div>)}
-      {!connections.length&&<Text size="2" color="gray">连接一个账号或服务后选择模型。</Text>}
+      {!connections.length&&<div className="pi-empty-state pi-connections-empty"><Link2 size={18} aria-hidden="true"/><Text as="p" size="2" weight="medium">还没有模型连接</Text><Text as="p" size="2" color="gray">连接一个账号或服务后选择模型。</Text></div>}
     </div>
   </section>;
 }
@@ -38,9 +38,11 @@ export function ConnectionEditor({providers,connection,canCustom=true,apiOptions
   }
   return <form className="pi-mode-content pi-connection-editor" aria-label={connection?'编辑模型连接':'添加模型连接'} onSubmit={save}>
     <div className="pi-field-heading"><Button type="button" variant="ghost" color="gray" disabled={busy} onClick={onCancel}><ArrowLeft size={14}/>取消并返回</Button><Text size="2" weight="medium">{connection?'编辑连接':'添加连接'}</Text></div>
+    <section className="pi-editor-group" aria-labelledby={id+'-basic'}><Text as="p" size="1" weight="medium" className="pi-group-label" id={id+'-basic'}>基本信息</Text>
     <label>连接名称<TextField.Root aria-label="连接名称" maxLength={100} value={name} disabled={busy} placeholder="例如：工作账号" onChange={e=>setName(e.target.value)}/></label>
     <Choice label="模型提供商" value={providerId} onChange={setProviderId} disabled={busy||!!connection} searchable items={[...providers.map(p=>({id:p.id,name:p.name,detail:[p.methodLabels?.oauth,p.methods?.includes('api_key')?'API key':''].filter(Boolean).join(' · ')})),...(canCustom?[{id:'custom',name:'自定义服务',detail:'配置兼容 API 地址与模型'}]:[])]}/>
-    {custom&&<>
+    </section>
+    {custom&&<section className="pi-editor-group" aria-labelledby={id+'-custom'}><Text as="p" size="1" weight="medium" className="pi-group-label" id={id+'-custom'}>自定义服务</Text>
       <label>API 地址<TextField.Root aria-label="API 地址" type="url" value={baseUrl} disabled={busy} placeholder="https://service.example/v1" onChange={e=>setBaseUrl(e.target.value)}/></label>
       <Choice label="API 协议" value={api} onChange={setApi} disabled={busy} items={apiOptions||[{id:'openai-completions',name:'OpenAI Chat Completions'},{id:'openai-responses',name:'OpenAI Responses'}]}/>
       {models.map((m,i)=><fieldset className="pi-endpoint-model" key={i}><legend>模型 {i+1}</legend>
@@ -52,7 +54,7 @@ export function ConnectionEditor({providers,connection,canCustom=true,apiOptions
       </fieldset>)}
       <Button type="button" variant="soft" disabled={busy||models.length>=20} onClick={()=>setModels(old=>[...old,{id:'',name:'',contextWindow:'',maxTokens:'',reasoning:false,input:['text']}])}>添加模型</Button>
       <Text size="1" color="gray">按服务提供的规格填写。更改地址或模型规格后需要重新认证，已有凭据不会转发到新地址。</Text>
-    </>}
+    </section>}
     {error&&<Text role="alert" color="red" size="2">{error}</Text>}
     <div className="pi-editor-footer"><Button type="submit" disabled={busy}>{busy?'正在保存…':connection?'保存连接':'保存并继续认证'}</Button></div>
   </form>;

@@ -157,6 +157,9 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
   const presentation=piLoginPresentation(flow,callbackPlacement);
   const confirming=flow?.status==="complete"&&section==="auth";
   const hasConnection=connections.length>0;
+  const summaryConnection=selected||connections.find(c=>c.id===currentConnectionId(config))||connections[0];
+  const catalogIssue=!!visibleCatalog&&["failed","partial"].includes(visibleCatalog.status);
+  const openConnections=()=>{setNotice("");setError("");setSection(hasConnection?"connections":modern?"add":"auth");};
   const configured=connections.some(c=>c.configured&&c.id===currentConnectionId(config)&&c.models.some(m=>m.id===config.current.model));
   const dirty=!!config&&validModel&&(connectionId!==currentConnectionId(config)||provider!==config.current.provider||model!==config.current.model||thinking!==config.current.thinkingLevel);
   const routeEpoch=useRef(0), routeOwner=useRef(crypto.randomUUID()), routeFromPop=useRef(false), routeClaimed=useRef(false);
@@ -262,14 +265,21 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
             <Text size="1" color="gray">{runtimeLabel}</Text>
           </div>
           <section className="pi-settings-section" aria-label="提供商与认证">
+            <div className="pi-settings-group"><Text as="p" size="1" weight="medium" className="pi-group-label">提供商</Text>
             {!active && !authConnection && <><Text size="2" color="gray">先选择提供商，再完成认证。</Text>
             <Choice label="模型提供商" value={authProvider} disabled={busy || active || confirming} searchable
               items={config.providers.map(p => ({id:p.id,name:p.name,
                 detail:[p.methodLabels?.oauth, p.methods.includes("api_key") ? "API key" : ""].filter(Boolean).join(" · ")}))}
               onChange={v => { void controller.current?.cancel(); setAuthProvider(v); setError(""); setNotice(""); }} /></>}
+            {account && active && <div className="pi-auth-summary"><Text size="2" weight="medium">{account.name}</Text><Text size="1" color="gray">{flow.type === "oauth" ? account.methodLabels?.oauth || "账号登录" : "API key"}</Text></div>}
+            {account && !active && authConnection && <div className="pi-connected-summary"><span><strong>{authConnection.name}</strong><small>{providerAccount?.name||"自定义服务"}</small></span>
+              <Flex gap="2" wrap="wrap">{authConnection.configured&&!showMethods&&<Button size="1" variant="ghost" onClick={()=>setShowMethods(true)}>重新认证</Button>}
+              {modern&&!authConnection.legacy&&<Button size="1" variant="ghost" color="gray" onClick={()=>{setEditing(authConnection);setSection("edit");}}>编辑连接</Button>}
+              {modern&&!authConnection.legacy&&<Button size="1" variant="ghost" color="gray" disabled={busy} onClick={()=>setRemoveConfirm(true)}>移除连接</Button>}</Flex></div>}
+            {account && removeConfirm&&!active&&<div className="pi-remove-confirm" role="group" aria-label="确认移除连接"><Text size="2">移除“{authConnection.name}”的连接记录？历史会话和本地凭据文件保留；不会自动选择其他账号。</Text><Flex gap="2"><Button size="1" color="red" disabled={busy} onClick={()=>void act(async()=>{await request("connections/remove",{connectionId:authConnectionId,expectedRevision:authConnection.revision});await refresh();setRemoveConfirm(false);setAuthConnectionId("");setSection("connections");})}>确认移除</Button><Button size="1" variant="soft" disabled={busy} onClick={()=>setRemoveConfirm(false)}>取消</Button></Flex></div>}
+            </div>
             {account && <>
-              {active && <div className="pi-auth-summary"><Text size="2" weight="medium">{account.name}</Text><Text size="1" color="gray">{flow.type === "oauth" ? account.methodLabels?.oauth || "账号登录" : "API key"}</Text></div>}
-              {!active && <div className="pi-account-row">
+              {!active && <div className="pi-settings-group"><Text as="p" size="1" weight="medium" className="pi-group-label">账号状态</Text><div className="pi-account-row">
                 <div className="pi-account-status">
                   <span className="pi-status-dot" data-connected={!!piProviderConfigured(account)} />
                   <Text size="2" color="gray">{account.catalog?.authChecked === false ? "认证状态暂未确认" : account.credential === "oauth" ? "账号已连接" : account.credential ? "API key 已配置" : piProviderConfigured(account) ? "运行环境已配置认证" : "尚未连接"}</Text>
@@ -280,20 +290,15 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
                     await request("logout", {provider:account.id,...(modern?{connectionId:authConnectionId}:{})}); if (await refresh()) {setShowMethods(true);setNotice("已断开此连接的认证，其他连接保留。");}
                   })}>断开连接</DropdownMenu.Item></DropdownMenu.Content>
                 </DropdownMenu.Root>}
-              </div>}
-              {!active && authConnection && <div className="pi-connected-summary"><span><strong>{authConnection.name}</strong><small>{providerAccount?.name||"自定义服务"}</small></span>
-                <Flex gap="2" wrap="wrap">{authConnection.configured&&!showMethods&&<Button size="1" variant="ghost" onClick={()=>setShowMethods(true)}>重新认证</Button>}
-                {modern&&!authConnection.legacy&&<Button size="1" variant="ghost" color="gray" onClick={()=>{setEditing(authConnection);setSection("edit");}}>编辑连接</Button>}
-                {modern&&!authConnection.legacy&&<Button size="1" variant="ghost" color="gray" disabled={busy} onClick={()=>setRemoveConfirm(true)}>移除连接</Button>}</Flex></div>}
-              {removeConfirm&&!active&&<div className="pi-remove-confirm" role="group" aria-label="确认移除连接"><Text size="2">移除“{authConnection.name}”的连接记录？历史会话和本地凭据文件保留；不会自动选择其他账号。</Text><Flex gap="2"><Button size="1" color="red" disabled={busy} onClick={()=>void act(async()=>{await request("connections/remove",{connectionId:authConnectionId,expectedRevision:authConnection.revision});await refresh();setRemoveConfirm(false);setAuthConnectionId("");setSection("connections");})}>确认移除</Button><Button size="1" variant="soft" disabled={busy} onClick={()=>setRemoveConfirm(false)}>取消</Button></Flex></div>}
-              {!active && !confirming && (!authConnection?.configured || showMethods) && <div className="pi-account-actions pi-auth-methods">
+              </div></div>}
+              {!active && !confirming && (!authConnection?.configured || showMethods) && <div className="pi-settings-group"><Text as="p" size="1" weight="medium" className="pi-group-label">认证方式</Text><div className="pi-account-actions pi-auth-methods">
                 {[...account.methods].sort((a,b) => (a === "oauth" ? 0 : 1) - (b === "oauth" ? 0 : 1)).map(method => <Button
                   key={method} variant={method === "oauth" ? "solid" : "soft"} size="2" disabled={busy}
                   onClick={() => void login(method)}>
                   {method === "oauth" ? <LogIn size={15} /> : <KeyRound size={15} />}
                   {method === "oauth" ? (account.methodLabels?.oauth || "登录账号") : (account.credential === "api_key" ? "更新 API key" : "添加 API key")}
                 </Button>)}
-              </div>}
+              </div></div>}
             </>}
           </section>
           {active && <div className="pi-login-flow" aria-busy={!!flow.starting || !!flow.submitting}>
@@ -344,28 +349,39 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
         </section>
       ) : (
         <section className="pi-mode-content" aria-label="模型使用">
-          <section className="pi-settings-section pi-model-section" aria-label="默认模型设置">
+          {summaryConnection && <div className="pi-settings-card pi-connection-summary">
+            <span className="pi-status-dot" data-connected={!!summaryConnection.configured} />
+            <span className="pi-connection-summary-copy"><strong>{summaryConnection.name}</strong>
+              <small>{config.providers.find(p=>p.id===summaryConnection.providerId)?.name||"自定义服务"} · {summaryConnection.catalog?.authChecked===false?"状态待确认":summaryConnection.configured?"已连接":"尚未认证"}{connections.length>1?` · 共 ${connections.length} 个连接`:""}</small></span>
+            <Button size="1" variant="ghost" color="gray" className="pi-auth-entry" onClick={openConnections}>
+              <KeyRound size={13} />管理连接<ChevronRight size={13} />
+            </Button>
+          </div>}
+          <section className="pi-settings-section pi-model-section pi-settings-card" aria-label="默认模型设置">
             <div className="pi-field-heading">
-              <div><Text as="p" size="3" weight="medium">{configured ? "默认模型" : "选择默认模型"}</Text><Text as="p" size="1" color="gray">{runtimeLabel}</Text></div>
-              <Button size="1" variant="ghost" color="gray" className="pi-auth-entry" onClick={() => {setNotice("");setError("");setSection(hasConnection?"connections":modern?"add":"auth");}}>
-                <KeyRound size={13} />{hasConnection ? "管理连接" : "连接提供商"}<ChevronRight size={13} />
-              </Button>
+              <div><Text as="p" size="3" weight="medium">{configured ? "默认模型" : "选择默认模型"}</Text><Text as="p" size="1" color="gray">新对话默认使用此模型 · {runtimeLabel}</Text></div>
             </div>
             <Choice label="默认模型" value={validModel ? JSON.stringify([connectionId,model]) : ""}
               fallback={config.current.connectionUnavailable ? "原连接已不可用，请选择其他连接的模型" : models.length ? "请选择模型" : visibleCatalog?.status === "failed" ? "模型目录暂未确认" : "尚无模型目录"}
               onChange={id => {const option=models.find(m => m.id===id); if(option){setProvider(option.provider);setConnectionId(option.connectionId);setModel(option.model);setNotice("");}}}
               disabled={busy || !models.length} searchable items={models} />
             <details className="pi-catalog-details"><summary>{visibleCatalog?.accountAccess==="confirmed"?"账号模型目录已更新":visibleCatalog?.status==="failed"?"模型目录暂未确认":"模型目录"}{visibleCatalog?.unsupportedModelCount ? ` · ${visibleCatalog.unsupportedModelCount} 个型号暂不支持` : ""}</summary><Text as="p" size="1" color="gray" className="pi-catalog-note">{piCatalogNote(visibleCatalog)}</Text></details>
-            {!models.length && <Text size="2" color="gray">{visibleCatalog?.status === "failed" ? "暂时无法确认认证或模型目录，请重新检查。" : hasConnection ? "已连接的提供商暂未返回模型目录。" : "连接提供商后，即可选择模型。"}</Text>}
-            {visibleCatalog && ["failed","partial"].includes(visibleCatalog.status) && <Button variant="ghost" color="gray" size="1" disabled={busy} onClick={reload}><RefreshCw size={13}/>重新检查模型目录</Button>}
-            {validModel && selectedModel.reasoning && <details className="pi-advanced"><summary>更多选项</summary><div className="pi-thinking-row">
-              <div><Text as="p" size="2" weight="medium">思考强度</Text><Text as="p" size="1" color="gray">更深入的推理可能需要更长时间</Text></div>
-              <Choice label="思考强度" value={thinkingSelection.value} onChange={setThinking}
-                disabled={busy || !thinkingSelection.known || !thinkingSelection.items.length} items={thinkingSelection.items} />
-            </div></details>}
-            {validModel && thinkingSelection.note && <Text as="p" size="1" color="gray" role="status">{thinkingSelection.note}</Text>}
+            {!models.length && hasConnection && !catalogIssue && <Text size="2" color="gray">已连接的提供商暂未返回模型目录。</Text>}
+            {!hasConnection && <div className="pi-empty-state"><Text as="p" size="2" color="gray">连接提供商后，即可选择模型。</Text>
+                <Button size="2" variant="soft" className="pi-auth-entry" onClick={openConnections}><KeyRound size={14} />连接提供商<ChevronRight size={14} /></Button></div>}
+            {catalogIssue && <div className="pi-inline-warning">
+              <CircleAlert size={15} aria-hidden="true" />
+              <Text size="2">{visibleCatalog.status === "failed" ? (models.length ? "模型目录暂未确认，可选型号可能不是最新。" : "暂时无法确认认证或模型目录，请重新检查。") : "模型目录可能不完整。"}</Text>
+              <Button variant="ghost" color="gray" size="1" disabled={busy} onClick={reload}><RefreshCw size={13}/>重新检查模型目录</Button>
+            </div>}
           </section>
-          {validModel && <div className="pi-settings-footer">
+          {validModel && selectedModel.reasoning && <details className="pi-advanced pi-settings-card"><summary>更多选项</summary><div className="pi-thinking-row">
+            <div><Text as="p" size="2" weight="medium">思考强度</Text><Text as="p" size="1" color="gray">更深入的推理可能需要更长时间</Text></div>
+            <Choice label="思考强度" value={thinkingSelection.value} onChange={setThinking}
+              disabled={busy || !thinkingSelection.known || !thinkingSelection.items.length} items={thinkingSelection.items} />
+          </div></details>}
+          {validModel && thinkingSelection.note && <Text as="p" size="1" color="gray" role="status">{thinkingSelection.note}</Text>}
+          {validModel && <div className="pi-settings-footer pi-sticky-footer">
             <Text size="1" color="gray" role="status">{config.reloadPending ? "已保存，等待当前任务完成后应用" : !configured ? "确认后即可开始聊天" : dirty ? "有未保存的更改" : "已保存"}</Text>
             <Button size="2" disabled={busy || !dirty || !thinkingSelection.valid} onClick={() => void act(async () => {
               const result=await request("model",{provider,model,thinkingLevel:thinkingSelection.saveLevel,...(modern?{connectionId}:{})});
