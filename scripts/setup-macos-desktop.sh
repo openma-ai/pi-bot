@@ -29,6 +29,9 @@ fi
 echo "Running helper setup (installs/signs ${HELPER_APP})..."
 node "$HELPER_SETUP"
 
+echo "Building CGVirtualDisplay companion keeper..."
+./scripts/build-macos-virtual-display.sh
+
 cat <<NOTE
 
 Installed native macOS Computer Use.
@@ -43,6 +46,10 @@ Bundle id:   com.injaneity.pi-computer-use
 
 Then restart pi-bot. Capabilities should move unconfigured → permission-required → ready
 after a read-only helper probe (no companion control.json required).
+
+Virtual display: one CGVirtualDisplay companion tiled like Linux :99 (not N separate VDs).
+Binary: ~/Library/Application Support/pi-bot/bin/pi-virtual-display-companion
+No extra TCC for the companion (private CoreGraphics API). Helper Accessibility + Screen Recording still required.
 
 Disable with: PI_BOT_MACOS_COMPUTER_USE=0
 Force enable after package install without helper binary: PI_BOT_MACOS_COMPUTER_USE=1

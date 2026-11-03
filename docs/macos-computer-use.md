@@ -1,22 +1,50 @@
 # Native macOS Computer Use
 
-pi-bot can drive the **host macOS desktop** without Colima or a Linux Docker companion.
-This is the same *product capability* as Linux Computer Use (observe UI, act, screenshot, input),
-implemented with a different adapter.
+pi-bot can drive a **per-session virtual desktop on the host Mac** without Colima or a Linux Docker companion.
+Business logic mirrors the Linux desktop companion: one shared "display surface", tiled per bot, serial input, capability states, bind-on-session / tear-down-on-idle.
 
-## Package
+## Package + helper
 
 Official `@agent-sh/computer-use-macos` is **not published** (npm 404). The maintained community
 package used here is [`@nredd/pi-computer-use@0.6.0`](https://www.npmjs.com/package/@nredd/pi-computer-use)
-(Pi extension entry `extensions/computer-use.ts`).
+(Pi extension entry `extensions/computer-use.ts`) plus its Accessibility / Screen Recording helper app.
 
-Tools differ from `@agent-sh/computer-use-linux`:
-
-| macOS (`@nredd`) | Linux companion (`@agent-sh`) |
+| macOS (`@nredd` + companion VD) | Linux companion (`@agent-sh`) |
 | --- | --- |
-| `find_roots`, `observe_ui`, `search_ui`, `expand_ui`, `inspect_ui`, `act_ui`, `read_text`, `wait_for` | `list_windows`, `activate_window`, `get_app_state`, `click`, … |
-| `desktop_screenshot`, `desktop_input` | `screenshot`, coordinate input tools |
-| CDP browser tools inside the extension | `pi-chrome-use` via desktop-service |
+| One `CGVirtualDisplay` companion (wide) | One X11 `:99` |
+| Tiles of 1280×800 per bot (`DesktopOwnership`) | Tiles of 1280×900 per bot |
+| Helper `captureDisplay` / `desktopInput` | xdotool / ImageMagick / computer-use-linux |
+| Viewer = tile screenshot stream (`canOpenView`) | Viewer = x11vnc clip RFB |
+| Input **serialized** (one global cursor/focus) | Input isolated per X display |
+
+## Virtual display (companion)
+
+macOS does not give each bot a separate login session. Concurrent extra `CGVirtualDisplay`s also
+often fail when Screen Sharing already consumes virtual-display slots (observed on botty: only ~1
+extra VD is reliable). Therefore pi-bot uses the **same tiling model as Linux**:
+
+1. `pi-virtual-display-companion` creates **one** wide `CGVirtualDisplay` (`capacity × 1280` × 800).
+2. Each bot `desktop/bind` claims a tile (`screen * 1280` origin on that companion).
+3. Windows are confined into the tile (drag + `setWindowFrame`; AX alone may clamp negative X).
+4. Screenshots use `captureDisplay` on the companion index; input is remapped into the tile.
+5. When the last binding is released (or the daemon closes), the companion process exits and the VD vanishes (`.forSession` arrangement — no permanent orphans).
+
+Build:
+
+```sh
+./scripts/build-macos-virtual-display.sh
+# or via
+./scripts/setup-macos-desktop.sh
+```
+
+Binary default: `~/Library/Application Support/pi-bot/bin/pi-virtual-display-companion`.
+Override with `PI_BOT_MACOS_VD_BIN`. **No extra TCC** for the companion (private CoreGraphics API from a non-sandboxed CLI). Do **not** re-sign `pi-computer-use.app` or its Accessibility grant breaks.
+
+### Honest isolation limits
+
+- **Pixels / windows:** bots can be kept on the companion; the main display stays free of bot windows when confinement succeeds.
+- **Input:** macOS has a **single global cursor and focus**. Concurrent bots must not type at once; the host serializes helper input (same practical constraint Linux tiles share when using one X server pointer — Linux still has stronger process/display isolation).
+- **Multi-VD:** creating one CGVirtualDisplay **per bot** is not reliable alongside Screen Sharing VDs; tiling is intentional.
 
 ## Setup
 
@@ -26,11 +54,6 @@ On the Mac only:
 ./scripts/setup-macos-desktop.sh
 ```
 
-The script no-ops/refuses on non-darwin. It installs the npm package without writing
-`package.json` (same pattern as `setup-linux-desktop.sh`) and runs the package helper
-installer into `~/Applications/pi-computer-use.app` (or preserves a writable
-`/Applications/pi-computer-use.app`).
-
 ### TCC (required, human)
 
 In **System Settings → Privacy & Security**, enable for **pi-computer-use.app**:
@@ -39,8 +62,8 @@ In **System Settings → Privacy & Security**, enable for **pi-computer-use.app*
 2. **Screen Recording** — capture pixels
 
 After a helper re-sign, macOS may keep a stale grant: turn each toggle **off then on**.
-The harness probe never opens Settings panes or calls `registerPermissions` during
-capability detection.
+The harness probe never opens Settings panes or calls `registerPermissions` during capability detection.
+Automation (Apple Events) prompts for Terminal/`osascript` are unrelated — prefer the helper APIs.
 
 ## Capability states
 
@@ -51,41 +74,27 @@ With no Linux `control.json` companion on darwin:
 | `unconfigured` | Package/helper missing — run setup script |
 | `permission-required` | Helper answered; Accessibility and/or Screen Recording denied |
 | `unreachable` | Helper installed but socket/daemon did not answer the read-only probe |
-| `ready` | Helper verified both permissions (credential-free reason string) |
-| `unsupported` | Non-darwin native path, or VNC (not offered on native macOS) |
+| `ready` | Helper verified both permissions |
+| `unsupported` | Non-darwin native path, or VNC (not offered; use screenshot-tile view) |
 
-A configured Linux companion (`PI_BOT_DESKTOP_CONTROL` / `control.json`) still wins when present;
-native host mode is the companion-free darwin path.
+`canOpenView` becomes true when Computer Use + Screen Recording are ready **and** the companion binary exists (screenshot-tile viewer path).
 
 Opt out: `PI_BOT_MACOS_COMPUTER_USE=0`.
 
 ## Architecture
 
 1. Discovery (`src/pi/macos-computer-use.ts`) finds the package + helper on darwin.
-2. Daemon refreshes capabilities via `probeMacosNativeCapabilities` (helper `checkPermissions` over the unix socket) every 10s when no companion is configured.
-3. Live Pi sessions load the package extension factory so tools register in-process (native host), not through `desktop-service` HTTP.
+2. Daemon refreshes capabilities via `probeMacosNativeCapabilities`.
+3. `MacosVirtualDisplayHost` (`src/daemon/macos-virtual-display.ts`) owns companion lifecycle + `DesktopOwnership` tiles.
+4. `desktop/bind` on darwin starts/ensures the companion and returns the bot's tile binding.
+5. Live Pi sessions still load `@nredd/pi-computer-use` for semantic UI tools; bind scopes the session to its tile.
 
 Linux X11/VNC `desktop-service.ts` is unchanged.
 
 ## Manual verification on botty
 
-Target: machine `botty`, path `~/pi-bot`, Node under `~/.local/share/pi-bot/node`.
-
-1. `cd ~/pi-bot && git fetch && git checkout feat/macos-native-computer-use && ./scripts/setup-macos-desktop.sh`
-2. Grant TCC as above (GUI clicks only the human can do).
-3. Restart the daemon.
-4. Probe:
-
-```sh
-export PATH="$HOME/.local/share/pi-bot/node/bin:$PATH"
-node --import tsx -e "import { probeMacosNativeCapabilities } from './src/daemon/macos-computer-use.ts'; console.log(JSON.stringify(await probeMacosNativeCapabilities({ platform: 'darwin' }), null, 2))"
-```
-
-Expect `computerUse.state === "ready"` and `screenCapture.state === "ready"` after TCC.
-5. In a bot session, call `find_roots` then `observe_ui` on a known app; confirm no Linux/VNC tools are required.
-6. Do **not** claim public README “macOS Computer Use supported” until this smoke note is recorded.
-
-## Verification status (this PR)
-
-- Linux box: unit tests + `npm run check` for classification and non-regression.
-- botty live TCC + smoke: **not run in this environment** — follow the steps above.
+1. `./scripts/setup-macos-desktop.sh` (builds companion + installs helper package).
+2. Grant TCC as above.
+3. Probe capabilities; expect `computerUse`/`screenCapture` ready and `canOpenView` true.
+4. Bind two bots; place windows on each tile; type on A; confirm B and main display unchanged; capture companion screenshots.
+5. Release bindings / stop daemon; confirm companion display disappears from the online display list.

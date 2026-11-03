@@ -17,6 +17,7 @@ import { DesktopClient } from '../../pi/desktop-client.ts';
 import { unconfiguredDesktopCapabilities, type DesktopCapabilities } from '../../pi/desktop-capabilities.ts';
 import { discoverMacosComputerUse } from '../../pi/macos-computer-use.ts';
 import { probeMacosNativeCapabilities, unconfiguredMacosNativeCapabilities } from '../macos-computer-use.ts';
+import { MacosVirtualDisplayHost } from '../macos-virtual-display.ts';
 import { Router } from './router.ts';
 import { DaemonConnection } from './connection.ts';
 import { PiBotError } from './errors.ts';
@@ -47,6 +48,8 @@ export class PiBotDaemon {
     desktop?: DesktopClient;
     /** True when host uses @nredd/pi-computer-use instead of a Linux companion. */
     nativeMacosComputerUse = false;
+    /** Per-session CGVirtualDisplay companion (Linux :99 tiling analogue). */
+    macosVirtualDisplay?: MacosVirtualDisplayHost;
     private absentDesktopCapabilities = process.platform === 'darwin' ? unconfiguredMacosNativeCapabilities() : unconfiguredDesktopCapabilities();
     private nativeDesktopChecking?: Promise<DesktopCapabilities>;
     private nativeDesktopListeners = new Set<(value: DesktopCapabilities) => void>();
@@ -167,7 +170,10 @@ export class PiBotDaemon {
         if (!d.desktop && process.platform === 'darwin') {
             const discovery = discoverMacosComputerUse({ cwd: process.cwd() });
             d.nativeMacosComputerUse = discovery.enabled || !!discovery.packageRoot || discovery.helperExecutablePresent;
-            if (d.nativeMacosComputerUse) d.absentDesktopCapabilities = unconfiguredMacosNativeCapabilities();
+            if (d.nativeMacosComputerUse) {
+                d.absentDesktopCapabilities = unconfiguredMacosNativeCapabilities();
+                d.macosVirtualDisplay = new MacosVirtualDisplayHost();
+            }
         }
         if (!options.factory)
             d.live = await livePiFactory(d.dataDir, () => d.proactive, d.credentials, options.piOptions, budget => d.budgetChanged(budget), options.modelRound, d.desktop);
@@ -364,7 +370,7 @@ export class PiBotDaemon {
         if (!refresh && this.nativeDesktopChecking) return this.nativeDesktopChecking;
         const previous = this.absentDesktopCapabilities;
         const signature = (v: DesktopCapabilities) => JSON.stringify(v, (key, value) => key === 'checkedAt' ? undefined : value);
-        const pending = probeMacosNativeCapabilities({ platform: 'darwin' }).then(value => {
+        const pending = probeMacosNativeCapabilities({ platform: 'darwin', virtualDisplayBinaryPresent: !!this.macosVirtualDisplay?.binaryPath }).then(value => {
             this.absentDesktopCapabilities = value;
             if (signature(previous) !== signature(value)) {
                 for (const listener of this.nativeDesktopListeners) listener(value);
@@ -559,6 +565,7 @@ export class PiBotDaemon {
             clearInterval(this.timer);
             clearInterval((this as any)._nativeDesktopMonitor);
             this.desktop?.close();
+            await this.macosVirtualDisplay?.shutdownCompanion();
             await this.proactive.close();
             let deadline: ReturnType<typeof setTimeout> | undefined;
             const finished = await Promise.race([this.runtime.idle().then(() => true), new Promise<boolean>(resolve => {

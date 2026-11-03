@@ -12,16 +12,50 @@ export async function desktopHandler(d: PiBotDaemon, c: DaemonConnection, method
         case 'desktop/bind':
         case 'desktop/control':
             d.required('bots', p.botId);
-            if (!d.desktop)
-                throw new PiBotError('setupRequired', 'Desktop is not connected');
-            if (method === 'desktop/bind') {
-                const report = await d.desktop.capabilities(p.botId, true);
-                if (!report.canOpenView) throw new PiBotError('setupRequired', 'Desktop viewer is not available', { desktopCapabilities: report });
-                const result = await (await d.desktop.request('/bind', { ...p, openView: true })).json();
-                void d.desktop.capabilities(undefined, true);
-                return result;
+            if (d.desktop) {
+                if (method === 'desktop/bind') {
+                    const report = await d.desktop.capabilities(p.botId, true);
+                    if (!report.canOpenView) throw new PiBotError('setupRequired', 'Desktop viewer is not available', { desktopCapabilities: report });
+                    const result = await (await d.desktop.request('/bind', { ...p, openView: true })).json();
+                    void d.desktop.capabilities(undefined, true);
+                    return result;
+                }
+                if (p.take) await d.desktop.assertAvailable('computerUse');
+                return (await d.desktop.request('/control', p)).json();
             }
-            if (p.take) await d.desktop.assertAvailable('computerUse');
-            return (await d.desktop.request('/control', p)).json();
+            if (d.nativeMacosComputerUse && d.macosVirtualDisplay) {
+                const report = await d.refreshNativeDesktopCapabilities(true);
+                if (method === 'desktop/bind') {
+                    if (report.computerUse.state !== 'ready') {
+                        throw new PiBotError('setupRequired', report.computerUse.reason, { desktopCapabilities: report });
+                    }
+                    if (!d.macosVirtualDisplay.binaryPath) {
+                        throw new PiBotError('setupRequired', 'pi-virtual-display-companion binary missing; run scripts/build-macos-virtual-display.sh', { desktopCapabilities: report });
+                    }
+                    const binding = await d.macosVirtualDisplay.bind(p.botId);
+                    void d.refreshNativeDesktopCapabilities(true);
+                    return {
+                        binding,
+                        companion: d.macosVirtualDisplay.status.companion,
+                        view: 'screenshot-tile',
+                        isolation: {
+                            display: 'companion-cgvirtualdisplay-tiled',
+                            input: 'serialized-global-cursor',
+                            note: 'macOS has one global cursor/focus; bot input is serialized. Linux X11 isolates input per display.',
+                        },
+                    };
+                }
+                // desktop/control on native: takeover / release lease (no VNC pointer bridge).
+                if (p.take) {
+                    if (report.computerUse.state !== 'ready') throw new PiBotError('setupRequired', report.computerUse.reason, { desktopCapabilities: report });
+                    return d.macosVirtualDisplay.owners.takeover(p.botId);
+                }
+                if (p.release) {
+                    d.macosVirtualDisplay.release(p.botId);
+                    return { released: true };
+                }
+                return d.macosVirtualDisplay.owners.control() ?? null;
+            }
+            throw new PiBotError('setupRequired', 'Desktop is not connected');
     }
 }

@@ -12,6 +12,7 @@ import {
     discoverMacosComputerUse, MACOS_COMPUTER_TOOLS, MACOS_COMPUTER_USE_PACKAGE,
     resolveMacosHelperAppPath, type MacosComputerUseDiscovery,
 } from '../pi/macos-computer-use.ts';
+import { resolveMacosVirtualDisplayBinary } from './macos-virtual-display.ts';
 
 const PROBE_TIMEOUT = 2000;
 const DEFAULT_SOCKET = () => join(homedir(), 'Library', 'Caches', 'pi-computer-use', 'bridge.sock');
@@ -29,6 +30,8 @@ export type MacosNativeProbeDependencies = {
     checkPermissions?: () => Promise<MacosPermissionProbe>;
     /** Optional connectivity probe when checkPermissions is not supplied. */
     helperReachable?: () => Promise<boolean>;
+    /** When false, companion virtual-display binary is missing (inject in tests). */
+    virtualDisplayBinaryPresent?: boolean;
     timeoutMs?: number;
 };
 
@@ -106,7 +109,7 @@ function probeFailure(error: any, label: string) {
 export async function probeMacosNativeCapabilities(deps: MacosNativeProbeDependencies): Promise<DesktopCapabilities> {
     const discovery = deps.discovery ?? discoverMacosComputerUse({ platform: deps.platform });
     const result = unavailableDesktopCapabilities(deps.platform, discovery.enabled || discovery.helperExecutablePresent, 'unconfigured', discovery.reason);
-    result.vnc = capability('unsupported', 'Native macOS Computer Use does not expose a VNC viewer; use the host display directly');
+    result.vnc = capability('unsupported', 'Native macOS Computer Use has no VNC; per-session view is a companion virtual-display screenshot stream when configured');
     result.browser = capability('unconfigured', 'Browser tools are provided by the native extension when browser_use is enabled in its config');
     result.canOpenView = false;
 
@@ -148,11 +151,24 @@ export async function probeMacosNativeCapabilities(deps: MacosNativeProbeDepende
             : status.screenRecording === false
                 ? capability('permission-required', 'Grant Screen Recording to pi-computer-use.app in System Settings → Privacy & Security')
                 : capability('unknown', 'Screen Recording was not verified');
+        const vdPresent = deps.virtualDisplayBinaryPresent ?? !!resolveMacosVirtualDisplayBinary();
+        result.vnc = capability(
+            'unsupported',
+            vdPresent
+                ? 'Native macOS Computer Use has no VNC; per-session view is a tiled CGVirtualDisplay companion screenshot stream (Linux VNC clip analogue)'
+                : 'Native macOS Computer Use has no VNC; build scripts/build-macos-virtual-display.sh for the companion screenshot view',
+        );
         if (result.computerUse.state === 'ready') {
             result.availableTools.computer = [...MACOS_COMPUTER_TOOLS];
             // Browser tools stay gated on extension config; do not advertise until a live browser probe exists.
             result.availableTools.browser = [];
             result.browser = capability('unknown', 'Native browser tools ship with the extension; readiness is not claimed without a CDP probe');
+            // Mirror Linux canOpenView: window/input/capture ready + a viewer path exists.
+            result.canOpenView = result.screenCapture.state === 'ready' && vdPresent;
+            if (!vdPresent) {
+                // Tools still work on the shared desktop; isolation/view require the companion binary.
+                result.canOpenView = false;
+            }
         }
     } catch (error: any) {
         // Helper present but daemon not running yet: still configured, not ready.
