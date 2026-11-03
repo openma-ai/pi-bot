@@ -38,6 +38,8 @@ export async function main(args = process.argv.slice(2)) {
     if (command === 'pair' || command === 'devices') {
         const { remoteCli } = await import('./remote/cli.ts');
         const rest = args.slice(1).filter((a, i, all) => a !== '--data-dir' && all[i - 1] !== '--data-dir');
+        if (command === 'pair' && rest.includes('--client'))
+            return (await import('./remote/cli.ts')).clientPairCli(resolve(option('--client-dir') ?? 'work/gui/client'));
         return remoteCli(command, rest, dataDir);
     }
     if (command === 'ensure') {
@@ -65,9 +67,15 @@ export async function main(args = process.argv.slice(2)) {
         if (!['127.0.0.1', '0.0.0.0'].includes(bind))
             throw Error('Client bind must be loopback or an explicit container listener');
         const host = await listenClientHost(manager, {
-            port: Number(option('--port') ?? 4317), staticDir: option('--static'), bind: bind as '127.0.0.1' | '0.0.0.0'
+            port: Number(option('--port') ?? 4317), staticDir: option('--static'), bind: bind as '127.0.0.1' | '0.0.0.0',
+            pairingDir: resolve(option('--client-dir') ?? 'work/gui/client')
         });
         console.error('Pi Bot client: ' + host.url);
+        if (!host.registry.list().length) {
+            // Terminal only: browsers must pair before they get a session.
+            const t = host.issuePairingCode();
+            console.error(`Pair a browser: open ${host.url}/pair and enter ${t.display} (single use, 10 min). New code: pi-bot pair --client`);
+        }
         // Local is the first-run default. Connection failures leave Settings accessible.
         try {
             await manager.connect(manager.initialProfile());

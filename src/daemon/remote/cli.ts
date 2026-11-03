@@ -55,3 +55,15 @@ export async function remoteCli(command: 'pair' | 'devices', args: string[], dat
         write(`Connect code rotated (generation ${r.generation}).\n`);
     } else throw Error('Usage: pi-bot devices [list|revoke <id>|provision [name]|rotate-code]');
 }
+
+/** `pi-bot pair --client`: a one-time code that pairs a browser with the local `pi-bot client` GUI host. */
+export async function clientPairCli(clientDir: string, write: (s: string) => unknown = s => process.stdout.write(s)) {
+    const info = JSON.parse(readFileSync(join(clientDir, 'client-host.json'), 'utf8'));
+    const url = new URL(info.url);
+    if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1') throw Error('Only a local client host is supported');
+    const token = readFileSync(join(clientDir, 'client.token'), 'utf8').trim();
+    const r = await fetch(new URL('/client/pair-code', url), { method: 'POST', headers: { authorization: 'Bearer ' + token, host: url.host }, signal: AbortSignal.timeout(5000) });
+    const out = await r.json();
+    if (!r.ok) throw Error('Client pairing failed: ' + (out.error ?? r.status));
+    write(`Open ${out.url} in the browser and enter: ${out.code}   (single use, expires in ${Math.round((out.expiresAt - Date.now()) / 60000)} min)\n`);
+}

@@ -155,3 +155,29 @@ encrypted tunnel with their normal paths (`/rpc`, `/events?connection=…`,
   of binary (ciphertext) records only.
 - Not covered: traffic analysis (sizes/timing), a compromised daemon host or
   client device, a relay that drops traffic (availability).
+
+## GUI host (`pi-bot client`) pairing
+
+The browser GUI host no longer hands a session to any local browser. Opening `http://127.0.0.1:4317/`
+from an unpaired browser redirects to `/pair`; nothing behind the host (`/client/rpc`, `/runtime/<id>/rpc`,
+`/events`, `/remote/*`, …) is reachable without either
+
+- a **paired-device cookie** (`pibot_client_<port>`, HttpOnly, SameSite=Strict) plus its per-device
+  `X-PiBot-CSRF` value for writes, or
+- the host **bearer token** (CLI / native shell only; browsers never receive it).
+
+On startup with no paired browsers the host prints a one-time code to its own terminal. Mint a new one with:
+
+```sh
+pi-bot pair --client [--client-dir work/gui/client]
+```
+
+This reads `client.token` (0600, removed on shutdown) and `client-host.json` from the client dir.
+Paired browsers are stored hashed in `<client-dir>/remote-access.json`; revoke one with
+`POST /client/devices/revoke` (host bearer). A paired browser cannot mint further GUI pairing codes.
+
+## Native app (Tauri)
+
+The desktop app routes `/remote/admin`, `/remote/invite`, `/remote/devices` and `/remote/devices/revoke`
+to the active runtime with the same bearer it uses for `/rpc` and `/pi/*`; `/remote/pair` and any other
+`/remote/*` path are rejected client-side (the webview never sees the bearer).

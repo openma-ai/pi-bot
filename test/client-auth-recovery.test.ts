@@ -6,7 +6,14 @@ import { join } from 'node:path';
 import { RuntimeManager } from '../src/daemon/transports/runtime-manager.ts';
 import { listenClientHost } from '../src/daemon/transports/client-host.ts';
 import { RuntimeClient } from '../src/sdk/runtime-client.ts';
+/** Browsers must pair with the GUI host first (one-time code from the host terminal). */
+async function pairBrowser(host: { url: string; issuePairingCode(): { display: string } }) {
+    const r = await fetch(host.url + '/client/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket: host.issuePairingCode().display, name: 'test' }) });
+    assert.equal(r.status, 200);
+    return r.headers.get('set-cookie')!.split(';')[0];
+}
 test('control SDK recovers stale browser auth against a real restarted client host', async () => {
+    const pairingDir = mkdtempSync(join(tmpdir(), 'pi-client-pairing-'));
     const manager = new RuntimeManager({
         file: join(mkdtempSync(join(tmpdir(), 'pi-client-restart-')), 'client.json'), defaults: {
             local: {
@@ -15,10 +22,10 @@ test('control SDK recovers stale browser auth against a real restarted client ho
         }
     });
     let server = await listenClientHost(manager, {
-        port: 0
+        port: 0, pairingDir
     });
     const base = server.url, port = Number(new URL(base).port);
-    let cookie = '';
+    let cookie = await pairBrowser(server);
     const browserFetch: typeof fetch = async (url, init = {}) => {
         const response = await fetch(url, {
             ...init, headers: {
@@ -41,7 +48,7 @@ test('control SDK recovers stale browser auth against a real restarted client ho
         assert.equal((await api.runtime.status({})).active, null);
         await server.close();
         server = await listenClientHost(manager, {
-            port
+            port, pairingDir
         });
         const recovered = await api.runtime.status({});
         assert.equal(recovered.profiles[0].mode, 'local');
@@ -68,9 +75,9 @@ test('two client hosts on the same hostname keep separate browser cookies', asyn
     const csrf: string[] = [];
     try {
         for (const host of hosts) {
-            const response = await fetch(host.url + '/');
-            const pair = response.headers.get('set-cookie')!.split(';')[0], split = pair.indexOf('=');
+            const pair = await pairBrowser(host), split = pair.indexOf('=');
             cookies.set(pair.slice(0, split), pair.slice(split + 1));
+            const response = await fetch(host.url + '/', { headers: { cookie: pair } });
             csrf.push((await response.text()).match(/name="pibot-csrf" content="([a-f0-9]+)"/)![1]);
         }
         assert.equal(cookies.size, 2, 'ports must not overwrite another client host session');
@@ -95,7 +102,9 @@ test('scoped bot and Pi clients bootstrap the GUI origin after auth expires', as
     const host = await listenClientHost(manager, { port: 0 });
     try {
         const { refreshBrowserCsrf } = await import('../src/sdk/browser-session.ts');
-        const nonce = await refreshBrowserCsrf(host.url + '/runtime/retired-connection');
+        await assert.rejects(refreshBrowserCsrf(host.url + '/runtime/retired-connection'), 'unpaired browsers get no CSRF nonce');
+        const cookie = await pairBrowser(host);
+        const nonce = await refreshBrowserCsrf(host.url + '/runtime/retired-connection', (u, i: any = {}) => fetch(u, { ...i, headers: { ...i.headers, cookie } }));
         assert.match(nonce, /^[a-f0-9]{64}$/);
     } finally { await host.close(); await manager.close(); }
 });

@@ -18,6 +18,9 @@ export async function refreshBrowserCsrf(baseUrl = '', fetchImpl = globalThis.fe
     const response = await fetchImpl(bootstrap, {
         credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(5000)
     });
+    // Unpaired or revoked browser: the GUI host sends it to its pairing page.
+    if (response.redirected && new URL(response.url).pathname === '/pair' && typeof location !== 'undefined')
+        location.assign('/pair');
     const html = response.ok ? await response.text() : '';
     const csrf = html.match(/name="pibot-csrf" content="([a-f0-9]+)"/)?.[1];
     if (!csrf)

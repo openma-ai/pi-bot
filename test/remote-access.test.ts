@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
@@ -181,5 +181,64 @@ test('daemon HTTP API: pairing required locally and through the E2E relay; revok
         await http.close();
         await d.close();
         relay.close();
+    }
+});
+
+test('GUI host (pi-bot client): unpaired browsers get no session, cannot mint pairing codes or call /rpc', async () => {
+    const { RuntimeManager } = await import('../src/daemon/transports/runtime-manager.ts');
+    const { listenClientHost } = await import('../src/daemon/transports/client-host.ts');
+    const { clientPairCli } = await import('../src/daemon/remote/cli.ts');
+    const dir = mkdtempSync(join(tmpdir(), 'pibot-gui-host-'));
+    const daemon = await PiBotDaemon.create({ dataDir: join(dir, 'data'), factory: async () => ({ run: async () => {}, close: async () => {} }) });
+    const http = await listenHttp(daemon, { port: 0 });
+    const local = { mode: 'local' as const, dataDir: join(dir, 'data') };
+    const manager = new RuntimeManager({ file: join(dir, 'client', 'client.json'), defaults: { local, ssh: null } as any,
+        open: async () => ({ url: http.url, host: new URL(http.url).host, token: http.token, close() {} }) });
+    const host = await listenClientHost(manager, { port: 0, pairingDir: join(dir, 'client') });
+    try {
+        const active = (await manager.connect(local as any)).active!;
+        const base = host.url + active.baseUrl;
+        const post = (url: string, body: unknown, headers: Record<string, string> = {}) => fetch(url, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
+        // Unpaired browser: redirected to the pairing flow, never handed a cookie or CSRF.
+        for (const path of ['/', active.baseUrl + '/']) {
+            const r = await fetch(host.url + path, { redirect: 'manual' });
+            assert.equal(r.status, 302, path);
+            assert.equal(r.headers.get('location'), '/pair');
+            assert.equal(r.headers.get('set-cookie'), null);
+        }
+        const page = await fetch(host.url + '/pair');
+        assert.equal(page.status, 200);
+        assert.doesNotMatch(await page.text(), /pibot-csrf/);
+        const forged = { cookie: `pibot_client_${new URL(host.url).port}=pbd_${'A'.repeat(43)}`, 'x-pibot-csrf': 'x' };
+        for (const headers of [{}, forged]) {
+            assert.equal((await post(base + '/remote/admin', { action: 'pair' }, headers)).status, 401, 'cannot create a daemon pairing code');
+            assert.equal((await post(base + '/remote/invite', {}, headers)).status, 401);
+            assert.equal((await fetch(base + '/remote/devices', { headers })).status, 401);
+            assert.equal((await post(base + '/rpc', { jsonrpc: '2.0', id: 1, method: 'daemon/snapshot', params: {} }, headers)).status, 401, 'cannot call /rpc');
+            assert.equal((await post(host.url + '/client/rpc', { jsonrpc: '2.0', id: 1, method: 'runtime/status', params: {} }, headers)).status, 401);
+            assert.equal((await post(host.url + '/client/pair-code', {}, headers)).status, 401, 'cannot mint a GUI pairing code');
+        }
+        assert.equal((await post(host.url + '/client/pair', { ticket: 'AAAAA-AAAAA', name: 'x' })).status, 403);
+        // Host CLI path (`pi-bot pair --client`, daemon-side bearer) mints a code; the browser claims it.
+        let out = '';
+        await clientPairCli(join(dir, 'client'), s => { out += s; });
+        const code = out.match(/enter: (\S+)/)![1];
+        const claimed = await post(host.url + '/client/pair', { ticket: code, name: 'browser' });
+        assert.equal(claimed.status, 200);
+        const cookie = claimed.headers.get('set-cookie')!.split(';')[0];
+        assert.equal((await post(host.url + '/client/pair', { ticket: code, name: 'again' })).status, 403, 'single use');
+        const index = await fetch(host.url + '/', { headers: { cookie } });
+        assert.equal(index.status, 200);
+        const csrf = (await index.text()).match(/name="pibot-csrf" content="([^"]+)"/)![1];
+        assert.equal((await post(base + '/rpc', { jsonrpc: '2.0', id: 1, method: 'daemon/snapshot', params: {} }, { cookie })).status, 401, 'CSRF required');
+        const ok = await post(base + '/rpc', { jsonrpc: '2.0', id: 1, method: 'daemon/snapshot', params: {} }, { cookie, 'x-pibot-csrf': csrf }); assert.ok(![401, 403].includes(ok.status), 'paired browser passes auth + CSRF');
+        assert.equal((await post(base + '/remote/admin', { action: 'pair' }, { cookie, 'x-pibot-csrf': csrf })).status, 200, 'paired GUI may manage remote access');
+        assert.equal((await post(host.url + '/client/pair-code', {}, { cookie, 'x-pibot-csrf': csrf })).status, 401, 'browsers never mint GUI codes');
+        const id = host.registry.list()[0].id;
+        assert.equal((await post(host.url + '/client/devices/revoke', { id }, { authorization: 'Bearer ' + host.token })).status, 200);
+        assert.equal((await fetch(host.url + '/', { redirect: 'manual', headers: { cookie } })).status, 302, 'revoked browser is sent back to pairing');
+        assert.equal((await post(base + '/rpc', {}, { cookie, 'x-pibot-csrf': csrf })).status, 401);
+    } finally {
+        await manager.close(); await host.close(); await http.close(); await daemon.close?.(); rmSync(dir, { recursive: true, force: true });
     }
 });
