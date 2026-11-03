@@ -7,9 +7,15 @@ import { createAgentSession, DefaultResourceLoader, SettingsManager, type Extens
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import type { PiOptions } from './session-factory.ts';
 import { redactTraceValue } from './redact.ts';
+import type { ForegroundChildSessionControls } from '../../node_modules/pi-subagents/src/shared/types.js';
+export type CodingWorkerControls = ForegroundChildSessionControls;
 export async function runCodingWorker(options: Pick<PiOptions, 'dir' | 'modelRuntime' | 'model' | 'beforeProviderRequest' | 'inferenceSignal' | 'inferenceRequestTimeoutMs' | 'maxOutputTokens' | 'thinkingLevel' | 'extensions' | 'desktop' | 'sandbox'> & {
     assertCurrent: () => void;
     permission?: (tool: string, args: unknown) => Promise<boolean>;
+    /** Receives the plugin's live foreground controls (steer / followUp / stop) once the child session exists. */
+    onControls?: (controls: CodingWorkerControls) => void;
+    /** Retained native session file of a finished worker; when set the worker resumes that session. */
+    resumeSessionFile?: string;
 }, task: string, hostTask: unknown) {
     options.assertCurrent();
     mkdirSync(options.dir, {
@@ -106,13 +112,15 @@ export async function runCodingWorker(options: Pick<PiOptions, 'dir' | 'modelRun
     const underlying = createDefaultChildSessionFactory({
         loadPiCodingAgent: async () => sdk as unknown as typeof piSdk
     });
-    let launches = 0;
     let sessionFile: string | undefined;
+    let stopped = false;
+    const report = options.onControls;
+    options = { ...options, onControls: report && (c => report({ ...c, stop: reason => { stopped = true; c.stop(reason); } })) };
     const runId = randomUUID();
     const factory: ReturnType<typeof createDefaultChildSessionFactory> = {
         async create(launch) {
-            if (++launches > 1)
-                throw Error('Automatic child recovery is disabled by host');
+            // Plugin-driven relaunches (recovery) are allowed; every launch goes
+            // through the same guard, permission hook and shared request budget.
             options.assertCurrent();
             const child = await underlying.create({
                 ...launch, ambientExtensions: false, extensionPaths: [], noSkills: true, noContextFiles: true, processEnv: undefined
@@ -130,7 +138,9 @@ export async function runCodingWorker(options: Pick<PiOptions, 'dir' | 'modelRun
                 systemPromptMode: 'replace', inheritProjectContext: false, inheritGlobalContext: false, inheritSkills: false,
                 tools: ['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls', ...(options.desktop ? ['desktop_list', 'desktop_call'] : [])], allowNestedSubagents: false
             }], 'worker', task, {
-            runId, childSessionFactory: factory, cwd: options.dir, context: 'fresh', sessionDir: options.dir,
+            runId, childSessionFactory: factory, cwd: options.dir, context: options.resumeSessionFile ? 'fork' : 'fresh', sessionDir: options.dir,
+            ...(options.resumeSessionFile ? { sessionFile: options.resumeSessionFile } : {}),
+            onChildSession: controls => options.onControls?.(controls),
             modelOverride: model, modelOverrideFromParent: true, thinkingOverride: options.thinkingLevel,
             timeoutMs: 600000, signal: options.inferenceSignal, allowIntercomDetach: false,
             permissions: {},
@@ -138,6 +148,8 @@ export async function runCodingWorker(options: Pick<PiOptions, 'dir' | 'modelRun
         options.assertCurrent();
         if (permissionDenied)
             throw Error('Host permission denied for community worker');
+        if (stopped)
+            throw Error('Coding worker interrupted by parent');
         const final = outcome.messages?.filter(m => m.role === 'assistant').at(-1);
         if (outcome.exitCode !== 0 || !final || final.role !== 'assistant' || ['error', 'aborted'].includes(final.stopReason))
             throw Error('Community coding worker did not complete');
