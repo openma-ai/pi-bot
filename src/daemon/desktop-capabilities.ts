@@ -38,6 +38,8 @@ export function computerDoctorCapability(value: any): DesktopCapability {
 
 export async function probeDesktopCapabilities(deps: DesktopProbeDependencies): Promise<DesktopCapabilities> {
     const result = unavailableDesktopCapabilities(deps.platform, true, 'unknown', 'Capability probe has not completed');
+    // This probe is the Linux X11 companion/service path only.
+    // Native darwin host Computer Use uses probeMacosNativeCapabilities instead.
     if (deps.platform !== 'linux') {
         result.computerUse = capability('unsupported', 'The configured desktop service supports Linux X11 only');
         result.screenCapture = capability('unknown', 'Native screen-capture and accessibility permissions have not been probed');

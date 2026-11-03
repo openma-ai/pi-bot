@@ -40,7 +40,7 @@ npm start
 
 详见 [服务密码与直连](docs/clients/DIRECT-PASSWORD.md)、[Tailscale 连接](docs/clients/TAILNET-DIRECT.md)。
 
-Harness 的[独立安装、Docker 部署与升级回滚](docs/harness-deployment.md)、[Computer Use / VNC 能力契约](docs/harness-capabilities.md)和[本轮集成验收状态](docs/harness-integration-checkpoint.md)分别记录可复现流程与未通过的原生环节。桌面随包引擎使用应用自己的数据目录，手机继续连接远端；健康检查不代表已配置模型。
+Harness 的[独立安装、Docker 部署与升级回滚](docs/harness-deployment.md)、[Computer Use / VNC 能力契约](docs/harness-capabilities.md)、[macOS 原生 Computer Use 安装与 botty 验收步骤](docs/macos-computer-use.md)（draft：未完成实机 smoke 前不宣称已支持）和[本轮集成验收状态](docs/harness-integration-checkpoint.md)分别记录可复现流程与未通过的原生环节。桌面随包引擎使用应用自己的数据目录，手机继续连接远端；健康检查不代表已配置模型。
 
 原生客户端开发与 Preview 打包另需 Rust、Xcode 命令行工具和对应平台 SDK：
 
@@ -57,7 +57,7 @@ Preview 与正式应用的数据隔离；正式签名、公证、TestFlight 分�
 - 创建 bot、单聊与群聊，使用 @ / @全体协作；按 runtime 保存置顶会话。手机采用列表和聊天分页，返回时保留当前渲染器中的草稿与滚动位置。
 - 支持多行输入、照片和文件附件、取消选择、移除与下载。单文件最多 8 MiB，PNG/JPEG/WebP 图片最多 5 MiB；附件接收不代表模型已处理，模型图片能力取决于所选 provider。
 - 回复完整后显示，运行状态单独呈现。消息提交、处理完成、工具执行和外部投递有不同收据，不能相互替代。
-- 桌面工具与实时画面依赖 runtime 侧已配置的桌面服务及授权；客户端本身不自动获得设备控制权限。见 [Linux 桌面与人工接管](docs/linux-desktop-image.md)。
+- 桌面工具与实时画面依赖 runtime 侧已配置的桌面服务及授权；客户端本身不自动获得设备控制权限。见 [Linux 桌面与人工接管](docs/linux-desktop-image.md)。macOS 本机路径（无 Colima）见 [macos-computer-use.md](docs/macos-computer-use.md)；需人工完成 TCC，实机 smoke 完成前不宣称正式支持。
 - 定时任务与监控由 **agent 管理**，runtime 保存状态和触发记录；客户端仅展示已有任务状态，不提供手填时间、cron 或监控创建表单。可通过普通聊天向 agent 表达需求，实际能力及启用方式见 [proactive runtime](docs/proactive-runtime.md)。
 
 ## 开发与验证

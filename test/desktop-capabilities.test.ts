@@ -28,10 +28,12 @@ test('configuration and doctor route discovery alone never establish screenshot 
     assert.ok(report.availableTools.computer.includes('click'));
     assert.deepEqual(report.availableTools.browser, ['navigate', 'evaluate', 'screenshot']);
     const absent = unconfiguredDesktopCapabilities('darwin');
-    assert.equal(absent.computerUse.state, 'unsupported');
+    assert.equal(absent.computerUse.state, 'unconfigured');
+    assert.match(absent.computerUse.reason, /setup-macos-desktop|Accessibility|Screen Recording/);
     assert.equal(absent.screenCapture.state, 'unknown');
     assert.equal(absent.canOpenView, false);
     assert.match(absent.screenCapture.reason, /have not been probed/);
+    assert.equal(unconfiguredDesktopCapabilities('win32').computerUse.state, 'unsupported');
 });
 
 test('doctor requires positive operation evidence and distinguishes denial, missing setup and unknown', () => {
@@ -215,4 +217,63 @@ test('malformed control configuration does not crash the harness', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'pibo-bad-desktop-'));
     try { const path = join(dir, 'control.json'); await writeFile(path, '{'); assert.equal(DesktopClient.load(path), undefined); }
     finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+
+test('native macOS probe distinguishes unconfigured, permission-required, ready and unreachable', async () => {
+    const { probeMacosNativeCapabilities, macosPermissionCapability } = await import('../src/daemon/macos-computer-use.ts');
+    const { discoverMacosComputerUse } = await import('../src/pi/macos-computer-use.ts');
+    assert.equal(macosPermissionCapability({ accessibility: true, screenRecording: true }).state, 'ready');
+    assert.equal(macosPermissionCapability({ accessibility: false, screenRecording: true }).state, 'permission-required');
+    assert.match(macosPermissionCapability({ accessibility: true, screenRecording: false }).reason, /Screen Recording/);
+    const missing = await probeMacosNativeCapabilities({
+        platform: 'darwin',
+        discovery: { enabled: false, packageName: '@nredd/pi-computer-use', helperExecutablePresent: false, reason: 'FIXTURE missing package' },
+        checkPermissions: async () => { throw Error('must not run'); },
+    });
+    assert.equal(missing.computerUse.state, 'unconfigured');
+    assert.equal(missing.configured, false);
+    assert.deepEqual(missing.availableTools.computer, []);
+    const denied = await probeMacosNativeCapabilities({
+        platform: 'darwin',
+        discovery: { enabled: true, packageName: '@nredd/pi-computer-use', packageRoot: '/tmp/fixture', extensionPath: '/tmp/fixture/extensions/computer-use.ts', helperAppPath: '/tmp/fixture.app', helperExecutablePresent: true, reason: 'FIXTURE present' },
+        checkPermissions: async () => ({ accessibility: false, screenRecording: false }),
+    });
+    assert.equal(denied.computerUse.state, 'permission-required');
+    assert.equal(denied.screenCapture.state, 'permission-required');
+    assert.equal(denied.configured, true);
+    assert.equal(denied.vnc.state, 'unsupported');
+    const readyNative = await probeMacosNativeCapabilities({
+        platform: 'darwin',
+        discovery: { enabled: true, packageName: '@nredd/pi-computer-use', packageRoot: '/tmp/fixture', extensionPath: '/tmp/fixture/extensions/computer-use.ts', helperAppPath: '/tmp/fixture.app', helperExecutablePresent: true, reason: 'FIXTURE present' },
+        checkPermissions: async () => ({ accessibility: true, screenRecording: true }),
+    });
+    assert.equal(readyNative.computerUse.state, 'ready');
+    assert.equal(readyNative.screenCapture.state, 'ready');
+    assert.ok(readyNative.availableTools.computer.includes('find_roots'));
+    assert.ok(readyNative.availableTools.computer.includes('desktop_screenshot'));
+    assert.ok(!readyNative.availableTools.computer.includes('list_windows'), 'Linux companion tool names must not be advertised on native macOS');
+    const down = await probeMacosNativeCapabilities({
+        platform: 'darwin',
+        discovery: { enabled: true, packageName: '@nredd/pi-computer-use', packageRoot: '/tmp/fixture', extensionPath: '/tmp/fixture/extensions/computer-use.ts', helperAppPath: '/tmp/fixture.app', helperExecutablePresent: true, reason: 'FIXTURE present' },
+        checkPermissions: async () => { throw Object.assign(new Error('FIXTURE down'), { code: 'ECONNREFUSED' }); },
+    });
+    assert.equal(down.computerUse.state, 'unreachable');
+    assert.equal((await probeMacosNativeCapabilities({ platform: 'linux', checkPermissions: async () => ({ accessibility: true, screenRecording: true }) })).computerUse.state, 'unsupported');
+    assert.equal(discoverMacosComputerUse({ platform: 'linux' }).enabled, false);
+    assert.equal(discoverMacosComputerUse({ platform: 'darwin', env: { PI_BOT_MACOS_COMPUTER_USE: '0' } }).enabled, false);
+});
+
+test('setup-macos-desktop.sh refuses on non-darwin hosts', async () => {
+    const { spawnSync } = await import('node:child_process');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const result = spawnSync('bash', [join(root, 'scripts/setup-macos-desktop.sh')], { encoding: 'utf8' });
+    if (process.platform === 'darwin') {
+        assert.notEqual(result.status, 1, 'on darwin the script may proceed past the platform guard');
+        return;
+    }
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /macOS only|targets macOS/i);
 });

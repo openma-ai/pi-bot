@@ -1,6 +1,7 @@
 import { createSandboxHost } from '../pi/sandbox.ts';
 import { ProviderRequestGuardError } from '../pi/host.ts';
 import { DesktopClient } from '../pi/desktop-client.ts';
+import { discoverMacosComputerUse, loadMacosComputerUseExtension } from '../pi/macos-computer-use.ts';
 import { resolve } from 'node:path';
 import { join } from 'node:path';
 import { getAgentDir, type ExtensionFactory } from '@earendil-works/pi-coding-agent';
@@ -59,11 +60,16 @@ export async function livePiFactory(dir: string, proactive: (host: BotHost) => P
         cwd: piOptions.cwd ?? process.cwd(),
         onStatus: (message, level) => console.error(`[sandbox:${level}] ${message}`),
     });
+    const macosDiscovery = !desktop && process.platform === 'darwin' ? discoverMacosComputerUse({ cwd: process.cwd() }) : undefined;
+    const macosExtension = macosDiscovery?.enabled ? await loadMacosComputerUseExtension(macosDiscovery).catch(error => {
+        console.error('[macos-computer-use] extension load failed', error instanceof Error ? error.message : error);
+        return undefined;
+    }) : undefined;
     const factory = piSessionFactory({
         sandbox,
         credentials, desktop, codingWorkers: true, dir: join(dir, 'sessions'), modelRuntime: models, model, connectionBinding:configuration.connectionBinding, proactive, context: {
             backgroundEnabled: true, outputReserveTokens: 16384, summaryTimeoutMs: 600000
-        }, backgroundTools: {}, extensions: [trace], thinkingLevel: configuration.thinkingLevel, maxOutputTokens: 16384, maxRequestsPerWake: 16, inferenceRequestTimeoutMs: 600000, inferenceSignal: lifetime,
+        }, backgroundTools: {}, extensions: [trace, ...(macosExtension ? [macosExtension] : [])], macosComputerUse: macosDiscovery?.enabled === true, thinkingLevel: configuration.thinkingLevel, maxOutputTokens: 16384, maxRequestsPerWake: 16, inferenceRequestTimeoutMs: 600000, inferenceSignal: lifetime,
         beforeProviderRequest: budget ? () => {
             if (Date.now() >= budget.expiresAt || budget.requests >= budget.maxRequests)
                 throw new ProviderRequestGuardError('budgetExhausted', 'Evaluation request or time limit reached');

@@ -6,7 +6,9 @@ export async function desktopHandler(d: PiBotDaemon, c: DaemonConnection, method
     switch (method) {
         case 'desktop/capabilities':
             if (p.botId) d.required('bots', p.botId);
-            return d.desktop ? d.desktop.capabilities(p.botId, p.refresh) : d.desktopCapabilities;
+            if (d.desktop) return d.desktop.capabilities(p.botId, p.refresh);
+            if (d.nativeMacosComputerUse) return d.refreshNativeDesktopCapabilities(!!p.refresh);
+            return d.desktopCapabilities;
         case 'desktop/bind':
         case 'desktop/control':
             d.required('bots', p.botId);

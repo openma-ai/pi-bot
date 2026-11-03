@@ -19,10 +19,18 @@ export function unavailableDesktopCapabilities(platform: string = process.platfo
 }
 export function unconfiguredDesktopCapabilities(platform: string = process.platform): DesktopCapabilities {
     const result = unavailableDesktopCapabilities(platform);
-    if (platform !== 'linux') {
-        result.computerUse = capability('unsupported', 'This harness has no native Computer Use adapter for this platform; a configured Linux desktop companion is supported');
-        result.screenCapture = capability('unknown', platform === 'darwin' ? 'macOS Screen Recording and Accessibility permissions have not been probed' : 'Native screen capture has not been probed');
+    if (platform === 'linux') return result;
+    if (platform === 'darwin') {
+        // Native host Computer Use is implemented via @nredd/pi-computer-use + helper app.
+        // Until setup/probe runs, report unconfigured rather than forever-unsupported.
+        result.computerUse = capability('unconfigured', 'Native macOS Computer Use is not set up; run scripts/setup-macos-desktop.sh and grant Accessibility + Screen Recording to pi-computer-use.app (a Linux desktop companion remains optional)');
+        result.screenCapture = capability('unknown', 'macOS Screen Recording and Accessibility permissions have not been probed');
+        result.browser = capability('unconfigured', 'No desktop companion or native macOS Computer Use helper is configured');
+        result.vnc = capability('unsupported', 'Native macOS Computer Use does not expose a VNC viewer; use the host display directly');
+        return result;
     }
+    result.computerUse = capability('unsupported', 'This harness has no native Computer Use adapter for this platform; a configured Linux desktop companion is supported');
+    result.screenCapture = capability('unknown', 'Native screen capture has not been probed');
     return result;
 }
 export function isDesktopCapabilities(value: unknown): value is DesktopCapabilities {
