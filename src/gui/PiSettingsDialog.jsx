@@ -155,6 +155,8 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
   const validModel=piProviderConfigured(selected)&&!!selectedModel;
   const active=flow?.status==="pending";
   const presentation=piLoginPresentation(flow,callbackPlacement);
+  const promptEntry=active&&!!flow.prompt&&!presentation.exchanging&&!presentation.fallback&&!(native&&flow.prompt.type!=="select");
+  const accountStatus=!account?undefined:account.catalog?.authChecked===false?{label:"认证状态暂未确认",tone:"warning"}:account.credential==="oauth"?{label:"账号已连接",tone:"success"}:account.credential?{label:"API key 已配置",tone:"success"}:piProviderConfigured(account)?{label:"运行环境已配置认证",tone:"success"}:{label:"尚未连接",tone:"neutral"};
   const confirming=flow?.status==="complete"&&section==="auth";
   const hasConnection=connections.length>0;
   const summaryConnection=selected||connections.find(c=>c.id===currentConnectionId(config))||connections[0];
@@ -257,20 +259,24 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
           const saved=piConnections(data).find(c=>c.id===(result.connection?.id||value.id));if(!saved)throw new Error("连接已提交，请刷新确认状态");
           setAuthConnectionId(saved.id);setAuthProvider(saved.providerId);setShowMethods(!saved.configured);setEditing(null);setSection("auth");})}/>
       : section === "auth" ? (
-        <section className="pi-mode-content" aria-label="认证管理">
+        <section className="pi-mode-content pi-form-width" aria-label="认证管理">
           <div className="pi-field-heading">
             {hasConnection ? <Button variant="ghost" color="gray" size="2" className="settings-back"
               onClick={() => void cancelLogin(true)}><ArrowLeft size={14} />返回</Button> :
               <Text size="3" weight="medium">连接模型</Text>}
             <Text size="1" color="gray">{runtimeLabel}</Text>
           </div>
-          <section className="pi-settings-section" aria-label="提供商与认证">
-            <div className="pi-settings-group"><Text as="p" size="1" weight="medium" className="pi-group-label">提供商</Text>
-            {!active && !authConnection && <><Text size="2" color="gray">先选择提供商，再完成认证。</Text>
-            <Choice label="模型提供商" value={authProvider} disabled={busy || active || confirming} searchable
-              items={config.providers.map(p => ({id:p.id,name:p.name,
-                detail:[p.methodLabels?.oauth, p.methods.includes("api_key") ? "API key" : ""].filter(Boolean).join(" · ")}))}
-              onChange={v => { void controller.current?.cancel(); setAuthProvider(v); setError(""); setNotice(""); }} /></>}
+          <section className="pi-settings-section pi-auth-flow" aria-label="提供商与认证">
+            <div className="pi-settings-group pi-auth-step">
+            <h3 className="pi-step-heading"><span className="pi-step-number" aria-hidden="true">1</span>选择提供商</h3>
+            {!active && !authConnection && <div className="pi-field">
+              <span className="pi-field-label" aria-hidden="true">模型提供商</span>
+              <Choice label="模型提供商" value={authProvider} disabled={busy || active || confirming} searchable
+                items={config.providers.map(p => ({id:p.id,name:p.name,
+                  detail:[p.methodLabels?.oauth, p.methods.includes("api_key") ? "API key" : ""].filter(Boolean).join(" · ")}))}
+                onChange={v => { void controller.current?.cancel(); setAuthProvider(v); setError(""); setNotice(""); }} />
+              <Text as="p" className="pi-field-help">先选择提供商，再完成认证。</Text>
+            </div>}
             {account && active && <div className="pi-auth-summary"><Text size="2" weight="medium">{account.name}</Text><Text size="1" color="gray">{flow.type === "oauth" ? account.methodLabels?.oauth || "账号登录" : "API key"}</Text></div>}
             {account && !active && authConnection && <div className="pi-connected-summary"><span><strong>{authConnection.name}</strong><small>{providerAccount?.name||"自定义服务"}</small></span>
               <Flex gap="2" wrap="wrap">{authConnection.configured&&!showMethods&&<Button size="1" variant="ghost" onClick={()=>setShowMethods(true)}>重新认证</Button>}
@@ -278,11 +284,12 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
               {modern&&!authConnection.legacy&&<Button size="1" variant="ghost" color="gray" disabled={busy} onClick={()=>setRemoveConfirm(true)}>移除连接</Button>}</Flex></div>}
             {account && removeConfirm&&!active&&<div className="pi-remove-confirm" role="group" aria-label="确认移除连接"><Text size="2">移除“{authConnection.name}”的连接记录？历史会话和本地凭据文件保留；不会自动选择其他账号。</Text><Flex gap="2"><Button size="1" color="red" disabled={busy} onClick={()=>void act(async()=>{await request("connections/remove",{connectionId:authConnectionId,expectedRevision:authConnection.revision});await refresh();setRemoveConfirm(false);setAuthConnectionId("");setSection("connections");})}>确认移除</Button><Button size="1" variant="soft" disabled={busy} onClick={()=>setRemoveConfirm(false)}>取消</Button></Flex></div>}
             </div>
-            {account && <>
-              {!active && <div className="pi-settings-group"><Text as="p" size="1" weight="medium" className="pi-group-label">账号状态</Text><div className="pi-account-row">
+            {(account || active || confirming) && <div className="pi-settings-group pi-auth-step">
+              <h3 className="pi-step-heading"><span className="pi-step-number" aria-hidden="true">2</span>完成认证</h3>
+              {account && !active && <div className="pi-account-row pi-provider-header">
                 <div className="pi-account-status">
-                  <span className="pi-status-dot" data-connected={!!piProviderConfigured(account)} />
-                  <Text size="2" color="gray">{account.catalog?.authChecked === false ? "认证状态暂未确认" : account.credential === "oauth" ? "账号已连接" : account.credential ? "API key 已配置" : piProviderConfigured(account) ? "运行环境已配置认证" : "尚未连接"}</Text>
+                  <strong className="pi-provider-name">{account.name}</strong>
+                  <span className="pi-status-pill" data-tone={accountStatus.tone} title="账号状态"><span className="sr-only">账号状态：</span>{accountStatus.label}</span>
                 </div>
                 {account.credential && <DropdownMenu.Root>
                   <DropdownMenu.Trigger><Button aria-label="管理提供商认证" size="1" variant="ghost" color="gray" disabled={busy || active}><MoreHorizontal size={17} /></Button></DropdownMenu.Trigger>
@@ -290,18 +297,19 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
                     await request("logout", {provider:account.id,...(modern?{connectionId:authConnectionId}:{})}); if (await refresh()) {setShowMethods(true);setNotice("已断开此连接的认证，其他连接保留。");}
                   })}>断开连接</DropdownMenu.Item></DropdownMenu.Content>
                 </DropdownMenu.Root>}
+              </div>}
+              {account && !active && !confirming && (!authConnection?.configured || showMethods) && <div className="pi-field">
+                <span className="pi-field-label" id="pi-auth-methods-label">认证方式</span>
+                <div className="pi-account-actions pi-auth-methods pi-method-grid" role="group" aria-labelledby="pi-auth-methods-label">
+                {[...account.methods].sort((a,b) => (a === "oauth" ? 0 : 1) - (b === "oauth" ? 0 : 1)).map(method => <div
+                  key={method} className="pi-method-card" data-disabled={busy || undefined}>
+                  <span className="pi-method-icon" aria-hidden="true">{method === "oauth" ? <LogIn size={17} /> : <KeyRound size={17} />}</span>
+                  <button type="button" className="pi-method-button" disabled={busy} aria-describedby={"pi-method-desc-" + method}
+                    onClick={() => void login(method)}>{method === "oauth" ? (account.methodLabels?.oauth || "登录账号") : (account.credential === "api_key" ? "更新 API key" : "添加 API key")}</button>
+                  <span className="pi-method-desc" id={"pi-method-desc-" + method}>{method === "oauth" ? "在浏览器中登录账号，无需复制密钥" : "粘贴服务商提供的 API key"}</span>
+                </div>)}
               </div></div>}
-              {!active && !confirming && (!authConnection?.configured || showMethods) && <div className="pi-settings-group"><Text as="p" size="1" weight="medium" className="pi-group-label">认证方式</Text><div className="pi-account-actions pi-auth-methods">
-                {[...account.methods].sort((a,b) => (a === "oauth" ? 0 : 1) - (b === "oauth" ? 0 : 1)).map(method => <Button
-                  key={method} variant={method === "oauth" ? "solid" : "soft"} size="2" disabled={busy}
-                  onClick={() => void login(method)}>
-                  {method === "oauth" ? <LogIn size={15} /> : <KeyRound size={15} />}
-                  {method === "oauth" ? (account.methodLabels?.oauth || "登录账号") : (account.credential === "api_key" ? "更新 API key" : "添加 API key")}
-                </Button>)}
-              </div></div>}
-            </>}
-          </section>
-          {active && <div className="pi-login-flow" aria-busy={!!flow.starting || !!flow.submitting}>
+          {active && <div className="pi-login-flow pi-login-card" aria-busy={!!flow.starting || !!flow.submitting}>
             <div className="pi-login-status" role="status">
               {presentation.spinning && <LoaderCircle size={15} className="pi-spinner" aria-hidden="true"/>}
               <Text size="2" weight="medium">{presentation.title}</Text>
@@ -326,26 +334,29 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
                   value={value} disabled={busy || flow.submitting} onChange={e => setValue(e.target.value)}/>
                 <Button type="submit" disabled={busy || flow.submitting || !value.trim()}>提交备用回跳地址</Button>
               </Flex></form>}
-            </details> : <form onSubmit={e => {
+            </details> : <form id="pi-login-prompt-form" className="pi-field pi-login-prompt" onSubmit={e => {
               e.preventDefault(); const entered = value; setValue("");
               void act(() => controller.current.answer(flow.prompt.id, entered));
-            }}><Flex direction="column" gap="3">
-              <Text size="2">{flow.prompt.message}</Text>
-              {native && flow.prompt.type !== "select" ? <Button type="button" disabled={busy || flow.submitting}
+            }}>
+              <Text as="p" className="pi-field-label">{flow.prompt.message}</Text>
+              {native && flow.prompt.type !== "select" ? <Button type="button" disabled={busy || flow.submitting} className="pi-login-secure"
                 onClick={() => void act(() => window.__PIBOT_NATIVE__.call("pi_settings_credential_window", {
                   path:baseUrl + "/pi/login/" + flow.id, promptId:flow.prompt.id,
-                }))}><KeyRound size={15} />打开安全输入窗口</Button> : <>
-                {flow.prompt.type === "select" ? <Choice label="登录选项" value={value} onChange={setValue}
+                }))}><KeyRound size={15} />打开安全输入窗口</Button> :
+                flow.prompt.type === "select" ? <Choice label="登录选项" value={value} onChange={setValue}
                   disabled={busy || flow.submitting} items={flow.prompt.options.map(o => ({id:o.id,name:account?.id === "openai-codex" && o.id === "device_code" ? "设备码登录（可在手机授权）" : account?.id === "openai-codex" && o.id === "browser" ? "浏览器登录" : o.label}))} /> :
                   <TextField.Root aria-label="Pi 登录输入" type={flow.prompt.type === "secret" ? "password" : "text"}
                     autoComplete="off" placeholder={flow.prompt.placeholder || "输入后提交"} value={value}
                     disabled={busy || flow.submitting} onChange={e => setValue(e.target.value)} />}
-                <Button type="submit" disabled={busy || flow.submitting || !value.trim()}>继续</Button>
-              </>}
-            </Flex></form>)}
-            <Button variant="ghost" color="gray" onClick={() => void cancelLogin()}>取消登录</Button>
+            </form>)}
+            <div className="pi-login-footer">
+              <Button type="button" variant="ghost" color="gray" onClick={() => void cancelLogin()}>取消登录</Button>
+              {promptEntry && <Button type="submit" form="pi-login-prompt-form" disabled={busy || flow.submitting || !value.trim()}>继续</Button>}
+            </div>
           </div>}
           {confirming && !error && <div className="pi-login-status" role="status"><LoaderCircle size={15} className="pi-spinner" aria-hidden="true"/><Text size="2">正在核对认证和模型目录…</Text></div>}
+            </div>}
+          </section>
         </section>
       ) : (
         <section className="pi-mode-content" aria-label="模型使用">
