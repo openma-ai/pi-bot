@@ -78,11 +78,18 @@ ready. Missing or malformed configuration does not crash the harness.
 
 ## Platform boundary and verification
 
-The current desktop adapter is Linux X11. A macOS/Windows harness can use a
-configured companion, but native host Computer Use is not implemented here.
-With no companion, native Computer Use is `unsupported`; native screen capture
-is `unknown`, specifically without assuming macOS Screen Recording or
-Accessibility approval. No OS permissions, VNC service, firewall, proxy,
+The Linux desktop adapter remains X11 via `@agent-sh/computer-use-linux` and
+`desktop-service`. A macOS/Windows harness can still use that configured Linux
+companion when present.
+
+**Native host Computer Use on darwin** is implemented separately with
+`@nredd/pi-computer-use` (see [macos-computer-use.md](macos-computer-use.md)).
+With no companion on darwin, Computer Use starts as `unconfigured` until the
+setup script installs the package/helper, then moves through
+`permission-required` / `unreachable` / `ready` based on a read-only helper
+`checkPermissions` probe. Windows native host Computer Use remains
+`unsupported`. Native screen capture on an unconfigured darwin host stays
+`unknown` until probed. No OS permissions, VNC service, firewall, proxy,
 Tailnet authorization or system service is enabled by detection.
 
 2026-10-27 verification:
@@ -108,8 +115,10 @@ Tailnet authorization or system service is enabled by detection.
 - A separate real daemon with empty, isolated model settings returns
   `setupRequired` with “设置的「模型」” guidance and accepts no chat turn. It does
   not silently queue work or invoke a model.
-- No new native macOS/Windows Computer Use, Wayland adapter, or mobile network
-  authentication was implemented or claimed as tested in this change.
+- 2026-10-27 change: no native macOS/Windows Computer Use was claimed.
+- Follow-up: native darwin Computer Use wiring lands via `@nredd/pi-computer-use`;
+  Linux CI covers classification only. Live botty TCC smoke is documented in
+  [macos-computer-use.md](macos-computer-use.md) and is not claimed here.
 
 Focused test command:
 

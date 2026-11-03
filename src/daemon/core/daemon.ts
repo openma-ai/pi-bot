@@ -14,7 +14,10 @@ import { envelopeSource, makePiBotCoordinatorActions } from '../openmatter/coord
 import { canResumePiConversation, openPiConversation } from '../../pi/agent-driver-session.ts';
 import { createFileChangeDetector } from '../runtime/proactive-detectors.ts';
 import { DesktopClient } from '../../pi/desktop-client.ts';
-import { unconfiguredDesktopCapabilities } from '../../pi/desktop-capabilities.ts';
+import { unconfiguredDesktopCapabilities, type DesktopCapabilities } from '../../pi/desktop-capabilities.ts';
+import { discoverMacosComputerUse } from '../../pi/macos-computer-use.ts';
+import { probeMacosNativeCapabilities, unconfiguredMacosNativeCapabilities } from '../macos-computer-use.ts';
+import { MacosVirtualDisplayHost } from '../macos-virtual-display.ts';
 import { Router } from './router.ts';
 import { DaemonConnection } from './connection.ts';
 import { PiBotError } from './errors.ts';
@@ -43,7 +46,13 @@ export class PiBotDaemon {
     live?: Awaited<ReturnType<typeof livePiFactory>>;
     projects?: PiBotProjectHost;
     desktop?: DesktopClient;
-    private absentDesktopCapabilities = unconfiguredDesktopCapabilities();
+    /** True when host uses @nredd/pi-computer-use instead of a Linux companion. */
+    nativeMacosComputerUse = false;
+    /** One CGVirtualDisplay per bot held by a long-lived companion (Linux Xvfb :N analogue). */
+    macosVirtualDisplay?: MacosVirtualDisplayHost;
+    private absentDesktopCapabilities = process.platform === 'darwin' ? unconfiguredMacosNativeCapabilities() : unconfiguredDesktopCapabilities();
+    private nativeDesktopChecking?: Promise<DesktopCapabilities>;
+    private nativeDesktopListeners = new Set<(value: DesktopCapabilities) => void>();
     get desktopCapabilities() { return this.desktop?.capabilitySnapshot ?? this.absentDesktopCapabilities; }
     private timer?: ReturnType<typeof setInterval>;
     private closePromise?: Promise<void>;
@@ -158,6 +167,14 @@ export class PiBotDaemon {
         });
         d.detectors.file = createFileChangeDetector(resolve(process.env.PI_BOT_WATCH_FILE ?? 'README.md'));
         d.desktop = DesktopClient.load(resolve(process.env.PI_BOT_DESKTOP_CONTROL ?? 'work/gui/desktop/control.json'));
+        if (!d.desktop && process.platform === 'darwin') {
+            const discovery = discoverMacosComputerUse({ cwd: process.cwd() });
+            d.nativeMacosComputerUse = discovery.enabled || !!discovery.packageRoot || discovery.helperExecutablePresent;
+            if (d.nativeMacosComputerUse) {
+                d.absentDesktopCapabilities = unconfiguredMacosNativeCapabilities();
+                d.macosVirtualDisplay = new MacosVirtualDisplayHost();
+            }
+        }
         if (!options.factory)
             d.live = await livePiFactory(d.dataDir, () => d.proactive, d.credentials, options.piOptions, budget => d.budgetChanged(budget), options.modelRound, d.desktop);
         try {
@@ -203,6 +220,12 @@ export class PiBotDaemon {
         d.desktop?.startMonitoring(desktopCapabilities => {
             if (d.status !== 'stopped' && d.status !== 'draining') d.runtime.store.transaction(() => d.log.append('desktop/capabilitiesChanged', { desktopCapabilities }));
         });
+        if (!d.desktop && d.nativeMacosComputerUse) {
+            void d.refreshNativeDesktopCapabilities(true);
+            const nativeMonitor = setInterval(() => { void d.refreshNativeDesktopCapabilities(true); }, 10000);
+            nativeMonitor.unref();
+            (d as any)._nativeDesktopMonitor = nativeMonitor;
+        }
         if (d.live)
             d.runtime.store.transaction(() => d.log.append('daemon/configurationChanged', {
                 mode: `真实 Pi · ${d.live!.model}`, configuration: d.live!.configuration, ...(d.live?.budget ? {
@@ -321,7 +344,7 @@ export class PiBotDaemon {
                 seq: this.log.seq, status: this.status, bots, groups: this.runtime.listGroups(), threads, turns, activeTurns: turns.filter(t => t.status === 'running'), items, requests, pendingRequests: requests.filter(r => r.status === 'pending'), routines: [...all.list<any>('schedules').filter(own).map(r => routineView('schedules', r)), ...all.list<any>('monitors').filter(own).map(r => routineView('monitors', r))], jobs: all.list<any>('jobs').filter(own).map(jobView), ...(this.live?.budget ? {
                     budget: this.live.budget
                 } : {}), usage,
-                mode: this.live ? `真实 Pi · ${this.live.model}` : '测试 runtime', configuration: this.live?.configuration, desktop: !!this.desktop, desktopCapabilities: this.desktopCapabilities, watchFile: resolve(process.env.PI_BOT_WATCH_FILE ?? 'README.md'), trigger: {
+                mode: this.live ? `真实 Pi · ${this.live.model}` : '测试 runtime', configuration: this.live?.configuration, desktop: !!this.desktop || this.nativeMacosComputerUse, desktopCapabilities: this.desktopCapabilities, watchFile: resolve(process.env.PI_BOT_WATCH_FILE ?? 'README.md'), trigger: {
                     implementation: 'OpenMatter SQLite DurableInbox', halted: this.trigger.halted, queued: this.trigger.inspect().filter(r => r.state !== 'completed').length
                 },
                 messages: items.map(i => i.message).filter(Boolean), groupMessages: all.list('group_messages'), errors: [], states: Object.fromEntries(bots.map(b => [b.id, {
@@ -339,6 +362,25 @@ export class PiBotDaemon {
         const name = 'file:' + file;
         this.detectors[name] = createFileChangeDetector(file);
         return name;
+    }
+    /** Companion-free darwin host: probe helper TCC without claiming Linux X11/VNC readiness. */
+    async refreshNativeDesktopCapabilities(refresh = false): Promise<DesktopCapabilities> {
+        if (this.desktop) return this.desktop.capabilities(undefined, refresh);
+        if (process.platform !== 'darwin' || !this.nativeMacosComputerUse) return this.absentDesktopCapabilities;
+        if (!refresh && this.nativeDesktopChecking) return this.nativeDesktopChecking;
+        const previous = this.absentDesktopCapabilities;
+        const signature = (v: DesktopCapabilities) => JSON.stringify(v, (key, value) => key === 'checkedAt' ? undefined : value);
+        const pending = probeMacosNativeCapabilities({ platform: 'darwin', virtualDisplayBinaryPresent: !!this.macosVirtualDisplay?.binaryPath, vncPorts: () => this.macosVirtualDisplay?.vncPorts() ?? [] }).then(value => {
+            this.absentDesktopCapabilities = value;
+            if (signature(previous) !== signature(value)) {
+                for (const listener of this.nativeDesktopListeners) listener(value);
+                if (this.status !== 'stopped' && this.status !== 'draining' && this.runtime)
+                    this.runtime.store.transaction(() => this.log.append('desktop/capabilitiesChanged', { desktopCapabilities: value }));
+            }
+            return value;
+        }).finally(() => { if (this.nativeDesktopChecking === pending) this.nativeDesktopChecking = undefined; });
+        this.nativeDesktopChecking = pending;
+        return pending;
     }
     required<T>(table: string, id: string) {
         const value = this.runtime.store.get<T>(table, id);
@@ -521,7 +563,9 @@ export class PiBotDaemon {
             this.setStatus('draining');
             this.runtime.beginDrain();
             clearInterval(this.timer);
+            clearInterval((this as any)._nativeDesktopMonitor);
             this.desktop?.close();
+            await this.macosVirtualDisplay?.shutdownCompanion();
             await this.proactive.close();
             let deadline: ReturnType<typeof setTimeout> | undefined;
             const finished = await Promise.race([this.runtime.idle().then(() => true), new Promise<boolean>(resolve => {

@@ -6,20 +6,65 @@ export async function desktopHandler(d: PiBotDaemon, c: DaemonConnection, method
     switch (method) {
         case 'desktop/capabilities':
             if (p.botId) d.required('bots', p.botId);
-            return d.desktop ? d.desktop.capabilities(p.botId, p.refresh) : d.desktopCapabilities;
+            if (d.desktop) return d.desktop.capabilities(p.botId, p.refresh);
+            if (d.nativeMacosComputerUse) return d.refreshNativeDesktopCapabilities(!!p.refresh);
+            return d.desktopCapabilities;
         case 'desktop/bind':
         case 'desktop/control':
             d.required('bots', p.botId);
-            if (!d.desktop)
-                throw new PiBotError('setupRequired', 'Desktop is not connected');
-            if (method === 'desktop/bind') {
-                const report = await d.desktop.capabilities(p.botId, true);
-                if (!report.canOpenView) throw new PiBotError('setupRequired', 'Desktop viewer is not available', { desktopCapabilities: report });
-                const result = await (await d.desktop.request('/bind', { ...p, openView: true })).json();
-                void d.desktop.capabilities(undefined, true);
-                return result;
+            if (d.desktop) {
+                if (method === 'desktop/bind') {
+                    const report = await d.desktop.capabilities(p.botId, true);
+                    if (!report.canOpenView) throw new PiBotError('setupRequired', 'Desktop viewer is not available', { desktopCapabilities: report });
+                    const result = await (await d.desktop.request('/bind', { ...p, openView: true })).json();
+                    void d.desktop.capabilities(undefined, true);
+                    return result;
+                }
+                if (p.take) await d.desktop.assertAvailable('computerUse');
+                return (await d.desktop.request('/control', p)).json();
             }
-            if (p.take) await d.desktop.assertAvailable('computerUse');
-            return (await d.desktop.request('/control', p)).json();
+            if (d.nativeMacosComputerUse && d.macosVirtualDisplay) {
+                const report = await d.refreshNativeDesktopCapabilities(true);
+                if (method === 'desktop/bind') {
+                    if (report.computerUse.state !== 'ready') {
+                        throw new PiBotError('setupRequired', report.computerUse.reason, { desktopCapabilities: report });
+                    }
+                    if (!d.macosVirtualDisplay.binaryPath) {
+                        throw new PiBotError('setupRequired', 'pi-virtual-display-companion binary missing; run scripts/build-macos-virtual-display.sh', { desktopCapabilities: report });
+                    }
+                    const binding = await d.macosVirtualDisplay.bind(p.botId, { size: p.size });
+                    void d.refreshNativeDesktopCapabilities(true);
+                    return {
+                        binding,
+                        display: binding.display,
+                        view: 'vnc-display',
+                        isolation: {
+                            display: 'per-bot-cgvirtualdisplay',
+                            input: 'per-pid-cua-driver-then-focus-verified-global-hid',
+                            note: 'Each bot owns one CGVirtualDisplay with stable ids. Agent input goes per-pid (AX, SLEventPostToPid, CGEvent.postToPid) without moving the cursor; global HID is a last resort and is aborted unless the bound window is frontmost.',
+                        },
+                    };
+                }
+                // desktop/control on native: takeover makes this session's RFB endpoint interactive.
+                if (p.take) {
+                    if (report.computerUse.state !== 'ready') throw new PiBotError('setupRequired', report.computerUse.reason, { desktopCapabilities: report });
+                    return d.macosVirtualDisplay.takeover(p.botId);
+                }
+                if (p.view) {
+                    const vnc = await d.macosVirtualDisplay.openViewer(p.botId);
+                    void d.refreshNativeDesktopCapabilities(true);
+                    return { vnc };
+                }
+                if (p.release) {
+                    await d.macosVirtualDisplay.release(p.botId);
+                    return { released: true };
+                }
+                if (p.handBack) {
+                    d.macosVirtualDisplay.releaseControl(p.botId);
+                    return { handedBack: true };
+                }
+                return d.macosVirtualDisplay.owners.control() ?? null;
+            }
+            throw new PiBotError('setupRequired', 'Desktop is not connected');
     }
 }
