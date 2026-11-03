@@ -75,7 +75,7 @@ export function resolveMacosVirtualDisplayBinary(cwd = process.cwd(), home = hom
 }
 
 export class MacosVirtualDisplayHost {
-    readonly owners = new DesktopOwnership(this.capacity);
+    owners = new DesktopOwnership(this.capacity);
     private child?: ChildProcessWithoutNullStreams;
     private companion?: MacosCompanionInfo;
     private displayIndex = -1;
@@ -85,7 +85,7 @@ export class MacosVirtualDisplayHost {
     private stdoutBuf = '';
 
     constructor(
-        readonly capacity = MACOS_VD_CAPACITY,
+        public capacity = MACOS_VD_CAPACITY,
         readonly tileWidth = MACOS_TILE_WIDTH,
         readonly tileHeight = MACOS_TILE_HEIGHT,
         helper?: MacosHelperClient,
@@ -96,7 +96,9 @@ export class MacosVirtualDisplayHost {
     }
 
     get status(): MacosVirtualDisplayStatus {
-        const running = !!this.child && !this.child.killed && this.companion?.displayID != null;
+        const owned = !!this.child && !this.child.killed && this.child.exitCode == null;
+        const adopted = !!this.companion && this.displayIndex >= 0 && !owned;
+        const running = !!this.companion && (owned || adopted);
         return {
             running,
             companion: this.companion,
@@ -104,7 +106,9 @@ export class MacosVirtualDisplayHost {
             pid: this.child?.pid,
             bindings: [...this.owners.bindings.values()].map(b => this.enrich(b)),
             reason: running
-                ? `Companion virtual display ${this.companion!.displayID} hosts up to ${this.capacity} tiled sessions`
+                ? (adopted
+                    ? `Adopted orphan companion at index ${this.displayIndex} (${this.companion!.width}x${this.companion!.height}); hosts up to ${this.capacity} tiled sessions (logout clears orphan)`
+                    : `Companion virtual display ${this.companion!.displayID} hosts up to ${this.capacity} tiled sessions`)
                 : this.binaryPath
                     ? 'Companion virtual display is not running'
                     : 'pi-virtual-display-companion binary missing; run scripts/build-macos-virtual-display.sh',
@@ -124,10 +128,57 @@ export class MacosVirtualDisplayHost {
         return { width: this.capacity * this.tileWidth, height: this.tileHeight };
     }
 
+    /**
+     * When CGVirtualDisplay create fails (Screen Sharing already consumed slots, or a prior
+     * .permanently arrange left an orphan), adopt a matching online display by geometry.
+     * Teardown cannot destroy an orphan we do not own — document that logout clears it.
+     */
+    async adoptExistingCompanion(): Promise<MacosCompanionInfo | undefined> {
+        const { height } = this.companionPixelSize();
+        try {
+            const shot = await this.helper.captureDisplay(0, 64);
+            // Prefer exact capacity width; else any non-main display whose width is N*tileWidth (N>=1)
+            // and height matches — orphan keepers from earlier experiments may be smaller.
+            const candidates = (shot.displays ?? []).filter(d => !d.isMain && d.frame && d.frame.h === height && d.frame.w >= this.tileWidth && d.frame.w % this.tileWidth === 0);
+            if (!candidates.length) return undefined;
+            const exact = candidates.find(d => d.frame!.w === this.capacity * this.tileWidth);
+            const match = exact ?? candidates.sort((a, b) => b.frame!.w - a.frame!.w)[0];
+            if (!match?.frame) return undefined;
+            this.companion = {
+                displayID: 0, // unknown without CGDirectDisplayID from helper; geometry is authoritative
+                width: match.frame.w,
+                height: match.frame.h,
+                bounds: match.frame,
+                online: true, active: true, main: false,
+            };
+            this.displayIndex = match.index;
+            // Shrink usable tile capacity to what the adopted surface can host.
+            const tilesFit = Math.max(1, Math.floor(match.frame.w / this.tileWidth));
+            if (tilesFit < this.capacity) {
+                this.capacity = tilesFit;
+                if (this.owners.bindings.size === 0) {
+                    this.owners = new DesktopOwnership(tilesFit);
+                }
+            }
+            writeFileSync(join(stateDir(this.home), 'companion.json'), JSON.stringify({ ...this.companion, adopted: true, tilesFit, at: Date.now() }, null, 2));
+            return this.companion;
+        } catch {
+            return undefined;
+        }
+    }
+
     async ensureCompanion(): Promise<MacosCompanionInfo> {
-        if (this.companion && this.child && !this.child.killed) return this.companion;
+        if (this.companion && ((this.child && !this.child.killed && this.child.exitCode == null) || this.displayIndex >= 0)) return this.companion;
         if (this.starting) return this.starting;
-        this.starting = this.spawnCompanion().finally(() => { this.starting = undefined; });
+        this.starting = (async () => {
+            try {
+                return await this.spawnCompanion();
+            } catch (error: any) {
+                const adopted = await this.adoptExistingCompanion();
+                if (adopted) return adopted;
+                throw error;
+            }
+        })().finally(() => { this.starting = undefined; });
         return this.starting;
     }
 
@@ -153,6 +204,8 @@ export class MacosVirtualDisplayHost {
                 if (settled) return;
                 settled = true;
                 cleanup();
+                try { child.kill('SIGTERM'); } catch { /* ignore */ }
+                if (this.child === child) this.child = undefined;
                 reject(error);
             };
             const succeed = (info: MacosCompanionInfo) => {
@@ -243,10 +296,16 @@ export class MacosVirtualDisplayHost {
 
     async shutdownCompanion() {
         const child = this.child;
+        const wasAdopted = !!this.companion && !child;
         this.child = undefined;
         this.companion = undefined;
         this.displayIndex = -1;
-        if (!child || child.killed) return;
+        if (!child || child.killed) {
+            if (wasAdopted) {
+                try { writeFileSync(join(stateDir(this.home), 'companion.json'), JSON.stringify({ stoppedAt: Date.now(), adoptedOrphanRemains: true, note: 'Logout/reboot clears a permanently arranged orphan VD' })); } catch { /* ignore */ }
+            }
+            return;
+        }
         try { child.stdin.write(`${JSON.stringify({ cmd: 'shutdown' })}\n`); } catch { /* ignore */ }
         await new Promise<void>(resolve => {
             const t = setTimeout(() => { try { child.kill('SIGTERM'); } catch { /* ignore */ } resolve(); }, 1500);

@@ -40,6 +40,15 @@ Build:
 Binary default: `~/Library/Application Support/pi-bot/bin/pi-virtual-display-companion`.
 Override with `PI_BOT_MACOS_VD_BIN`. **No extra TCC** for the companion (private CoreGraphics API from a non-sandboxed CLI). Do **not** re-sign `pi-computer-use.app` or its Accessibility grant breaks.
 
+
+### Orphan / slot exhaustion
+
+If an earlier experiment used `CGCompleteDisplayConfiguration(..., .permanently)`, a ghost
+virtual display can remain after the keeper process exits and block new `CGVirtualDisplay`
+creates (especially when Screen Sharing already uses two slots). The host then **adopts** a
+matching online display by geometry for tiling. Destroying a true orphan may require
+**logout or reboot**. Production keepers always use `.forSession`.
+
 ### Honest isolation limits
 
 - **Pixels / windows:** bots can be kept on the companion; the main display stays free of bot windows when confinement succeeds.

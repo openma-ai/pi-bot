@@ -64,3 +64,24 @@ test('native probe canOpenView requires virtual-display binary when helper is re
     assert.equal(withBin.canOpenView, true);
     assert.match(withBin.vnc.reason, /screenshot stream|tiled/i);
 });
+
+test('adoptExistingCompanion matches N×tileWidth orphan and shrinks capacity', async () => {
+    const helper = {
+        captureDisplay: async () => ({
+            image: { jpegBase64: '', width: 64, height: 64 },
+            displays: [
+                { index: 0, isMain: true, frame: { x: 0, y: 0, w: 1920, h: 1080 } },
+                { index: 1, isMain: false, frame: { x: -2560, y: 0, w: 2560, h: 800 } },
+                { index: 2, isMain: false, frame: { x: 1920, y: 0, w: 1920, h: 1080 } },
+            ],
+        }),
+    } as any;
+    const host = new MacosVirtualDisplayHost(4, 1280, 800, helper, '/tmp/pi-bot-vd-missing-binary-fixture');
+    const adopted = await host.adoptExistingCompanion();
+    assert.ok(adopted);
+    assert.equal(adopted!.width, 2560);
+    assert.equal(adopted!.height, 800);
+    assert.equal(host.capacity, 2);
+    assert.equal(host.status.running, true);
+    assert.match(host.status.reason, /Adopted orphan/i);
+});
