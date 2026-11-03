@@ -183,9 +183,16 @@ test('HTTP bearer and browser cookie/CSRF transport enforce the same protocol', 
                 origin: 'https://evil.invalid'
             }
         })).status, 403);
-        const index = await fetch(url + '/');
+        // Unpaired browsers get no session; they must pair first.
+        const unpaired = await fetch(url + '/', { redirect: 'manual' });
+        assert.equal(unpaired.status, 302);
+        assert.equal(unpaired.headers.get('set-cookie'), null);
+        const ticket = server.registry.issueTicket().ticket;
+        const paired = await fetch(url + '/remote/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket, name: 'browser', cookie: true }) });
+        assert.equal(paired.status, 200);
+        const cookie = paired.headers.get('set-cookie')!.split(';')[0];
+        const index = await fetch(url + '/', { headers: { cookie } });
         const html = await index.text();
-        const cookie = index.headers.get('set-cookie')!.split(';')[0];
         const csrf = html.match(/name="pibot-csrf" content="([^"]+)"/)![1];
         const frame = {
             id: 1, method: 'initialize', params: {

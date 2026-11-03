@@ -38,7 +38,7 @@ npm start
 
 服务密码由 runtime 所有者在服务端本地终端初始化；客户端不再提供 SSH 连接或配对码入口。Apple 客户端将登录后的服务会话保存到与目标绑定的、设备专用 Keychain，密码本身不保存。重开客户端会按已保存连接意图尝试恢复；离线可重试，过期或撤销的会话需要重新登录，显式断开会停止自动恢复。部署远程 runtime、网络监听和 HTTPS 代理需要服务所有者自行配置，启动 GUI 不会配置这些服务。
 
-详见 [服务密码与直连](docs/clients/DIRECT-PASSWORD.md)、[Tailscale 连接](docs/clients/TAILNET-DIRECT.md)。
+详见 [服务密码与直连](docs/clients/DIRECT-PASSWORD.md)、[Tailscale 连接](docs/clients/TAILNET-DIRECT.md)。可选的远程访问（经 alma-relay 中继、端到端加密）与设备配对见 [远程访问与配对](docs/remote-access.md)；本机 HTTP API 同样要求已配对设备凭证。
 
 Harness 的[独立安装、Docker 部署与升级回滚](docs/harness-deployment.md)、[Computer Use / VNC 能力契约](docs/harness-capabilities.md)和[本轮集成验收状态](docs/harness-integration-checkpoint.md)分别记录可复现流程与未通过的原生环节。桌面随包引擎使用应用自己的数据目录，手机继续连接远端；健康检查不代表已配置模型。
 

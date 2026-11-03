@@ -97,18 +97,36 @@ impl State {
             .ok_or("没有启用 runtime，请先在设置中连接已运行的服务")?;
         let prefix = format!("/runtime/{id}");
         let suffix = path.strip_prefix(&prefix).ok_or("连接已切换，请重新连接")?;
-        if !(suffix == "/rpc"
-            || suffix.starts_with("/events?")
-            || suffix == "/events"
-            || suffix.starts_with("/pi/")
-            || suffix.starts_with("/api/desktop/"))
-        {
+        if !allowed_suffix(suffix) {
             return Err("此开发版仅支持聊天、任务状态和模型设置".into());
         }
         if suffix.contains("..") || suffix.contains('#') || suffix.contains('\\') {
             return Err("Invalid request path".into());
         }
         Ok((endpoint.clone(), suffix.into()))
+    }
+}
+/// Runtime paths the native webview may reach. `/remote/*` (pairing, devices, revoke,
+/// connect-code rotation) matches the GUI host allowlist; the daemon still enforces auth
+/// (this app forwards the endpoint's own bearer, same as `/rpc` and `/pi/*`).
+fn allowed_suffix(suffix: &str) -> bool {
+    suffix == "/rpc"
+        || suffix.starts_with("/events?")
+        || suffix == "/events"
+        || suffix.starts_with("/pi/")
+        || suffix.starts_with("/api/desktop/")
+        || ["/remote/admin", "/remote/invite", "/remote/devices", "/remote/devices/revoke"].contains(&suffix)
+}
+#[cfg(test)]
+mod remote_route_tests {
+    #[test]
+    fn remote_access_paths_are_routed_exactly() {
+        for p in ["/remote/admin", "/remote/invite", "/remote/devices", "/remote/devices/revoke"] {
+            assert!(super::allowed_suffix(p), "{p}");
+        }
+        for p in ["/remote/pair", "/remote/token/rotate", "/remote/admin/x", "/remote", "/remoteadmin"] {
+            assert!(!super::allowed_suffix(p), "{p}");
+        }
     }
 }
 type Shared = Mutex<State>;
