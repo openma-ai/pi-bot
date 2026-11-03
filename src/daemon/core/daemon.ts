@@ -48,7 +48,7 @@ export class PiBotDaemon {
     desktop?: DesktopClient;
     /** True when host uses @nredd/pi-computer-use instead of a Linux companion. */
     nativeMacosComputerUse = false;
-    /** Per-session CGVirtualDisplay companion (Linux :99 tiling analogue). */
+    /** One CGVirtualDisplay per bot held by a long-lived companion (Linux Xvfb :N analogue). */
     macosVirtualDisplay?: MacosVirtualDisplayHost;
     private absentDesktopCapabilities = process.platform === 'darwin' ? unconfiguredMacosNativeCapabilities() : unconfiguredDesktopCapabilities();
     private nativeDesktopChecking?: Promise<DesktopCapabilities>;

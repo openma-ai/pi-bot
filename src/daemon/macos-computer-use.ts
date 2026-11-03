@@ -33,7 +33,7 @@ export type MacosNativeProbeDependencies = {
     helperReachable?: () => Promise<boolean>;
     /** When false, companion virtual-display binary is missing (inject in tests). */
     virtualDisplayBinaryPresent?: boolean;
-    /** Ports of per-session RFB endpoints that have been opened (Linux vncPorts analogue). */
+    /** Ports of per-bot VNC endpoints (mac-vnc-server) that have been opened (Linux vncPorts analogue). */
     vncPorts?: () => number[];
     vnc?: (port: number) => Promise<DesktopCapability>;
     timeoutMs?: number;
@@ -164,7 +164,7 @@ export async function probeMacosNativeCapabilities(deps: MacosNativeProbeDepende
         else {
             const checks = await Promise.all(ports.map(port => (deps.vnc ?? probeVnc)(port)));
             const bad = checks.find(c => c.state !== 'ready');
-            result.vnc = bad ?? capability('ready', `Per-session RFB endpoints ready on ${ports.map(p => `127.0.0.1:${p}`).join(', ')}`);
+            result.vnc = bad ?? capability('ready', `Per-bot VNC endpoints ready on ${ports.map(p => `127.0.0.1:${p}`).join(', ')}`);
         }
         if (result.computerUse.state === 'ready') {
             result.availableTools.computer = [...MACOS_COMPUTER_TOOLS];

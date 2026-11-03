@@ -36,12 +36,12 @@ export async function desktopHandler(d: PiBotDaemon, c: DaemonConnection, method
                     void d.refreshNativeDesktopCapabilities(true);
                     return {
                         binding,
-                        companion: d.macosVirtualDisplay.status.companion,
-                        view: 'vnc-tile',
+                        display: binding.display,
+                        view: 'vnc-display',
                         isolation: {
-                            display: 'companion-cgvirtualdisplay-tiled',
-                            input: 'serialized-global-cursor-bound-window-verified',
-                            note: 'macOS has one global cursor/focus; input is serialized and aborted unless the frontmost window is the session\'s bound window. Linux X11 isolates input per display.',
+                            display: 'per-bot-cgvirtualdisplay',
+                            input: 'per-pid-cua-driver-then-focus-verified-global-hid',
+                            note: 'Each bot owns one CGVirtualDisplay with stable ids. Agent input goes per-pid (AX, SLEventPostToPid, CGEvent.postToPid) without moving the cursor; global HID is a last resort and is aborted unless the bound window is frontmost.',
                         },
                     };
                 }

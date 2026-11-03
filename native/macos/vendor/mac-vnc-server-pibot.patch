@@ -1,0 +1,79 @@
+diff --git a/Sources/mac-vnc-server/RFBServer.swift b/Sources/mac-vnc-server/RFBServer.swift
+index d3b1370..90263cf 100644
+--- a/Sources/mac-vnc-server/RFBServer.swift
++++ b/Sources/mac-vnc-server/RFBServer.swift
+@@ -1079,6 +1079,7 @@ final class RFBClientSession: @unchecked Sendable {
+         let bytes = try socket.readExact(7)
+         let down = bytes[0] != 0
+         let keysym = UInt32.be(bytes[3], bytes[4], bytes[5], bytes[6])
++        if PiBotViewOnly.dropInput { return }
+         state.lock()
+         let mapAltToCommand = clientCapabilities.isAppleScreenSharingClient
+         state.unlock()
+@@ -1091,6 +1092,7 @@ final class RFBClientSession: @unchecked Sendable {
+         let mask = bytes[0]
+         let x = UInt16.be(bytes[1], bytes[2])
+         let y = UInt16.be(bytes[3], bytes[4])
++        if PiBotViewOnly.dropInput { return }
+         state.lock()
+         let layout = currentLayout
+         state.unlock()
+diff --git a/Sources/mac-vnc-server/StreamingScreenCapture.swift b/Sources/mac-vnc-server/StreamingScreenCapture.swift
+index 155a418..375f497 100644
+--- a/Sources/mac-vnc-server/StreamingScreenCapture.swift
++++ b/Sources/mac-vnc-server/StreamingScreenCapture.swift
+@@ -731,10 +731,9 @@ private final class StreamingFrameStore: @unchecked Sendable {
+     func currentSequence(displayIndex: Int) throws -> UInt64? {
+         condition.lock()
+         defer { condition.unlock() }
+-        guard layout.displays.indices.contains(displayIndex - 1) else {
++        guard let display = PiBotDisplayPin.resolve(layout.displays, displayIndex) else {
+             throw RFBError.captureFailed("display \(displayIndex) is not available")
+         }
+-        let display = layout.displays[displayIndex - 1]
+         guard let frame = frames[display.id] else {
+             throw RFBError.captureFailed("no ScreenCaptureKit frame available for display \(displayIndex)")
+         }
+@@ -746,11 +745,9 @@ private final class StreamingFrameStore: @unchecked Sendable {
+         let currentFrames = frames
+         condition.unlock()
+ 
+-        guard layout.displays.indices.contains(displayIndex - 1) else {
++        guard let display = PiBotDisplayPin.resolve(layout.displays, displayIndex) else {
+             throw RFBError.captureFailed("display \(displayIndex) is not available")
+         }
+-
+-        let display = layout.displays[displayIndex - 1]
+         guard let frame = currentFrames[display.id] else {
+             throw RFBError.captureFailed("no ScreenCaptureKit frame available for display \(displayIndex)")
+         }
+@@ -915,3 +912,29 @@ private final class ScreenCaptureStreamOutput: NSObject, SCStreamOutput {
+         return rects
+     }
+ }
++
++
++/// pi-bot patch: pin the server to one CGDirectDisplayID (MAC_VNC_DISPLAY_ID) so the
++/// 1-based index does not drift when other per-bot virtual displays come and go.
++enum PiBotDisplayPin {
++    static let pinnedID: CGDirectDisplayID? = ProcessInfo.processInfo.environment["MAC_VNC_DISPLAY_ID"].flatMap { UInt32($0) }
++
++    static func resolve(_ displays: [VirtualDisplay], _ displayIndex: Int) -> VirtualDisplay? {
++        if let pinnedID { return displays.first { $0.id == pinnedID } }
++        guard displays.indices.contains(displayIndex - 1) else { return nil }
++        return displays[displayIndex - 1]
++    }
++}
++
++/// pi-bot patch: view-only by default when MAC_VNC_VIEW_ONLY=1; the daemon writes
++/// "interactive" into MAC_VNC_CONTROL_FILE during a human takeover (x11vnc -R noviewonly analogue).
++enum PiBotViewOnly {
++    static let enabled = ProcessInfo.processInfo.environment["MAC_VNC_VIEW_ONLY"] == "1"
++    static let controlFile = ProcessInfo.processInfo.environment["MAC_VNC_CONTROL_FILE"]
++
++    static var dropInput: Bool {
++        guard enabled else { return false }
++        guard let controlFile, let text = try? String(contentsOfFile: controlFile, encoding: .utf8) else { return true }
++        return text.trimmingCharacters(in: .whitespacesAndNewlines) != "interactive"
++    }
++}
