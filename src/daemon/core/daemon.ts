@@ -370,7 +370,7 @@ export class PiBotDaemon {
         if (!refresh && this.nativeDesktopChecking) return this.nativeDesktopChecking;
         const previous = this.absentDesktopCapabilities;
         const signature = (v: DesktopCapabilities) => JSON.stringify(v, (key, value) => key === 'checkedAt' ? undefined : value);
-        const pending = probeMacosNativeCapabilities({ platform: 'darwin', virtualDisplayBinaryPresent: !!this.macosVirtualDisplay?.binaryPath }).then(value => {
+        const pending = probeMacosNativeCapabilities({ platform: 'darwin', virtualDisplayBinaryPresent: !!this.macosVirtualDisplay?.binaryPath, vncPorts: () => this.macosVirtualDisplay?.vncPorts() ?? [] }).then(value => {
             this.absentDesktopCapabilities = value;
             if (signature(previous) !== signature(value)) {
                 for (const listener of this.nativeDesktopListeners) listener(value);

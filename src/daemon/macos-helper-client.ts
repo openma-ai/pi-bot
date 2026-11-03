@@ -78,6 +78,12 @@ export class MacosHelperClient {
     setWindowFrame(pid: number, frame: HelperFrame, windowRef?: string, windowId?: number) {
         return this.command('setWindowFrame', { pid, frame, windowRef, windowId });
     }
+    getFrontmost() {
+        return this.command<{ pid?: number; windowId?: number; windowRef?: string; windowTitle?: string; bundleId?: string }>('getFrontmost');
+    }
+    look(pid: number, windowId?: number) {
+        return this.command<any>('look', { pid, windowId });
+    }
     desktopInput(action: string, args: Record<string, unknown> = {}) {
         return this.command('desktopInput', { action, ...args });
     }

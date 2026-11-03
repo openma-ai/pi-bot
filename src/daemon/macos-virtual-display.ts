@@ -1,24 +1,29 @@
 /**
  * macOS per-session desktop lifecycle mirroring Linux desktop-service + DesktopOwnership.
  *
- * Linux: one X11 :99, tiles of 1280×900, serial input, VNC clip per tile.
- * macOS: one CGVirtualDisplay companion (wide), tiles of TILE_W×TILE_H on that display,
- *        serial helper input (global cursor/focus — honest isolation gap vs Linux),
- *        viewer = per-tile screenshot stream (VNC unsupported).
+ * Linux: one X11 :99, tiles of 1280×900, serial input, x11vnc -clip per tile.
+ * macOS: one CGVirtualDisplay companion, one slot per session (slot = max tile size),
+ *        each session's tile has its own configured size (default 1280×800),
+ *        input serialized and gated on "focused window == the session's bound window",
+ *        per-session localhost RFB endpoint (5901+screen) serving only that tile.
  *
- * Concurrent extra CGVirtualDisplays often fail when Screen Sharing already occupies
- * virtual-display slots; tiling one companion matches the real Linux multi-bot model.
+ * Measured on macOS 27.2 (botty): only one third-party CGVirtualDisplay stays online at a
+ * time — creating another evicts the previous one — so sessions tile one companion
+ * instead of owning a display each.
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, isAbsolute } from 'node:path';
 import { DesktopOwnership, type DesktopBinding } from './desktop-ownership.ts';
+import jpeg from 'jpeg-js';
 import { MacosHelperClient, createSerialQueue, type HelperFrame, type HelperWindow } from './macos-helper-client.ts';
+import { RfbTileServer, type RgbaFrame } from './rfb-tile-server.ts';
 
 export const MACOS_TILE_WIDTH = 1280;
 export const MACOS_TILE_HEIGHT = 800;
-export const MACOS_VD_CAPACITY = 4;
+/** Companion = capacity × slot; 2 × 1920×1080 = 3840×1080. A 7680-wide request never became ready on macOS 27.2. */
+export const MACOS_VD_CAPACITY = 2;
 export const MACOS_COMPANION_NAME = 'PiBot-Companion';
 
 export type MacosDisplayBounds = HelperFrame;
@@ -32,11 +37,37 @@ export type MacosCompanionInfo = {
     main?: boolean;
 };
 
+export const MACOS_SLOT_WIDTH = 1920;
+export const MACOS_SLOT_HEIGHT = 1080;
+export const MACOS_VNC_BASE_PORT = 5901;
+
+export type DesktopSize = { width: number; height: number };
+export type BoundWindow = { pid: number; windowId: number; windowRef?: string; title?: string };
+
 export type MacosSessionBinding = DesktopBinding & {
     displayID: number;
     displayIndex: number;
     companionBounds: MacosDisplayBounds;
+    window?: BoundWindow;
+    vnc?: { endpoint: string; port: number; viewOnly: boolean };
 };
+
+/** "1600x900" → size; throws on garbage or sizes beyond the slot. */
+export function parseDesktopSize(value: string | undefined, fallback: DesktopSize, max: DesktopSize = { width: MACOS_SLOT_WIDTH, height: MACOS_SLOT_HEIGHT }): DesktopSize {
+    if (!value?.trim()) return fallback;
+    const m = /^(\d{3,5})x(\d{3,5})$/.exec(value.trim());
+    if (!m) throw Error(`Invalid desktop size ${value}; expected WIDTHxHEIGHT`);
+    const size = { width: Number(m[1]), height: Number(m[2]) };
+    if (size.width > max.width || size.height > max.height) throw Error(`Desktop size ${value} exceeds slot ${max.width}x${max.height}`);
+    return size;
+}
+
+export class FocusMismatchError extends Error {
+    code = 'focusMismatch';
+    constructor(readonly expected: BoundWindow, readonly actual: { pid?: number; windowId?: number; windowTitle?: string }) {
+        super(`Focused window ${actual.pid}/${actual.windowId} (${actual.windowTitle ?? '?'}) is not the bound window ${expected.pid}/${expected.windowId}; input aborted`);
+    }
+}
 
 export type MacosVirtualDisplayStatus = {
     running: boolean;
@@ -75,7 +106,7 @@ export function resolveMacosVirtualDisplayBinary(cwd = process.cwd(), home = hom
 }
 
 export class MacosVirtualDisplayHost {
-    owners = new DesktopOwnership(this.capacity);
+    owners: DesktopOwnership;
     private child?: ChildProcessWithoutNullStreams;
     private companion?: MacosCompanionInfo;
     private displayIndex = -1;
@@ -83,22 +114,27 @@ export class MacosVirtualDisplayHost {
     private readonly serial = createSerialQueue();
     private readonly helper: MacosHelperClient;
     private stdoutBuf = '';
+    private readonly windows = new Map<string, BoundWindow>();
+    private readonly viewers = new Map<string, RfbTileServer>();
+    readonly defaultSize: DesktopSize;
 
     constructor(
         public capacity = MACOS_VD_CAPACITY,
-        readonly tileWidth = MACOS_TILE_WIDTH,
-        readonly tileHeight = MACOS_TILE_HEIGHT,
+        readonly slotWidth = MACOS_SLOT_WIDTH,
+        readonly slotHeight = MACOS_SLOT_HEIGHT,
         helper?: MacosHelperClient,
         readonly binaryPath = resolveMacosVirtualDisplayBinary(),
         private readonly home = homedir(),
+        defaultSize?: DesktopSize,
+        readonly vncBasePort = Number(process.env.PI_BOT_MACOS_VNC_BASE_PORT ?? MACOS_VNC_BASE_PORT),
     ) {
         this.helper = helper ?? new MacosHelperClient();
+        this.owners = new DesktopOwnership(capacity);
+        this.defaultSize = defaultSize ?? parseDesktopSize(process.env.PI_BOT_MACOS_DESKTOP_SIZE, { width: MACOS_TILE_WIDTH, height: MACOS_TILE_HEIGHT }, { width: slotWidth, height: slotHeight });
     }
 
     get status(): MacosVirtualDisplayStatus {
-        const owned = !!this.child && !this.child.killed && this.child.exitCode == null;
-        const adopted = !!this.companion && this.displayIndex >= 0 && !owned;
-        const running = !!this.companion && (owned || adopted);
+        const running = !!this.companion && !!this.child && !this.child.killed && this.child.exitCode == null;
         return {
             running,
             companion: this.companion,
@@ -106,9 +142,7 @@ export class MacosVirtualDisplayHost {
             pid: this.child?.pid,
             bindings: [...this.owners.bindings.values()].map(b => this.enrich(b)),
             reason: running
-                ? (adopted
-                    ? `Adopted orphan companion at index ${this.displayIndex} (${this.companion!.width}x${this.companion!.height}); hosts up to ${this.capacity} tiled sessions (logout clears orphan)`
-                    : `Companion virtual display ${this.companion!.displayID} hosts up to ${this.capacity} tiled sessions`)
+                ? `Companion virtual display ${this.companion!.displayID} hosts up to ${this.capacity} sessions (slot ${this.slotWidth}x${this.slotHeight})`
                 : this.binaryPath
                     ? 'Companion virtual display is not running'
                     : 'pi-virtual-display-companion binary missing; run scripts/build-macos-virtual-display.sh',
@@ -116,69 +150,25 @@ export class MacosVirtualDisplayHost {
     }
 
     private enrich(b: DesktopBinding): MacosSessionBinding {
+        const v = this.viewers.get(b.botId);
         return {
             ...b,
             displayID: this.companion?.displayID ?? 0,
             displayIndex: this.displayIndex,
             companionBounds: this.companion?.bounds ?? { x: 0, y: 0, w: 0, h: 0 },
+            window: this.windows.get(b.botId),
+            vnc: v ? { endpoint: v.endpoint, port: v.port, viewOnly: v.viewOnly } : undefined,
         };
     }
 
     private companionPixelSize() {
-        return { width: this.capacity * this.tileWidth, height: this.tileHeight };
-    }
-
-    /**
-     * When CGVirtualDisplay create fails (Screen Sharing already consumed slots, or a prior
-     * .permanently arrange left an orphan), adopt a matching online display by geometry.
-     * Teardown cannot destroy an orphan we do not own — document that logout clears it.
-     */
-    async adoptExistingCompanion(): Promise<MacosCompanionInfo | undefined> {
-        const { height } = this.companionPixelSize();
-        try {
-            const shot = await this.helper.captureDisplay(0, 64);
-            // Prefer exact capacity width; else any non-main display whose width is N*tileWidth (N>=1)
-            // and height matches — orphan keepers from earlier experiments may be smaller.
-            const candidates = (shot.displays ?? []).filter(d => !d.isMain && d.frame && d.frame.h === height && d.frame.w >= this.tileWidth && d.frame.w % this.tileWidth === 0);
-            if (!candidates.length) return undefined;
-            const exact = candidates.find(d => d.frame!.w === this.capacity * this.tileWidth);
-            const match = exact ?? candidates.sort((a, b) => b.frame!.w - a.frame!.w)[0];
-            if (!match?.frame) return undefined;
-            this.companion = {
-                displayID: 0, // unknown without CGDirectDisplayID from helper; geometry is authoritative
-                width: match.frame.w,
-                height: match.frame.h,
-                bounds: match.frame,
-                online: true, active: true, main: false,
-            };
-            this.displayIndex = match.index;
-            // Shrink usable tile capacity to what the adopted surface can host.
-            const tilesFit = Math.max(1, Math.floor(match.frame.w / this.tileWidth));
-            if (tilesFit < this.capacity) {
-                this.capacity = tilesFit;
-                if (this.owners.bindings.size === 0) {
-                    this.owners = new DesktopOwnership(tilesFit);
-                }
-            }
-            writeFileSync(join(stateDir(this.home), 'companion.json'), JSON.stringify({ ...this.companion, adopted: true, tilesFit, at: Date.now() }, null, 2));
-            return this.companion;
-        } catch {
-            return undefined;
-        }
+        return { width: this.capacity * this.slotWidth, height: this.slotHeight };
     }
 
     async ensureCompanion(): Promise<MacosCompanionInfo> {
-        if (this.companion && ((this.child && !this.child.killed && this.child.exitCode == null) || this.displayIndex >= 0)) return this.companion;
+        if (this.companion && this.child && !this.child.killed && this.child.exitCode == null) return this.companion;
         if (this.starting) return this.starting;
-        this.starting = (async () => {
-            try {
-                return await this.spawnCompanion();
-            } catch (error: any) {
-                const adopted = await this.adoptExistingCompanion();
-                if (adopted) return adopted;
-                throw error;
-            }
-        })().finally(() => { this.starting = undefined; });
+        this.starting = this.spawnCompanion().finally(() => { this.starting = undefined; });
         return this.starting;
     }
 
@@ -261,54 +251,58 @@ export class MacosVirtualDisplayHost {
     async refreshDisplayIndex(): Promise<number> {
         const capture = await this.helper.captureDisplay(0, 64);
         const displays = capture.displays ?? [];
-        const match = displays.find(d => !d.isMain && d.frame?.w === this.companion?.bounds.w && d.frame?.h === this.companion?.bounds.h)
-            ?? displays.find(d => !d.isMain && Math.abs((d.frame?.x ?? 0) - (this.companion?.bounds.x ?? 0)) < 2);
+        // helper reports no CGDirectDisplayID; match the companion's real bounds exactly.
+        const c = this.companion?.bounds;
+        const match = c && displays.find(d => !d.isMain && d.frame?.x === c.x && d.frame?.y === c.y && d.frame?.w === c.w && d.frame?.h === c.h);
         if (!match) throw Object.assign(new Error('Companion display not visible to helper captureDisplay'), { code: 'ENOTFOUND' });
         this.displayIndex = match.index;
         if (this.companion && match.frame) this.companion.bounds = match.frame;
         return this.displayIndex;
     }
 
-    async bind(botId: string, targetId = `macos:${botId}`, windowId = 0): Promise<MacosSessionBinding> {
+    /** Bind a session to the next slot; size comes from config (default 1280x800) or the caller. */
+    async bind(botId: string, options: { targetId?: string; size?: DesktopSize | string } = {}): Promise<MacosSessionBinding> {
         if (!/^[a-zA-Z0-9_-]{1,80}$/.test(botId)) throw Error('Invalid bot ID');
         await this.ensureCompanion();
         await this.refreshDisplayIndex();
         if (this.owners.bindings.has(botId)) return this.enrich(this.owners.require(botId));
-        // DesktopOwnership uses screen*1280 — override width/height to tile sizes after bind.
-        const b = this.owners.bind(botId, targetId, windowId || (1000 + this.owners.bindings.size));
-        b.width = this.tileWidth;
-        b.height = this.tileHeight;
-        // Place tile relative to companion origin (Linux places on :99 absolute coords).
-        const cx = this.companion!.bounds.x;
-        const cy = this.companion!.bounds.y;
-        b.x = cx + b.screen * this.tileWidth;
-        b.y = cy;
-        writeFileSync(join(stateDir(this.home), 'bindings.json'), JSON.stringify([...this.owners.bindings.values()], null, 2));
+        const size = typeof options.size === 'string'
+            ? parseDesktopSize(options.size, this.defaultSize, { width: this.slotWidth, height: this.slotHeight })
+            : options.size ?? this.defaultSize;
+        if (size.width > this.slotWidth || size.height > this.slotHeight) throw Error(`Desktop size ${size.width}x${size.height} exceeds slot ${this.slotWidth}x${this.slotHeight}`);
+        const b = this.owners.bind(botId, options.targetId ?? `macos:${botId}`, -(1 + this.owners.bindings.size));
+        b.width = size.width;
+        b.height = size.height;
+        b.x = this.companion!.bounds.x + b.screen * this.slotWidth;
+        b.y = this.companion!.bounds.y;
+        this.persist();
         return this.enrich(b);
     }
 
-    release(botId: string) {
-        this.owners.bindings.delete(botId);
+    private persist() {
+        writeFileSync(join(stateDir(this.home), 'bindings.json'), JSON.stringify([...this.owners.bindings.values()].map(b => this.enrich(b)), null, 2));
+    }
+
+    async release(botId: string) {
+        const viewer = this.viewers.get(botId);
+        this.viewers.delete(botId);
+        if (viewer) await viewer.close();
+        this.windows.delete(botId);
         this.owners.release(botId);
-        writeFileSync(join(stateDir(this.home), 'bindings.json'), JSON.stringify([...this.owners.bindings.values()], null, 2));
-        if (this.owners.bindings.size === 0) void this.shutdownCompanion();
+        this.owners.bindings.delete(botId);
+        this.persist();
+        if (this.owners.bindings.size === 0) await this.shutdownCompanion();
     }
 
     async shutdownCompanion() {
         const child = this.child;
-        const wasAdopted = !!this.companion && !child;
         this.child = undefined;
         this.companion = undefined;
         this.displayIndex = -1;
-        if (!child || child.killed) {
-            if (wasAdopted) {
-                try { writeFileSync(join(stateDir(this.home), 'companion.json'), JSON.stringify({ stoppedAt: Date.now(), adoptedOrphanRemains: true, note: 'Logout/reboot clears a permanently arranged orphan VD' })); } catch { /* ignore */ }
-            }
-            return;
-        }
+        if (!child || child.exitCode != null) return;
         try { child.stdin.write(`${JSON.stringify({ cmd: 'shutdown' })}\n`); } catch { /* ignore */ }
         await new Promise<void>(resolve => {
-            const t = setTimeout(() => { try { child.kill('SIGTERM'); } catch { /* ignore */ } resolve(); }, 1500);
+            const t = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* ignore */ } resolve(); }, 7000);
             child.once('exit', () => { clearTimeout(t); resolve(); });
         });
         try { writeFileSync(join(stateDir(this.home), 'companion.json'), JSON.stringify({ stoppedAt: Date.now() })); } catch { /* ignore */ }
@@ -320,67 +314,158 @@ export class MacosVirtualDisplayHost {
         return { x: b.x, y: b.y, w: b.width, h: b.height };
     }
 
-    /** Map tile-local coords → global. */
+    /** Map tile-local coords → global; rejects points outside the session's tile. */
     toGlobal(botId: string, x: number, y: number) {
         const t = this.tileFrame(botId);
+        if (x < 0 || y < 0 || x >= t.w || y >= t.h) throw Error(`Point ${x},${y} is outside the ${t.w}x${t.h} desktop`);
         return { x: t.x + x, y: t.y + y };
     }
 
-    async captureTile(botId: string, maxDimension = 1280) {
-        this.owners.require(botId);
-        if (this.displayIndex < 0) await this.refreshDisplayIndex();
+    /** Tile pixels only (RGBA, tile size), cropped from a native-resolution companion capture. */
+    async captureTile(botId: string): Promise<RgbaFrame & { tile: HelperFrame }> {
+        const tile = this.tileFrame(botId);
         return this.serial(async () => {
-            const shot = await this.helper.captureDisplay(this.displayIndex, Math.max(maxDimension, this.companionPixelSize().width));
-            // Return full companion capture plus the bot's tile rect for clients to crop.
-            return { ...shot, tile: this.tileFrame(botId), displayIndex: this.displayIndex, companion: this.companion };
+            if (this.displayIndex < 0) await this.refreshDisplayIndex();
+            const shot = await this.helper.captureDisplay(this.displayIndex, this.companionPixelSize().width);
+            const decoded = jpeg.decode(Buffer.from(shot.image.jpegBase64, 'base64'), { useTArray: true, formatAsRGBA: true });
+            return { ...cropFrame(decoded, this.companion!.bounds, tile), tile };
         });
     }
 
-    /**
-     * Place a window into the bot's tile. AX setWindowFrame clamps negative X on some macOS
-     * builds, so we drag via desktopInput (proven on botty) then resize.
-     */
-    async confineWindow(botId: string, pid: number, window: HelperWindow) {
+    /** Bind the exact window (pid + windowId + AX windowRef) the session owns. */
+    bindWindow(botId: string, window: BoundWindow) {
+        const b = this.owners.require(botId);
+        for (const [other, w] of this.windows) {
+            if (other !== botId && w.pid === window.pid && w.windowId === window.windowId) throw Error('Window ownership conflict');
+        }
+        this.windows.set(botId, window);
+        b.windowId = window.windowId;
+        b.targetId = `macos:${window.pid}:${window.windowId}`;
+        this.persist();
+        return this.enrich(b);
+    }
+
+    boundWindow(botId: string) {
+        const w = this.windows.get(botId);
+        if (!w) throw Error('No window is bound to this session');
+        return w;
+    }
+
+    /** Focus the bound window and verify the frontmost window is exactly it. Must run inside serial(). */
+    private async focusBound(botId: string) {
+        const w = this.boundWindow(botId);
+        await this.helper.focusWindow(w.pid, w.windowRef, w.windowId);
+        let front: any;
+        for (let i = 0; i < 5; i++) {
+            front = await this.helper.getFrontmost();
+            if (front?.pid === w.pid && front?.windowId === w.windowId) return w;
+            await new Promise(r => setTimeout(r, 80));
+        }
+        throw new FocusMismatchError(w, front ?? {});
+    }
+
+    /** Move the bound window into the session's tile and size it to the tile. */
+    async confineWindow(botId: string, frameHint?: HelperFrame) {
         const tile = this.tileFrame(botId);
+        const w = this.boundWindow(botId);
         return this.serial(async () => {
-            const frame = window.framePoints ?? { x: 0, y: 0, w: 800, h: 600 };
-            await this.helper.focusWindow(pid, window.windowRef, window.windowId);
+            await this.focusBound(botId);
+            const frame = frameHint ?? { x: 0, y: 0, w: 800, h: 600 };
             const startX = frame.x + frame.w / 2;
             const startY = frame.y + 12;
-            const destX = tile.x + tile.w / 2;
-            const destY = tile.y + 48;
+            const destX = tile.x + Math.min(tile.w, frame.w) / 2;
+            const destY = tile.y + 12;
+            // AX setWindowFrame clamps negative X; drag the title bar first (re-verified focus above).
             await this.helper.desktopInput('drag', {
-                path: [
-                    { x: startX, y: startY },
-                    { x: (startX + destX) / 2, y: (startY + destY) / 2 },
-                    { x: destX, y: destY },
-                ],
+                path: [{ x: startX, y: startY }, { x: (startX + destX) / 2, y: (startY + destY) / 2 }, { x: destX, y: destY }],
             });
-            await this.helper.setWindowFrame(pid, {
-                x: tile.x + 20,
-                y: tile.y + 40,
-                w: Math.min(tile.w - 40, 1240),
-                h: Math.min(tile.h - 60, 720),
-            }, window.windowRef, window.windowId).catch(() => undefined);
+            await this.helper.setWindowFrame(w.pid, { x: tile.x, y: tile.y, w: tile.w, h: tile.h }, w.windowRef, w.windowId).catch(() => undefined);
             return this.tileFrame(botId);
         });
     }
 
-    async typeInTile(botId: string, text: string) {
-        this.owners.requireAgent(botId);
-        return this.serial(async () => this.helper.desktopInput('type', { text }));
+    private async input(botId: string, human: boolean, op: () => Promise<unknown>) {
+        if (human) {
+            if (this.owners.control()?.botId !== botId) throw Error('Viewer input requires this session\'s takeover lease');
+        } else this.owners.requireAgent(botId);
+        return this.serial(async () => { await this.focusBound(botId); return op(); });
     }
 
-    async clickInTile(botId: string, x: number, y: number) {
-        this.owners.requireAgent(botId);
+    typeInTile(botId: string, text: string, human = false) {
+        return this.input(botId, human, () => this.helper.desktopInput('type', { text }));
+    }
+
+    clickInTile(botId: string, x: number, y: number, human = false) {
         const g = this.toGlobal(botId, x, y);
-        return this.serial(async () => this.helper.desktopInput('click', { x: g.x, y: g.y }));
+        return this.input(botId, human, () => this.helper.desktopInput('click', { x: g.x, y: g.y }));
     }
 
-    async keyInTile(botId: string, keys: string[]) {
-        this.owners.requireAgent(botId);
-        return this.serial(async () => this.helper.desktopInput('key', { keys }));
+    keyInTile(botId: string, keys: string[], human = false) {
+        return this.input(botId, human, () => this.helper.desktopInput('key', { keys }));
     }
+
+    /** AX read of the bound window's text areas (no screenshot OCR). */
+    async readWindowText(botId: string): Promise<string[]> {
+        const w = this.boundWindow(botId);
+        const look = await this.helper.look(w.pid, w.windowId);
+        const out: string[] = [];
+        const walk = (n: any) => {
+            if (!n) return;
+            if (n.role === 'AXTextArea' || n.role === 'AXTextField') out.push(String(n.value ?? ''));
+            for (const c of n.children ?? []) walk(c);
+        };
+        if (look?.window?.windowId !== undefined && look.window.windowId !== w.windowId) throw Error('AX look returned a different window');
+        walk(look?.outline);
+        return out;
+    }
+
+    /** Linux parity: per-session RFB endpoint on 127.0.0.1:(base+screen), view-only until takeover. */
+    async openViewer(botId: string) {
+        const b = this.owners.require(botId);
+        const existing = this.viewers.get(botId);
+        if (existing) return this.enrich(b).vnc!;
+        const server = new RfbTileServer(this.vncBasePort + b.screen, `pi-bot ${botId}`, { width: b.width, height: b.height },
+            () => this.captureTile(botId), {
+                click: (x, y) => this.clickInTile(botId, x, y, true),
+                type: text => this.typeInTile(botId, text, true),
+                key: keys => this.keyInTile(botId, keys, true),
+            });
+        await server.listen();
+        server.setViewOnly(this.owners.control()?.botId !== botId);
+        this.viewers.set(botId, server);
+        this.persist();
+        return this.enrich(b).vnc!;
+    }
+
+    vncPorts(botId?: string) {
+        return [...this.viewers.entries()].filter(([id]) => !botId || id === botId).map(([, v]) => v.port);
+    }
+
+    takeover(botId: string, ms?: number) {
+        const lease = this.owners.takeover(botId, ms);
+        this.viewers.get(botId)?.setViewOnly(false);
+        return lease;
+    }
+
+    releaseControl(botId: string) {
+        this.owners.release(botId);
+        this.viewers.get(botId)?.setViewOnly(true);
+    }
+}
+
+/** Crop the tile (global points) out of a companion capture whose pixels may be scaled. */
+export function cropFrame(img: { width: number; height: number; data: Uint8Array }, companion: HelperFrame, tile: HelperFrame): RgbaFrame {
+    const sx = img.width / companion.w, sy = img.height / companion.h;
+    const out = new Uint8Array(tile.w * tile.h * 4);
+    for (let y = 0; y < tile.h; y++) {
+        const srcY = Math.min(img.height - 1, Math.floor((tile.y - companion.y + y) * sy));
+        for (let x = 0; x < tile.w; x++) {
+            const srcX = Math.min(img.width - 1, Math.floor((tile.x - companion.x + x) * sx));
+            const s = (srcY * img.width + srcX) * 4, d = (y * tile.w + x) * 4;
+            out[d] = img.data[s]; out[d + 1] = img.data[s + 1]; out[d + 2] = img.data[s + 2]; out[d + 3] = 255;
+        }
+    }
+    return { width: tile.w, height: tile.h, data: out };
 }
 
 /** Read last companion.json written by a live host (for probes without holding the child). */

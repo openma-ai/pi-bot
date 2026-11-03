@@ -242,7 +242,7 @@ test('native macOS probe distinguishes unconfigured, permission-required, ready 
     assert.equal(denied.computerUse.state, 'permission-required');
     assert.equal(denied.screenCapture.state, 'permission-required');
     assert.equal(denied.configured, true);
-    assert.equal(denied.vnc.state, 'unsupported');
+    assert.equal(denied.vnc.state, 'unconfigured');
     const readyNative = await probeMacosNativeCapabilities({
         platform: 'darwin',
         discovery: { enabled: true, packageName: '@nredd/pi-computer-use', packageRoot: '/tmp/fixture', extensionPath: '/tmp/fixture/extensions/computer-use.ts', helperAppPath: '/tmp/fixture.app', helperExecutablePresent: true, reason: 'FIXTURE present' },

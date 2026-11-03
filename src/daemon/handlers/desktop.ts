@@ -32,27 +32,36 @@ export async function desktopHandler(d: PiBotDaemon, c: DaemonConnection, method
                     if (!d.macosVirtualDisplay.binaryPath) {
                         throw new PiBotError('setupRequired', 'pi-virtual-display-companion binary missing; run scripts/build-macos-virtual-display.sh', { desktopCapabilities: report });
                     }
-                    const binding = await d.macosVirtualDisplay.bind(p.botId);
+                    const binding = await d.macosVirtualDisplay.bind(p.botId, { size: p.size });
                     void d.refreshNativeDesktopCapabilities(true);
                     return {
                         binding,
                         companion: d.macosVirtualDisplay.status.companion,
-                        view: 'screenshot-tile',
+                        view: 'vnc-tile',
                         isolation: {
                             display: 'companion-cgvirtualdisplay-tiled',
-                            input: 'serialized-global-cursor',
-                            note: 'macOS has one global cursor/focus; bot input is serialized. Linux X11 isolates input per display.',
+                            input: 'serialized-global-cursor-bound-window-verified',
+                            note: 'macOS has one global cursor/focus; input is serialized and aborted unless the frontmost window is the session\'s bound window. Linux X11 isolates input per display.',
                         },
                     };
                 }
-                // desktop/control on native: takeover / release lease (no VNC pointer bridge).
+                // desktop/control on native: takeover makes this session's RFB endpoint interactive.
                 if (p.take) {
                     if (report.computerUse.state !== 'ready') throw new PiBotError('setupRequired', report.computerUse.reason, { desktopCapabilities: report });
-                    return d.macosVirtualDisplay.owners.takeover(p.botId);
+                    return d.macosVirtualDisplay.takeover(p.botId);
+                }
+                if (p.view) {
+                    const vnc = await d.macosVirtualDisplay.openViewer(p.botId);
+                    void d.refreshNativeDesktopCapabilities(true);
+                    return { vnc };
                 }
                 if (p.release) {
-                    d.macosVirtualDisplay.release(p.botId);
+                    await d.macosVirtualDisplay.release(p.botId);
                     return { released: true };
+                }
+                if (p.handBack) {
+                    d.macosVirtualDisplay.releaseControl(p.botId);
+                    return { handedBack: true };
                 }
                 return d.macosVirtualDisplay.owners.control() ?? null;
             }

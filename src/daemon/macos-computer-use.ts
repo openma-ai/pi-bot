@@ -7,7 +7,8 @@ import { existsSync } from 'node:fs';
 import { connect } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { boundedProbe, capability, unavailableDesktopCapabilities, type DesktopCapabilities } from '../pi/desktop-capabilities.ts';
+import { boundedProbe, capability, unavailableDesktopCapabilities, type DesktopCapabilities, type DesktopCapability } from '../pi/desktop-capabilities.ts';
+import { probeVnc } from './desktop-capabilities.ts';
 import {
     discoverMacosComputerUse, MACOS_COMPUTER_TOOLS, MACOS_COMPUTER_USE_PACKAGE,
     resolveMacosHelperAppPath, type MacosComputerUseDiscovery,
@@ -32,6 +33,9 @@ export type MacosNativeProbeDependencies = {
     helperReachable?: () => Promise<boolean>;
     /** When false, companion virtual-display binary is missing (inject in tests). */
     virtualDisplayBinaryPresent?: boolean;
+    /** Ports of per-session RFB endpoints that have been opened (Linux vncPorts analogue). */
+    vncPorts?: () => number[];
+    vnc?: (port: number) => Promise<DesktopCapability>;
     timeoutMs?: number;
 };
 
@@ -109,7 +113,7 @@ function probeFailure(error: any, label: string) {
 export async function probeMacosNativeCapabilities(deps: MacosNativeProbeDependencies): Promise<DesktopCapabilities> {
     const discovery = deps.discovery ?? discoverMacosComputerUse({ platform: deps.platform });
     const result = unavailableDesktopCapabilities(deps.platform, discovery.enabled || discovery.helperExecutablePresent, 'unconfigured', discovery.reason);
-    result.vnc = capability('unsupported', 'Native macOS Computer Use has no VNC; per-session view is a companion virtual-display screenshot stream when configured');
+    result.vnc = capability('unconfigured', 'No viewer has been opened; checking capabilities does not start VNC');
     result.browser = capability('unconfigured', 'Browser tools are provided by the native extension when browser_use is enabled in its config');
     result.canOpenView = false;
 
@@ -152,12 +156,16 @@ export async function probeMacosNativeCapabilities(deps: MacosNativeProbeDepende
                 ? capability('permission-required', 'Grant Screen Recording to pi-computer-use.app in System Settings → Privacy & Security')
                 : capability('unknown', 'Screen Recording was not verified');
         const vdPresent = deps.virtualDisplayBinaryPresent ?? !!resolveMacosVirtualDisplayBinary();
-        result.vnc = capability(
-            'unsupported',
-            vdPresent
-                ? 'Native macOS Computer Use has no VNC; per-session view is a tiled CGVirtualDisplay companion screenshot stream (Linux VNC clip analogue)'
-                : 'Native macOS Computer Use has no VNC; build scripts/build-macos-virtual-display.sh for the companion screenshot view',
-        );
+        // Linux contract: unconfigured until a viewer is opened; then every open per-session
+        // RFB endpoint must complete a real handshake for vnc to be ready.
+        const ports = deps.vncPorts?.() ?? [];
+        if (!vdPresent) result.vnc = capability('unconfigured', 'Build scripts/build-macos-virtual-display.sh to enable per-session VNC endpoints');
+        else if (!ports.length) result.vnc = capability('unconfigured', 'No viewer has been opened; checking capabilities does not start VNC');
+        else {
+            const checks = await Promise.all(ports.map(port => (deps.vnc ?? probeVnc)(port)));
+            const bad = checks.find(c => c.state !== 'ready');
+            result.vnc = bad ?? capability('ready', `Per-session RFB endpoints ready on ${ports.map(p => `127.0.0.1:${p}`).join(', ')}`);
+        }
         if (result.computerUse.state === 'ready') {
             result.availableTools.computer = [...MACOS_COMPUTER_TOOLS];
             // Browser tools stay gated on extension config; do not advertise until a live browser probe exists.
@@ -194,7 +202,7 @@ export function unconfiguredMacosNativeCapabilities(platform = process.platform,
             : capability('unconfigured', discovery.reason))
         : capability('unconfigured', discovery.reason);
     result.screenCapture = capability('unknown', 'macOS Screen Recording and Accessibility permissions have not been probed');
-    result.vnc = capability('unsupported', 'Native macOS Computer Use does not expose a VNC viewer; use the host display directly');
+    result.vnc = capability('unconfigured', 'No viewer has been opened; checking capabilities does not start VNC');
     return result;
 }
 
