@@ -53,7 +53,7 @@ export async function listenClientHost(manager: RuntimeManager, options: {
         });
         res.end(html.replace('</head>', `<meta name="pibot-client" content="true"><meta name="pibot-csrf" content="${sessions.get(id)}"></head>`));
     };
-    const allowed = (path: string) => path === '/rpc' || path.startsWith('/events?') || path === '/events' || /^\/pi\/[a-zA-Z0-9/-]+$/.test(path) || /^\/credential\/[a-zA-Z0-9_-]+$/.test(path) || /^\/api\/desktop\/[^/]+\/screen(?:\?.*)?$/.test(path) || /^\/api\/bot\/[^/]+\/avatar\/[a-f0-9]{64}$/.test(path);
+    const allowed = (path: string) => path === '/rpc' || path.startsWith('/events?') || path === '/events' || /^\/pi\/[a-zA-Z0-9/-]+$/.test(path) || /^\/credential\/[a-zA-Z0-9_-]+$/.test(path) || /^\/api\/desktop\/[^/]+\/screen(?:\?.*)?$/.test(path) || /^\/api\/bot\/[^/]+\/avatar\/[a-f0-9]{64}$/.test(path) || /^\/remote\/(admin|invite|devices|devices\/revoke)$/.test(path);
     const server = createServer(async (req, res) => {
         const expected = '127.0.0.1:' + (server.address() as any)?.port;
         if (req.headers.host !== expected || (req.headers.origin && req.headers.origin !== 'http://' + expected))

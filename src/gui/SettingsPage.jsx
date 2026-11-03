@@ -26,6 +26,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { PiSettingsPanel } from "./PiSettingsDialog.jsx";
+import { RemoteAccessPanel } from "./RemoteAccessPanel.jsx";
 const kindLabel = (profile) => (["local", "builtin"].includes(profile.mode) ? "Local" : "Cloud");
 function RuntimeIcon({ profile, size = 20 }) {
   return !["local", "builtin"].includes(profile?.mode) ? (
@@ -350,6 +351,9 @@ export function SettingsPage({ open, onOpenChange, runtime, initialTab }) {
             <Tabs.Trigger value="pi" disabled={!active}>
               模型
             </Tabs.Trigger>
+            <Tabs.Trigger value="remote" disabled={!active}>
+              远程访问
+            </Tabs.Trigger>
           </Tabs.List>
           <ScrollArea type="auto" className="settings-body">
             <Tabs.Content value="runtime">
@@ -368,6 +372,9 @@ export function SettingsPage({ open, onOpenChange, runtime, initialTab }) {
                   />
                 </div>
               )}
+            </Tabs.Content>
+            <Tabs.Content value="remote">
+              {active && <RemoteAccessPanel key={active.id} baseUrl={active.baseUrl} />}
             </Tabs.Content>
           </ScrollArea>
         </Tabs.Root>
