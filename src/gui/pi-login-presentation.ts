@@ -38,3 +38,13 @@ export function piCatalogNote(catalog: any) {
         ? '来自 Pi SDK 刷新后的模型目录（可能使用有效缓存）；不代表账号拥有每个模型的访问权限。'
         : '来自 Pi SDK 缓存目录；账号的逐模型访问权限未经验证。';
 }
+// Runtime method and option labels are English SDK copy; the GUI shows Chinese.
+const LABELS_ZH: Record<string, string> = {
+    'Sign in with ChatGPT': '使用 ChatGPT 登录',
+    'OpenAI (ChatGPT Plus/Pro)': 'ChatGPT Plus/Pro 账号登录',
+    'Browser login (default)': '浏览器登录（默认）',
+    'Device code login (headless)': '设备码登录（无浏览器环境）',
+};
+export function piDisplayLabel(label?: string) {
+    return label ? LABELS_ZH[label] ?? label : label;
+}

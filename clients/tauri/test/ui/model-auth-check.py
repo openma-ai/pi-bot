@@ -38,8 +38,8 @@ def fallback():
  ab('wait','.pi-login-fallback');ab('find','text','无法自动完成？','click','--exact');wait();snapshot()
  ab('wait','[aria-label="授权回跳地址"]')
 def legacy():
- click('模型提供商','combobox');click('OpenAI Codex (legacy) OpenAI (ChatGPT Plus/Pro)','option')
-def login():click('OpenAI (ChatGPT Plus/Pro)')
+ click('模型提供商','combobox');click('OpenAI Codex (legacy) ChatGPT Plus/Pro 账号登录','option')
+def login():click('ChatGPT Plus/Pro 账号登录')
 def choose(option):
  ab('wait','[aria-label="登录选项"]')
  click('登录选项','combobox');click(option,'option');click('继续')
@@ -56,14 +56,14 @@ def initial():
  check('Model page uses compact desktop dialog',js('document.querySelector(".settings-page").getBoundingClientRect().height')<=480)
  shot('01-disconnected-desktop.png');auth()
  check('Authentication defaults to openai',js('document.querySelector("[aria-label=模型提供商]").textContent.includes("OpenAI")&&!document.querySelector("[aria-label=模型提供商]").textContent.includes("legacy")'))
- check('ChatGPT and API key are separate visible actions',js('["Sign in with ChatGPT","添加 API key"].every(t=>[...document.querySelectorAll("button")].some(e=>e.textContent.trim()===t))'))
+ check('ChatGPT and API key are separate visible actions',js('["使用 ChatGPT 登录","添加 API key"].every(t=>[...document.querySelectorAll("button")].some(e=>e.textContent.trim()===t))'))
  shot('02-openai-auth-desktop.png')
  check('Browsing authentication does not create a dirty model draft',js('!document.querySelector(".pi-settings-panel").textContent.includes("有未保存的更改")'))
  check('Browsing authentication makes no login request',count('login')==0)
 
 def lifecycle():
  openq('mode=late-start');auth();legacy()
- js('(()=>{const button=[...document.querySelectorAll("button")].find(e=>e.textContent.trim()==="OpenAI (ChatGPT Plus/Pro)");button.click();button.click()})()');wait();snapshot()
+ js('(()=>{const button=[...document.querySelectorAll("button")].find(e=>e.textContent.trim()==="ChatGPT Plus/Pro 账号登录");button.click();button.click()})()');wait();snapshot()
  check('Duplicate start clicks dispatch one login',count('login')==1)
  click('取消登录');js('window.__MODEL_AUTH_QA__.releaseStart()');wait(.8);snapshot()
  check('Late start is cancelled again and cannot reopen auth UI',js('!document.querySelector(".pi-login-flow")&&window.__MODEL_AUTH_QA__.calls.filter(c=>c.path.endsWith("/cancel")).length===2&&[...window.__MODEL_AUTH_QA__.flows.values()].every(f=>f.status==="cancelled")'))
@@ -83,7 +83,7 @@ def lifecycle():
  check('Cancelled late answer cannot complete or resurrect UI',js('!document.querySelector(".pi-login-flow")&&[...window.__MODEL_AUTH_QA__.flows.values()].every(f=>f.status==="cancelled")'))
 
 def uncertain():
- openq('mode=lost-start');auth();click('Sign in with ChatGPT');wait();snapshot()
+ openq('mode=lost-start');auth();click('使用 ChatGPT 登录');wait();snapshot()
  check('Lost start response shows uncertain state rather than starting again',js('document.body.textContent.includes("正在确认登录状态")') and count('login')==1)
  shot('05-uncertain-desktop.png');js('window.__MODEL_AUTH_QA__.releaseState()');wait(.8);snapshot()
  check('Uncertain start recovers its existing flow via GET only',count('login')==1 and js('!!document.querySelector(".pi-login-fallback")&&!document.body.textContent.includes("正在确认登录状态")'))

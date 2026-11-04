@@ -7,7 +7,7 @@ details.pi-advanced.pi-settings-card{padding:14px 18px}details.pi-advanced>summa
 .pi-settings-footer.pi-sticky-footer{position:sticky;bottom:0;z-index:1;padding:14px 0;background:var(--pibo-canvas);border-top:1px solid var(--pibo-line)}
 .pi-settings-group,.pi-editor-group{display:flex;flex-direction:column;gap:10px;min-width:0}.pi-editor-group{gap:14px}.pi-editor-group+.pi-editor-group{padding-top:20px;border-top:1px solid var(--pibo-line)}.pi-group-label{margin:0;font-size:12px;letter-spacing:.02em;color:var(--pibo-muted)}
 /* Form layout: one 8px spacing scale (8/16/24/32), labels above fields, helper text below. */
-.pi-mode-content.pi-form-width{width:100%;max-width:640px;gap:24px}
+.pi-mode-content.pi-form-width{width:100%;max-width:none;gap:24px}
 .pi-field{display:flex;flex-direction:column;gap:8px;min-width:0}
 .pi-field-label{margin:0;font-size:13px;font-weight:500;line-height:1.4;color:var(--pibo-ink)}
 .pi-form-width .pi-field-help{margin:0;font-size:12px;line-height:1.5;color:var(--pibo-muted)}
@@ -34,7 +34,7 @@ details.pi-advanced.pi-settings-card{padding:14px 18px}details.pi-advanced>summa
 .pi-provider-header .pi-account-status{flex-wrap:wrap;min-width:0}
 .pi-provider-name{font-size:15px;font-weight:600;color:var(--pibo-ink);overflow-wrap:anywhere}
 .pi-status-pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:500;line-height:20px;white-space:nowrap;background:var(--pibo-hover);color:var(--pibo-muted)}
-.pi-status-pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pi-status-pill>svg{flex-shrink:0}
 .pi-status-pill[data-tone="success"]{background:var(--green-a3);color:var(--green-11)}
 .pi-status-pill[data-tone="warning"]{background:var(--amber-a3);color:var(--amber-11)}
 /* Auth methods: equal-weight option cards; the button's ::after makes the whole card clickable. */
@@ -72,3 +72,25 @@ details.pi-advanced.pi-settings-card{padding:14px 18px}details.pi-advanced>summa
 @media(pointer:coarse){.pi-form-width .rt-TextFieldRoot{min-height:44px;height:44px}}
 @media(max-width:480px){.pi-auth-methods.pi-method-grid{grid-template-columns:1fr}.pi-login-flow.pi-login-card,.pi-connection-editor .pi-editor-group.pi-form-card{padding:16px}.pi-login-footer{flex-wrap:wrap}.pi-connection-editor .pi-editor-footer{flex-direction:column-reverse}}
 @media(max-width:480px){.pi-connection-row{align-items:flex-start;flex-direction:column;gap:8px}.pi-connection-summary{flex-wrap:wrap}.pi-settings-footer.pi-sticky-footer{flex-wrap:wrap}.pi-endpoint-limits{grid-template-columns:1fr}.pi-connection-state{max-width:100%;flex-wrap:wrap}.pi-editor-footer>.rt-Button{width:100%}}
+
+/* Round 3: provider marks, sidebar icons, auth link, aligned cards. */
+.settings-tab-label{display:inline-flex;align-items:center;gap:8px;line-height:1}.settings-tab-label>svg{flex-shrink:0;width:16px;height:16px}
+.pi-provider-tile{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:32px;height:32px;border-radius:8px;border:1px solid var(--pibo-line);background:var(--pibo-canvas);color:var(--pibo-ink)}
+.pi-provider-icon{flex-shrink:0;display:block}
+.pi-choice-icon{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:24px;height:24px;color:var(--pibo-ink)}
+.pi-choice>.pi-choice-copy{flex:1;min-width:0;text-align:left}.pi-choice>.pi-choice-icon+.pi-choice-copy{margin-left:-6px}
+.pi-choice-popover [cmdk-item]{display:flex;align-items:center;gap:10px}.pi-choice-popover [cmdk-item] .pi-choice-option{flex:1;min-width:0}
+.pi-account-status{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0}
+.pi-auth-summary{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.pi-auth-flow .pi-connected-summary{display:flex;align-items:center;gap:12px}.pi-connected-copy{flex:1;min-width:0}.pi-connected-copy strong,.pi-connected-copy small{display:block;overflow-wrap:anywhere}.pi-connected-copy small{margin-top:4px;color:var(--pibo-muted)}
+.pi-auth-flow .pi-connected-summary .rt-Button,.pi-connection-summary .rt-Button{gap:6px}
+.pi-connection-summary .pi-status-dot{display:none}
+.pi-connection-main{display:flex;align-items:center;gap:12px;min-width:0}.pi-connection-copy{min-width:0}
+.pi-method-icon{color:var(--pibo-ink)}
+.pi-auth-link{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;min-height:36px;padding:0 14px;border-radius:8px;background:var(--accent-9);color:var(--accent-contrast,#fff);font-size:14px;font-weight:500;text-decoration:none}.pi-auth-link:hover{background:var(--accent-10)}.pi-auth-link:focus-visible{outline:2px solid var(--accent-8);outline-offset:2px}
+.pi-login-card .rt-Button{gap:8px}
+.pi-auth-flow .pi-remove-confirm{display:grid;grid-template-columns:auto 1fr;align-items:start;column-gap:12px;row-gap:16px;border-color:var(--amber-7);background:var(--amber-a2)}.pi-remove-confirm .pi-remove-icon{color:var(--amber-11);margin-top:2px}.pi-remove-confirm>.rt-Flex{grid-column:2}
+.pi-settings-panel>.pi-settings-error{border-radius:12px}
+.pi-model-remove,.pi-model-add{gap:6px}
+.pi-login-flow a.pi-auth-link,.pi-login-flow a.pi-auth-link:visited{color:var(--accent-contrast,#fff);text-decoration:none;font-size:14px}
+.pi-connection-summary-copy strong{line-height:1.4;margin:0}.pi-connection-summary-copy small{margin-top:2px}

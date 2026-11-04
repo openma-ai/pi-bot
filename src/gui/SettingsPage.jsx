@@ -24,6 +24,7 @@ import {
   ChevronDown,
   MoreHorizontal,
   ArrowLeft,
+  Cpu,
 } from "lucide-react";
 import { PiSettingsPanel } from "./PiSettingsDialog.jsx";
 const kindLabel = (profile) => (["local", "builtin"].includes(profile.mode) ? "Local" : "Cloud");
@@ -344,11 +345,10 @@ export function SettingsPage({ open, onOpenChange, runtime, initialTab }) {
         >
           <Tabs.List aria-label="设置分类">
             <Tabs.Trigger value="runtime">
-              <Laptop size={16} />
-              工作空间
+              <span className="settings-tab-label"><Laptop size={16} aria-hidden="true" />工作空间</span>
             </Tabs.Trigger>
             <Tabs.Trigger value="pi" disabled={!active}>
-              模型
+              <span className="settings-tab-label"><Cpu size={16} aria-hidden="true" />模型</span>
             </Tabs.Trigger>
           </Tabs.List>
           <ScrollArea type="auto" className="settings-body">

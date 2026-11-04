@@ -39,7 +39,7 @@ def enabled(name): return js('[...document.querySelectorAll("button")].some(b=>b
 
 try:
     ab('set', 'viewport', '393', '852')
-    openq(); click('Sign in with ChatGPT'); ab('wait', '.pi-login-fallback')
+    openq(); click('使用 ChatGPT 登录'); ab('wait', '.pi-login-fallback')
     js('window.__MODEL_AUTH_QA__.complete()'); ab('wait', '[aria-label="默认模型"]'); snapshot()
     check('Mock credential completion still requires explicit model selection', config()['model'] == '' and count('model') == 0)
     click('默认模型', 'combobox'); click('QA fixture model OpenAI · qa-model', 'option')
