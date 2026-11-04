@@ -47,7 +47,8 @@ export function Choice({
           aria-expanded={open}
           disabled={disabled}
         >
-          <span>
+          {selected?.icon && <span className="pi-choice-icon" aria-hidden="true">{selected.icon}</span>}
+          <span className="pi-choice-copy">
             <span className="pi-choice-name">
               {selected?.name || fallback || value || "请选择"}
             </span>
@@ -88,6 +89,7 @@ export function Choice({
                   setOpen(false);
                 }}
               >
+                {i.icon && <span className="pi-choice-icon" aria-hidden="true">{i.icon}</span>}
                 <span className="pi-choice-option">
                   <span>{i.name}</span>
                   {i.detail && <small>{i.detail}</small>}

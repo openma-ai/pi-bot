@@ -20,7 +20,7 @@ def click(name,role='button'):
  ab('click','@'+ref);pause();snap()
 def openq(query=''):
  ab('open',BASE+('?' + query if query else ''));ab('wait','[aria-label="模型提供商"]' if not any(k in query for k in ['configured','ambient','account']) else '[aria-label="默认模型"]');pause();snap()
-def login():click('Sign in with ChatGPT');ab('wait','.pi-login-flow');time.sleep(.7);snap()
+def login():click('使用 ChatGPT 登录');ab('wait','.pi-login-flow');time.sleep(.7);snap()
 def count(path):return js('window.__MODEL_AUTH_QA__.calls.filter(c=>c.path==='+json.dumps(path)+'&&c.method==="POST").length')
 def has(selector):return js('!!document.querySelector('+json.dumps(selector)+')')
 def text():return js('document.body.textContent')
@@ -55,15 +55,15 @@ def desktop():
  click('QA fixture model OpenAI · qa-model','option');check('Model selection remains a draft until explicit save',count('model')==0 and js('window.__MODEL_AUTH_QA__.configuration().current.model===""'))
 def device():
  openq();click('设备码登录（可在手机完成）');check('Device entry only changes provider and never starts a grant',count('login')==0 and js('document.querySelector("[aria-label=模型提供商]").textContent.includes("legacy")'));shot('05-isolated-qa-device-entry.png')
- click('OpenAI (ChatGPT Plus/Pro)');ab('wait','[aria-label="登录选项"]');click('登录选项','combobox');click('设备码登录（可在手机授权）','option');click('继续');ab('wait','--text','QA-ONLY');pause();snap()
+ click('ChatGPT Plus/Pro 账号登录');ab('wait','[aria-label="登录选项"]');click('登录选项','combobox');click('设备码登录（可在手机授权）','option');click('继续');ab('wait','--text','QA-ONLY');pause();snap()
  check('Explicit device login keeps SDK device-code state and spinner',has('.pi-device-code') and has('.pi-spinner') and not has('.pi-login-fallback') and count('login')==1);shot('06-isolated-qa-device-waiting.png')
  click('取消登录');check('Cancellation does not create a new login or save a model',count('login')==1 and count('model')==0 and js('[...window.__MODEL_AUTH_QA__.flows.values()].every(f=>f.status==="cancelled")'))
 def failure_unknown():
- openq('mode=failed');click('Sign in with ChatGPT');ab('wait','[role="alert"]');pause();snap();check('Failed flow stops spinner and leaves explicit recovery',not has('.pi-login-flow') and not has('.pi-spinner') and count('login')==1);shot('07-isolated-qa-failed.png')
- openq('mode=lost-start');click('Sign in with ChatGPT');ab('wait','--text','正在确认登录状态');pause();snap();check('Unknown outcome is shown without a replacement grant',count('login')==1 and has('.pi-spinner'));shot('08-isolated-qa-unknown.png')
+ openq('mode=failed');click('使用 ChatGPT 登录');ab('wait','[role="alert"]');pause();snap();check('Failed flow stops spinner and leaves explicit recovery',not has('.pi-login-flow') and not has('.pi-spinner') and count('login')==1);shot('07-isolated-qa-failed.png')
+ openq('mode=lost-start');click('使用 ChatGPT 登录');ab('wait','--text','正在确认登录状态');pause();snap();check('Unknown outcome is shown without a replacement grant',count('login')==1 and has('.pi-spinner'));shot('08-isolated-qa-unknown.png')
  fixture('releaseState()');ab('wait','.pi-login-fallback');pause();snap();check('Unknown outcome recovers by reading the original flow',count('login')==1 and js('window.__MODEL_AUTH_QA__.flows.size===1'))
  click('取消登录');time.sleep(.7);snap();check('Cancelled unknown flow stays closed with no automatic restart',not has('.pi-login-flow') and count('login')==1 and count('model')==0)
- openq('mode=lost-start');click('Sign in with ChatGPT');click('取消登录');fixture('releaseState()');time.sleep(.8);snap();check('Late uncertain read cannot resurrect cancelled UI',not has('.pi-login-flow') and count('login')==1)
+ openq('mode=lost-start');click('使用 ChatGPT 登录');click('取消登录');fixture('releaseState()');time.sleep(.8);snap();check('Late uncertain read cannot resurrect cancelled UI',not has('.pi-login-flow') and count('login')==1)
 def native_remote():
  openq('native=1&remote=1');login();check('Remote runtime note never promises local auto-callback','不会自动到达远端运行环境' in text());shot('09-isolated-qa-remote-native-mock.png')
  click('打开授权页面');check('Native-mock browser link uses only restricted command',js('window.__MODEL_AUTH_QA__.calls.filter(c=>c.command==="pi_settings_open_login").length===1') and count('login')==1)
