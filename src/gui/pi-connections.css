@@ -94,3 +94,5 @@ details.pi-advanced.pi-settings-card{padding:14px 18px}details.pi-advanced>summa
 .pi-model-remove,.pi-model-add{gap:6px}
 .pi-login-flow a.pi-auth-link,.pi-login-flow a.pi-auth-link:visited{color:var(--accent-contrast,#fff);text-decoration:none;font-size:14px}
 .pi-connection-summary-copy strong{line-height:1.4;margin:0}.pi-connection-summary-copy small{margin-top:2px}
+.pi-field-heading .settings-back{margin-left:calc(-1 * var(--space-2)) !important}
+.pi-auth-step > .pi-settings-error{margin:0 0 4px}

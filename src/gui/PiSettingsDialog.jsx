@@ -293,6 +293,7 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
             </div>
             {(account || active || confirming) && <div className="pi-settings-group pi-auth-step">
               <h3 className="pi-step-heading"><span className="pi-step-number" aria-hidden="true">2</span>完成认证</h3>
+              {effectiveError && <SettingsError error={effectiveError} onRetry={reload} busy={busy} />}
               {account && !active && <div className="pi-account-row pi-provider-header">
                 <div className="pi-account-status">
                   <span className="pi-provider-tile" aria-hidden="true"><ProviderIcon providerId={account.id} size={18}/></span><strong className="pi-provider-name">{account.name}</strong>
@@ -412,7 +413,7 @@ export function PiSettingsPanel({ baseUrl = "", registerBeforeSwitch, runtimeLab
         </section>
       )}
       {notice && <Text size="2" color="gray" role="status">{notice}</Text>}
-      {effectiveError && <SettingsError error={effectiveError} onRetry={reload} busy={busy} />}
+      {effectiveError && !(section === "auth" && (account || active || confirming)) && <SettingsError error={effectiveError} onRetry={reload} busy={busy} />}
     </div>
   );
 }
