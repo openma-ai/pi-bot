@@ -13,6 +13,8 @@ import { watchDesktopViewer } from './websocket-liveness.ts';
 import { DeviceRegistry } from '../remote/devices.ts';
 import { startRelayAgent, type RelayAgentOptions } from '../remote/relay-agent.ts';
 import { encodePairingLink } from '../../sdk/protocol/remote-pairing.ts';
+import { ClientCallHub } from '../client-calls/hub.ts';
+import { ATTACH_PATH, RPC_PATH } from '../../sdk/protocol/client-calls.ts';
 export interface RemoteAccessOptions {
     /** Relay origin. Remote access is off unless this is set. */
     relayUrl?: string;
@@ -25,6 +27,8 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
     staticDir?: string;
     tailnet?: TailnetListener & {name?:string};
     remote?: RemoteAccessOptions;
+    /** Reverse calls to client devices. Default deny: no method is callable unless listed. */
+    clientCalls?: { allow?: string[] };
 } = {}) {
     const registry = new DeviceRegistry(daemon.dataDir);
     // CI / automation: a pre-provisioned device token (revocable like any device).
@@ -62,6 +66,7 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
         return 'device:' + id;
     };
     let relay: ReturnType<typeof startRelayAgent> | undefined;
+    const clientCalls = new ClientCallHub({ allow: options.clientCalls?.allow });
     const pairingPayload = (ticket: string) => ({
         v: 1 as const, ticket, name: options.remote?.name ?? 'pi-bot',
         ...(options.remote?.relayUrl ? { relay: options.remote.relayUrl, code: registry.connectCode } : {})
@@ -74,6 +79,7 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
     const dropDevice = (id: string) => {
         for (const [cid, owner] of owners) if (owner === 'device:' + id) daemon.connections.get(cid)?.close('revoked');
         for (const s of streams) if (s.pibotOwner === 'device:' + id) s.end();
+        clientCalls.drop('device:' + id);
     };
     registry.onRevoke(dropDevice);
     const server = createServer(async (req, res) => {
@@ -101,6 +107,32 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
             return json({
                 status: daemon.status
             }, url.pathname === '/healthz' || daemon.status === 'ready' ? 200 : 503);
+        }
+        if (url.pathname === ATTACH_PATH || url.pathname === RPC_PATH) {
+            // Reverse calls: same auth as the rest of the API. Target id = `local` for the
+            // host credential (same-machine loopback), `device:<id>` for paired devices.
+            const identity = authenticate(req, req.method !== 'GET');
+            if (!identity) return json({ error: 'Authentication required' }, 401);
+            if (identity === 'csrf-invalid') return json({ error: 'CSRF check failed' }, 403);
+            const clientId = identity === 'host' ? 'local' : identity;
+            if (url.pathname === ATTACH_PATH && req.method === 'GET') {
+                const after = Math.max(0, Number.parseInt(url.searchParams.get('after') ?? '0', 10) || 0);
+                const caps = (url.searchParams.get('caps') ?? '').split(',').map(x => x.trim()).filter(x => /^[a-zA-Z0-9_./:-]{1,128}$/.test(x)).slice(0, 256);
+                res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
+                res.flushHeaders();
+                const detach = clientCalls.attach(clientId, { after, capabilities: caps }, {
+                    write: line => res.write(line),
+                    close: () => res.end()
+                });
+                req.on('close', detach);
+                res.on('close', detach);
+                return;
+            }
+            if (url.pathname === RPC_PATH && req.method === 'POST') {
+                try { return json(clientCalls.receive(clientId, await readJson(req, 8 * 1024 * 1024))); }
+                catch (e: any) { return json({ error: e?.status === 413 ? 'Too large' : 'Invalid request' }, e?.status ?? 400); }
+            }
+            return json({ error: 'Not found' }, 404);
         }
         if (url.pathname.startsWith('/remote/')) {
             try {
@@ -561,7 +593,8 @@ export async function listenHttp(daemon: PiBotDaemon, options: {
     }
     if(options.tailnet) { try { gateway=await listenTailnetGateway({...options.tailnet,runtime:{url,token},dataDir:daemon.dataDir}); } catch(error){await new Promise<void>(done=>server.close(()=>done()));throw error;} }
     return {
-        server, url, token, registry, get relayStatus() { return relay?.status ?? 'disabled'; }, async close() {
+        server, url, token, registry, clientCalls, get relayStatus() { return relay?.status ?? 'disabled'; }, async close() {
+            clientCalls.close();
             await relay?.close();
             await gateway?.close();
             for (const res of streams)
