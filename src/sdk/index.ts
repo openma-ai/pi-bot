@@ -4,3 +4,5 @@ export * from './client.ts';
 export * from './runtime-client.ts';
 export * from './pi-settings-client.ts';
 export * from './protocol/client-runtime.ts';
+export * from './protocol/client-calls.ts';
+export * from './client-calls.ts';
